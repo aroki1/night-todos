@@ -44,6 +44,8 @@ impl Layout {
         let portrait = h > w;
         let (cols, rows) = if portrait { (ROWS, COLS) } else { (COLS, ROWS) };
         let module = (w / cols as f32).min(h / rows as f32).floor().max(4.0);
+        // Phones are taller than 54:96, so grow the long axis to keep the bar at the bottom edge.
+        let rows = if portrait { ((h / module).floor() as i32).max(rows) } else { rows };
         Layout { cols, rows, portrait, module, ox: ((w - module * cols as f32) / 2.0).max(0.0).floor(), oy: ((h - module * rows as f32) / 2.0).max(0.0).floor() }
     }
 
@@ -180,7 +182,7 @@ mod tests {
         assert_eq!((l.cols, l.rows, l.module), (96, 54, 20.0));
         assert!(!l.portrait);
         let p = Layout::new(390.0, 844.0);
-        assert_eq!((p.cols, p.rows, p.module), (54, 96, 7.0));
+        assert_eq!((p.cols, p.rows, p.module), (54, 120, 7.0));
         assert!(p.portrait);
         assert_eq!(p.gap(), 1.0);
         assert_eq!(l.gap(), 2.0);
