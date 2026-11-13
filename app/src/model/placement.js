@@ -1,0 +1,218 @@
+/* model/placement.js — label content, label placement with scoring + hysteresis, and the
+   placement of a new star. All in grains; the screen never decides text positions. */
+import { rng, hstr, segDist, seg, ease, mixTo } from '../math.js';
+import { K, FONT, SIZE, FLAGS } from '../tokens.js';
+import { ctx, GW, SH } from '../framebuffer.js';
+import { stars, NS, GHI, pres, Rb, edgeGeom as geom } from './store.js';
+import { FS, US } from './timeline.js';
+import { edgeState } from '../choreo/finish.js';
+import { undoEdge } from '../choreo/undo.js';
+import { T } from '../sky/clock.js';
+
+/* the expire label swap is a pure timeline; kept here so model never imports choreo */
+function expireSwap(ms) {
+  return { leftA: 1 - seg(ms, 900, 1000), missedA: seg(ms, 1000, 1100), leftGone: ms >= 1000, missedOn: ms >= 1000 };
+}
+
+/* the ghost (typed-but-not-committed) text is UI state; main snapshots it in before prepare */
+let ghost = { title: '', gCommit: -1 };
+export function setGhostInfo(v) { ghost = v; }
+
+export const lab = []; for (let i = 0; i < SIZE.maxStars; i++) lab.push({ pick: -1, shown: false });
+export const hk = new Float32Array(SIZE.maxStars), hp = new Float32Array(SIZE.maxStars), frK = new Float32Array(SIZE.maxStars);
+export let focus = -1, mouseHover = -1, selIdx = -1, forceFocus = null, tapSelected = false;
+export function setMouseHover(v) { mouseHover = v; }
+export function setSelIdx(v) { selIdx = v; }
+export function setForceFocus(v) { forceFocus = v; }
+export function setTapSelected(v) { tapSelected = !!v; }
+export function computeFocus() { focus = forceFocus !== null ? forceFocus : mouseHover >= 0 ? mouseHover : selIdx; return focus; }
+export function updateHover(dt) {
+  for (let i = 0; i < stars.length; i++) {
+    const tgt = focus === i ? 1 : 0, rate = tgt > hp[i] ? dt / .15 : dt / .2;
+    hp[i] = tgt > hp[i] ? Math.min(tgt, hp[i] + rate) : Math.max(tgt, hp[i] - rate);
+    hk[i] = ease.out(hp[i]);
+    const ft = (focus === i && !stars[i].done && !stars[i].miss) ? 1 : 0;
+    frK[i] = ft > frK[i] ? Math.min(1, frK[i] + dt / .15) : Math.max(0, frK[i] - dt / .2);
+  }
+}
+
+const widthCache = new Map();
+export function wg(str, wt) {
+  if (!str) return 0;
+  const key = (wt || 400) + str; let w = widthCache.get(key);
+  if (w === undefined) {
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.font = (wt || 400) + ' 12px ' + FONT;
+    w = Math.ceil(ctx.measureText(str).width / 3 - 1e-6); ctx.restore(); widthCache.set(key, w);
+  }
+  return w;
+}
+export function clearWidthCache() { widthCache.clear(); }
+
+export function labelInfo(si) {
+  const s = stars[si], L = lab[si], fk = hk[si], foc = focus === si;
+  if (!pres(s)) { L.shown = false; return; }
+  const cInk = mixTo([0, 0, 0], K.ink2, K.ink, fk);
+  let c1 = cInk, a1 = 1, t2 = '', c2 = K.dim, a2 = 1, place2 = '', l2vis = 1, vis = 1, shown = true, title = s.n, placeTitle = s.n, t3 = '', a3 = 0;
+  const urgent = s.life < .25;
+  if (s.gh) {                                              // ghost: the typed title in dim, placed like any label
+    title = ghost.title; placeTitle = title; c1 = K.dim;
+    a1 = s.ghA * (1 - (ghost.gCommit < 0 ? 0 : seg((T - ghost.gCommit) * 1000, 400, 700)));
+    l2vis = 0; shown = title !== '' && a1 > .01; vis = a1;
+  } else if (!s.on) {                                      // dissolving after undo of an add: erases right to left
+    const n = Math.ceil(s.n.length * (1 - seg(s.rmMs, 0, 300))); title = s.n.slice(0, n); l2vis = 0; shown = n > 0;
+  } else if (s.miss) {
+    const ex = s.mT >= 0 && s.mT < 4400, ms = s.mT, exv = ex ? 1 - seg(ms, 4000, 4400) : 0;
+    vis = Math.max(fk, exv); a1 = vis; a2 = vis; shown = foc || vis > .001; c1 = K.dim;
+    if (ex && fk < .5) {
+      c1 = mixTo([0, 0, 0], cInk, K.dim, seg(ms, 300, 1300));
+      const left = s.exLeft || '<1m', sw = expireSwap(ms);       // sequential: 100 ms out, then 100 ms in
+      c2 = urgent ? K.warn : K.dim;
+      if (FLAGS.parity) {
+        const k = seg(ms, 900, 1050);                            // v10's crossfade, for the parity check only
+        t2 = k < 1 ? left : ''; a2 = vis * (1 - k); place2 = left;
+        t3 = k > 0 ? 'missed' : ''; a3 = vis * k;
+      } else {
+        t2 = sw.leftGone ? '' : left; a2 = vis * sw.leftA; place2 = left;
+        t3 = sw.missedOn ? 'missed' : ''; a3 = vis * sw.missedA;
+      }
+    } else { t2 = s.stamp; place2 = s.stamp; }
+  } else if (s.done) {
+    const fin = s.fin, fs = FS[si], ms = fin ? (T - fin.t0) * 1000 : 1e9;
+    c1 = mixTo([0, 0, 0], cInk, K.done, fs ? fs.titleK : 1);
+    if (fin && ms < fin.tEnd + 150) {
+      const left = Math.max(0, fin.n2 - fs.erased);
+      t2 = fin.line2.slice(0, left); c2 = fin.urgent ? K.warn : K.dim; place2 = fin.line2;
+      l2vis = left > 0 ? 1 : 1 - seg(ms, fin.tEnd, fin.tEnd + (fin.reduced ? .001 : 150));
+    } else { t2 = s.stamp; a2 = fk; l2vis = fk; place2 = foc ? s.stamp : ''; }
+  } else {
+    const us = US[si], full = foc ? s.full : s.left;
+    c2 = urgent ? K.warn : K.dim; place2 = full; t2 = full;
+    if (us) {
+      c1 = mixTo([0, 0, 0], cInk, K.done, us.titleK);
+      t2 = full.slice(0, Math.min(full.length, us.typed));
+      l2vis = seg((T - s.und.t0) * 1000, 250, 300);
+    }
+    if (s.cr) {                                            // creation: the title types in, then the time-left line
+      const ms = (T - s.cr.t0) * 1000;
+      if (s.cr.reduced) { if (ms < 300) { vis = seg(ms, 0, 300); a1 = vis; a2 = vis; } }
+      else if (ms < 700) shown = false;
+      else {
+        const n1 = Math.min(s.n.length, Math.floor((ms - 700) / 18) + 1), ts = 700 + s.n.length * 18;
+        const n2 = ms < ts ? 0 : Math.floor((ms - ts) / 18) + 1;
+        title = s.n.slice(0, n1); t2 = full.slice(0, n2); l2vis = t2 ? 1 : 0;
+      }
+    }
+  }
+  // on the sky, long titles are ellipsised; the hover/selection state keeps the full one
+  if (!foc && title.length > SIZE.ellipsisAt) title = title.slice(0, SIZE.ellipsisAt - 1) + '…';
+  // touch selection: same look as hover, plus a second row that says how to finish
+  if (tapSelected && selIdx === si && !s.done && !s.miss && !s.gh && s.on) {
+    t2 = 'tap again to finish'; c2 = K.dim; place2 = t2; l2vis = 1; a2 = 1;
+  }
+  L.shown = shown; L.vis = vis; L.title = title; L.c1 = c1; L.a1 = a1; L.w1 = fk > .5 ? 500 : 400;
+  L.t2 = t2; L.c2 = c2; L.a2 = a2; L.t3 = t3; L.a3 = a3;
+  L.wPlace = Math.max(wg(placeTitle, 400), wg(place2, 400), fk > .5 ? wg(placeTitle, 500) : 0); L.rowsPlace = place2 ? 2 : 1;
+  L.wDisp = l2vis > .01 ? Math.max(wg(title, L.w1), wg(t2), t3 ? wg(t3) : 0) : wg(title, L.w1);
+  L.rows2h = Math.round(6 * l2vis);
+}
+
+const ovl = (a0, b0, a1, b1, c0, d0, c1, d1) => {
+  const w = Math.min(a1, c1) - Math.max(a0, c0), h = Math.min(b1, d1) - Math.max(b0, d0);
+  return w > 0 && h > 0 ? w * h : 0;
+};
+export const edgeList = [];                       // visible line cores only: ax, ay, ux, uy, s0, s1
+function addVisEdge(f, s, es) {
+  if (!es || es.lineLen <= .01) return;
+  const g = geom(f, s);
+  edgeList.push(f.gx, f.gy, g.ux, g.uy, g.sA, g.sA + es.lineLen);
+}
+export function candAnchor(ci, gx, gy, r, w, th, out) {
+  if (ci === 0) { out[0] = gx + r + 4; out[1] = gy - 3; }
+  else if (ci === 1) { out[0] = gx - r - 3 - w; out[1] = gy - 3; }
+  else if (ci === 2) { out[0] = gx + 2; out[1] = gy - r - 2 - th; }
+  else { out[0] = gx + 2; out[1] = gy + r + 3; }
+}
+export function rectScore(x0, y0p, x1, y1, skip, placed) {
+  let sc = 100 * ((x1 - x0) * (y1 - y0p) - ovl(x0, y0p, x1, y1, 0, 0, GW, SH - 2));
+  for (let j = 0; j < NS; j++) {
+    if (j === skip) continue;
+    const o = stars[j]; if (!pres(o)) continue;
+    const rr = Rb(o); sc += 40 * ovl(x0, y0p, x1, y1, o.gx - rr - 1, o.gy - rr - 1, o.gx + rr + 2, o.gy + rr + 2);
+  }
+  for (let p = 0; p < placed.length; p++) { const q = placed[p]; sc += 25 * ovl(x0, y0p, x1, y1, q[0], q[1], q[2], q[3]); }
+  for (let e = 0; e < edgeList.length; e += 6) {
+    const ex = edgeList[e], ey = edgeList[e + 1], ux = edgeList[e + 2], uy = edgeList[e + 3], s0 = edgeList[e + 4], s1 = edgeList[e + 5];
+    const n = Math.ceil((s1 - s0) / .5);
+    for (let k = 0; k <= n; k++) { const ss = s0 + (s1 - s0) * k / n, lx = ex + ux * ss, ly = ey + uy * ss; if (lx >= x0 && lx < x1 && ly >= y0p && ly < y1) sc += 1; }
+  }
+  return sc;
+}
+const CA = [0, 0];
+export function placeLabels() {
+  edgeList.length = 0;
+  for (let i = 0; i < NS; i++) {
+    const s = stars[i]; if (!s.on) continue;
+    if (s.done && s.link !== null) {
+      const f = stars[s.link];
+      if (s.fin) addVisEdge(f, s, edgeState(s.fin, (T - s.fin.t0) * 1000));
+      else { const g = geom(f, s); edgeList.push(f.gx, f.gy, g.ux, g.uy, g.sA, g.sA + g.path); }
+    } else if (!s.done && s.und && US[i] && s.und.link !== null) addVisEdge(stars[s.und.link], s, undoEdge(s.und, (T - s.und.t0) * 1000));
+  }
+  for (let i = 0; i < NS; i++) labelInfo(i);
+  const order = []; for (let i = 0; i < NS; i++) order.push(i);
+  order.sort((a, b) => stars[a].gy - stars[b].gy || stars[a].gx - stars[b].gx || a - b);
+  const placed = [];
+  for (let oi = 0; oi < NS; oi++) {
+    const si = order[oi], s = stars[si], L = lab[si];
+    if (!L.shown) { L.init = false; continue; }
+    const r = Rb(s), w = L.wPlace, rows = L.rowsPlace, th = 6 * rows;
+    let best = -1, bestScore = 1e18, prevScore = 1e18, prev = L.pick;
+    const px = [0, 0, 0, 0], py = [0, 0, 0, 0];
+    for (let ci = 0; ci < 4; ci++) {
+      candAnchor(ci, s.gx, s.gy, r, w, th, CA);
+      const ax = CA[0], y0 = CA[1];
+      const sc = rectScore(ax - 1, y0 - 1, ax + w + 1, y0 + th + 1, si, placed) + 3 * ci;
+      px[ci] = ax; py[ci] = y0;
+      if (ci === prev) prevScore = sc;
+      if (sc < bestScore) { bestScore = sc; best = ci; }
+    }
+    let pick = best;
+    if (prev >= 0 && bestScore > prevScore - SIZE.labelHysteresis) pick = prev;      // hysteresis: no flicker
+    L.pick = pick; L.ax = px[pick]; L.y0 = py[pick];
+    // glide: when the chosen anchor changes, the label travels to it over 320 ms (easeInOut)
+    if (!L.init) { L.init = true; L.tx = L.ax; L.ty = L.y0; L.fx = L.ax; L.fy = L.y0; L.gt0 = -1e9; L.dx = L.ax; L.dy = L.y0; }
+    else if (L.tx !== L.ax || L.ty !== L.y0) { L.fx = L.dx; L.fy = L.dy; L.tx = L.ax; L.ty = L.y0; L.gt0 = T; }
+    const gk = ease.inOut(seg(T - L.gt0, 0, .32));
+    L.dx = L.fx + (L.tx - L.fx) * gk; L.dy = L.fy + (L.ty - L.fy) * gk; L.gliding = gk < 1;
+    L.bx0 = L.dx - 1; L.bx1 = L.dx + L.wDisp + 1; L.by0 = L.dy - 1; L.by1 = L.dy + 6 + L.rows2h + 1;
+    L.fx0 = L.dx - 2; L.fx1 = L.dx + L.wPlace + 2;
+    placed.push([L.ax - 1, L.y0 - 1, L.ax + L.wPlace + 1, L.y0 + th + 1]);
+  }
+}
+
+/* ---------- placement of new stars (deterministic: hash of title + creation counter) ---------- */
+let moonClearFn = () => true;
+export function setMoonClear(fn) { moonClearFn = fn; }
+export function placeNew(title, ctr, big) {
+  const rr = rng((hstr(title) ^ Math.imul(ctr + 1, 0x9E3779B1)) >>> 0);
+  const r = big ? 5 : 3, w = Math.max(wg(title), 8), th = 12, segs = [], placed = [];
+  for (let i = 0; i < NS; i++) {
+    const s = stars[i];
+    if (s.on && s.done && s.link !== null) { const f = stars[s.link]; segs.push(f.gx, f.gy, s.gx, s.gy); }
+  }
+  for (let i = 0; i < NS; i++) if (i !== GHI && lab[i].shown && lab[i].bx0 !== undefined) placed.push([lab[i].bx0, lab[i].by0, lab[i].bx1, lab[i].by1]);
+  let best = null, bs = 1e18, fb = null, fbd = -1;
+  for (let k = 0; k < 64; k++) {
+    const gx = 4 + Math.floor(rr() * (GW - 8)), gy = 4 + Math.floor(rr() * (SH - 12));
+    let md = 1e9;
+    for (let i = 0; i < NS; i++) { const o = stars[i]; if (!o.on) continue; md = Math.min(md, Math.max(Math.abs(o.gx - gx), Math.abs(o.gy - gy))); }
+    let ed = 1e9;
+    for (let e = 0; e < segs.length; e += 4) ed = Math.min(ed, segDist(gx, gy, segs[e], segs[e + 1], segs[e + 2], segs[e + 3]));
+    const md2 = moonClearFn(gx, gy);
+    if (md < 9 || ed < 6 || !md2) { const q = Math.min(md, ed + 3); if (q > fbd) { fbd = q; fb = { gx, gy }; } continue; }
+    let sc = 1e18;
+    for (let ci = 0; ci < 4; ci++) { candAnchor(ci, gx, gy, r, w, th, CA); sc = Math.min(sc, rectScore(CA[0] - 1, CA[1] - 1, CA[0] + w + 1, CA[1] + th + 1, GHI, placed) + 3 * ci); }
+    if (sc < bs) { bs = sc; best = { gx, gy }; }
+  }
+  return best || fb || { gx: 200, gy: 100 };
+}
