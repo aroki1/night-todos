@@ -1,5 +1,5 @@
 /* sw.js — cache-first app shell. Bump VERSION on every release. All paths relative (works under a subpath). */
-const VERSION = 'ns-v11-20261114';
+const VERSION = 'ns-v11-20261114b';
 const SHELL = [
   './',
   './fonts/IBMPlexMono-Medium.woff2',

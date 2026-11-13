@@ -66,6 +66,11 @@ export const TIME = {
 };
 
 /* sizes and budgets */
+/* urgency: a star goes amber when its remaining life fraction is low OR the absolute time left is short.
+   1 h: a 3-minute task has a tiny life fraction budget, so life alone stays calm until its last 45 s;
+   an hour is the point where "later today" becomes "now" for a deadline todo. */
+export const URGENT = { life: .25, leftMs: 60 * 60 * 1000 };
+
 export const SIZE = {
   labelFont: 12, caretW: 6, caretH: 18,
   starR: 3, starRBig: 5, starCore: 1, starCoreBig: 2,

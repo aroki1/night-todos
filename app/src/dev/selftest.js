@@ -2,7 +2,7 @@
 import { parseDeadline } from '../model/parser.js';
 import { fmtLeft, isoWeekKey, isoWeekOf } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
-import { sanitize } from '../model/store.js';
+import { sanitize, isUrgent } from '../model/store.js';
 
 export function selfTest() {
   const now = new Date(2026, 10, 13, 21, 0, 0), at = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime(), D = 864e5;
@@ -113,6 +113,15 @@ export function selfTest() {
   /* store deep round-trip */
   const deepEq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   ok(deepEq(sanitize(JSON.parse(JSON.stringify(good))), sanitize(good)), 'store deep round-trip');
+
+  /* urgency: life fraction OR absolute time left (URGENT.leftMs = 1 h) */
+  const uNow = fixNow, MIN = 6e4;
+  ok(isUrgent({ dl: uNow + 3 * MIN, life: 1 }, uNow), 'urgent: 3-min task right after creation');
+  ok(!isUrgent({ dl: uNow + 7 * D, life: 1 }, uNow), 'not urgent: 7-day task just created');
+  ok(isUrgent({ dl: uNow + 30 * MIN, life: 30 * MIN / (7 * D) }, uNow), 'urgent: 7-day task with 30 min left');
+  ok(!isUrgent({ dl: uNow + 2 * 36e5, life: 1 }, uNow), 'not urgent: 2 h task just created');
+  ok(isUrgent({ dl: uNow + 3 * D, life: .2 }, uNow), 'urgent: low life fraction still counts');
+  ok(!isUrgent({ dl: null, life: 1 }, uNow), 'not urgent: no deadline, full life');
 
   return { pass, fail, total: pass + fail, failed };
 }

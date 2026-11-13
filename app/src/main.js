@@ -6,7 +6,7 @@ import { previousWeekKey, decideRitual, archivePast } from './model/week.js';
 import { startRitual, drawRitualText, ritualActive } from './render/ritual.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset } from './sky/clouds.js';
-import { store, loadModel, flushSave, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, setAnnouncer, rolledFrom, setPersistence } from './model/store.js';
+import { store, loadModel, flushSave, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, rolledFrom, setPersistence } from './model/store.js';
 import { doFinish, doUndo } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
 import { drawLabels, drawPastHover } from './render/text.js';
@@ -28,8 +28,11 @@ function computeGeometry() {
   if (FLAGS.parity) return { gw: 404, sh: 196, rows: 196 + 20, ratio };
   const touch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || vw < 700;
   const barRows = touch ? LAYOUT.barRowsTouch : LAYOUT.barRowsDesktop;
-  const gw = Math.max(LAYOUT.minGrainsW, Math.floor(vw / 3));
-  const sh = Math.max(LAYOUT.minGrainsH, Math.floor((vh - barRows * 3) / 3));
+  // One grain is P device px = P/ratio CSS px (P is rounded to whole device px, so it is not always 3 CSS px,
+  // e.g. dpr 1.25 -> 4/1.25 = 3.2). Size the grid in real CSS grains so canvas + bar never exceed the viewport.
+  const g = Math.max(3, Math.round(3 * ratio)) / ratio;
+  const gw = Math.max(LAYOUT.minGrainsW, Math.floor(vw / g));
+  const sh = Math.max(LAYOUT.minGrainsH, Math.floor((vh - barRows * g) / g));
   return { gw, sh, rows: sh + barRows, ratio };
 }
 function applyGeometry() {
@@ -103,7 +106,7 @@ function desktopNotify() {
   const now = wall(T);
   for (const s of stars) {
     const t = s.task; if (!t || t.doneAt) continue;
-    if (s.life < .25 && s.life > 0) { if (!urgentSent.has(t.id)) { urgentSent.add(t.id); notifyUrgent(t, now); } }
+    if (isUrgent(s, now) && s.life > 0) { if (!urgentSent.has(t.id)) { urgentSent.add(t.id); notifyUrgent(t, now); } }
     if (t.deadline <= now) notifyMissed(t);
   }
 }

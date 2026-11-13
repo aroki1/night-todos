@@ -4,7 +4,7 @@ import { isReduced, SIZE } from '../tokens.js';
 import { wall, fmtDate, fmtDay } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
 import {
-  stars, NS, setNS, MAXS, DEMO_ON, mkStar, expAt, lifeAt, timeStr, nearestDone,
+  stars, NS, setNS, MAXS, DEMO_ON, mkStar, expAt, lifeAt, isUrgent, timeStr, nearestDone,
   addTask, removeTask, markDone, clearDone, announce, newId,
   snapshotData, restoreData, replaceData, onRebuild, rebuildStars
 } from './store.js';
@@ -25,7 +25,7 @@ export function resetTimeline() {
 export function makeFin(si, at, hov) {
   const s = stars[si], link = s.link;
   const ts = s.dl !== null ? timeStr(s, at) : { left: s.left, full: s.full };
-  const o = { t0: at, link, reduced: isReduced(), hov, urgent: lifeAt(s, at) < .25, line2: hov ? ts.full : ts.left };
+  const o = { t0: at, link, reduced: isReduced(), hov, urgent: isUrgent(s, wall(at), lifeAt(s, at)), line2: hov ? ts.full : ts.left };
   o.n2 = o.line2.length; o.tEnd = o.reduced ? 0 : 300 + o.n2 * 28; o.len = 0; o.path = 0; o.D = 0;
   if (link !== null) {
     const g = edgeGeomStore(stars[link], s);

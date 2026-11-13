@@ -8,7 +8,7 @@ import { clouds, cloudsTick, cloudsForce, isCloudStale, cloudTime } from '../sky
 import { moonUpdate, drawMoon } from '../sky/moon.js';
 import { drawAurora, auroraUpdate, drawComet, drawSats, drawMeteor } from '../sky/events.js';
 import { drawPast } from '../sky/past.js';
-import { stars, NS, GHI, edgeGeom, expAt, R, CORE, Rb, pres, lifeAt, timeStr } from '../model/store.js';
+import { stars, NS, GHI, edgeGeom, expAt, R, CORE, Rb, pres, lifeAt, timeStr, isUrgent } from '../model/store.js';
 import { FS, US, undoTarget, replay, setPipTotals } from '../model/timeline.js';
 import { hk, computeFocus, placeLabels, lab } from '../model/placement.js';
 import { finishState, edgeState } from '../choreo/finish.js';
@@ -149,7 +149,7 @@ export function drawHalos(si) {
   if (!s.on) mul = 1 - seg(s.rmMs, 0, 400);
   if (cms < 1000) mul *= s.cr.reduced ? seg(cms, 0, 300) : cms < 900 ? 1.15 * ease.out(seg(cms, 650, 900)) : 1.15 - .15 * ease.inOut(seg(cms, 900, 1000));
   if (ex) mul *= 1 - ease.inOut(seg(s.mT, 300, 1300));
-  const urgent = !s.done && s.life < .25, b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
+  const urgent = !s.done && isUrgent(s, wall(T)), b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
   if (cold < 1) {
     const w = (1 - cold) * mul * hv;
     if (urgent) { halo(s.gx, s.gy, C.amb, .2 * b * w, 4.5, 13); halo(s.gx, s.gy, C.ambC, .38 * b * w, 1.4, 4); }
@@ -173,7 +173,7 @@ function drawMotes(s, si, ms) {
   }
 }
 function drawExhale(s, ms) {
-  const SP = SPR[s.big ? 1 : 0], r = s.big ? 5 : 3, core = s.big ? 2 : 1, urgent = s.life < .25;
+  const SP = SPR[s.big ? 1 : 0], r = s.big ? 5 : 3, core = s.big ? 2 : 1, urgent = isUrgent(s, wall(T));
   const v = Math.min(s.life * r, r - core);
   const kin = ease.out(seg(ms, 0, 300)), kdr = ease.inOut(seg(ms, 300, 1300)), ksh = ease.inOut(seg(ms, 900, 1600));
   const bmp = .2 * Math.sin(Math.PI * seg(ms, 0, 600));
@@ -215,7 +215,7 @@ export function drawSprite(si) {
     return;
   }
   const SP = SPR[s.big ? 1 : 0], r = R(s), core = CORE(s), fs = FS[si], us = US[si];
-  const urgent = !s.done && s.life < .25, b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
+  const urgent = !s.done && isUrgent(s, wall(T)), b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
   const alive = !s.done && !us, h = alive ? hk[si] : 0, v = Math.min(s.life * r, r - core);
   const cc = fs ? fs.cc : 0, e = v - cc, ms = fs ? fs.ms : 0, ums = us ? (T - s.und.t0) * 1000 : 0, bp = bump[si];
   const dis = !s.on, dms = s.rmMs, cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9, crOn = cms < 1200;

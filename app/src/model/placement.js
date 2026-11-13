@@ -3,11 +3,11 @@
 import { rng, hstr, segDist, seg, ease, mixTo } from '../math.js';
 import { K, FONT, SIZE, FLAGS } from '../tokens.js';
 import { ctx, GW, SH } from '../framebuffer.js';
-import { stars, NS, GHI, pres, Rb, edgeGeom as geom } from './store.js';
+import { stars, NS, GHI, pres, Rb, edgeGeom as geom, isUrgent } from './store.js';
 import { FS, US } from './timeline.js';
 import { edgeState } from '../choreo/finish.js';
 import { undoEdge } from '../choreo/undo.js';
-import { T } from '../sky/clock.js';
+import { T, wall } from '../sky/clock.js';
 
 /* the expire label swap is a pure timeline; kept here so model never imports choreo */
 function expireSwap(ms) {
@@ -53,7 +53,7 @@ export function labelInfo(si) {
   if (!pres(s)) { L.shown = false; return; }
   const cInk = mixTo([0, 0, 0], K.ink2, K.ink, fk);
   let c1 = cInk, a1 = 1, t2 = '', c2 = K.dim, a2 = 1, place2 = '', l2vis = 1, vis = 1, shown = true, title = s.n, placeTitle = s.n, t3 = '', a3 = 0;
-  const urgent = s.life < .25;
+  const urgent = isUrgent(s, wall(T));
   if (s.gh) {                                              // ghost: the typed title in dim, placed like any label
     title = ghost.title; placeTitle = title; c1 = K.dim;
     a1 = s.ghA * (1 - (ghost.gCommit < 0 ? 0 : seg((T - ghost.gCommit) * 1000, 400, 700)));

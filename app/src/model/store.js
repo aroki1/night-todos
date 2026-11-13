@@ -1,7 +1,7 @@
 /* model/store.js — persistent data (tasks, weeks, prefs) and the week's sky view.
    This module never imports sky generation, render, ui or choreography. */
 import { clamp01 } from '../math.js';
-import { FLAGS } from '../tokens.js';
+import { FLAGS, URGENT } from '../tokens.js';
 import { CLOCK0, wall, fmtDate, fmtDay, fmtLeft, isoWeekKey } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
 import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
@@ -53,6 +53,10 @@ export function lifeAt(s, t) {
   if (s.lifeFix !== undefined) return s.lifeFix;
   if (s.dl === null) return s.life;
   return s.life0 * clamp01((s.dl - wall(t)) / s.rem0);
+}
+/* the one urgency rule: low life fraction OR little absolute time left. `now` is wall ms; `life` defaults to s.life */
+export function isUrgent(s, now, life = s.life) {
+  return life < URGENT.life || (s.dl !== null && s.dl - now < URGENT.leftMs);
 }
 export function timeStr(s, t) { const left = fmtLeft(s.dl - wall(t)); return { left, full: fmtDate(s.dl) + ' · ' + left }; }
 
