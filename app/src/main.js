@@ -1,11 +1,12 @@
 /* main.js — boot, geometry, the loop, resize and visibility. */
 import { FLAGS, isReduced, setReducedPref, LAYOUT, SIZE } from './tokens.js';
 import { initCanvas, configure, cv, GW, SH, ROWS, dpr, blit } from './framebuffer.js';
-import { setT, T, wall, clockTick, isoWeekKey, seedForWeek } from './sky/clock.js';
-import { previousWeekKey } from './model/week.js';
+import { setT, T, wall, clockTick, isoWeekKey, seedForWeek, weekLabel } from './sky/clock.js';
+import { previousWeekKey, decideRitual, archivePast } from './model/week.js';
+import { startRitual, drawRitualText, ritualActive } from './render/ritual.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset } from './sky/clouds.js';
-import { store, loadModel, flushSave, syncStarPositions, stars, NS, DEMO_ON, setAnnouncer, rolledFrom, setPersistence } from './model/store.js';
+import { store, loadModel, flushSave, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, setAnnouncer, rolledFrom, setPersistence } from './model/store.js';
 import { doFinish, doUndo } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
 import { drawLabels, drawPastHover } from './render/text.js';
@@ -48,7 +49,7 @@ function renderNow(force) {
   barTick();
   setGhostInfo({ title: bar.title, gCommit: bar.gCommit });
   prepare(); compose(); blit();
-  drawLabels(); drawPastHover(); drawBar();
+  drawLabels(); drawPastHover(); drawRitualText(); drawBar();
   setFrozenForce(false);
   updateAria();
   for (let i = 0; i < NS; i++) {
@@ -118,6 +119,13 @@ const api = {
     if (doRender) renderNow(true);
   },
   stop() { stopLoop(); },
+  beginRitual(opts = {}) {
+    const nowKey = isoWeekKey(wall(T)), liftKey = opts.key || previousWeekKey(nowKey);
+    makeSky(seedForWeek(liftKey)); cloudsForce();
+    rebuildPast();
+    startRitual({ key: liftKey, week: weekLabel(nowKey), newSeed: seedForWeek(nowKey) }, skySwap);
+    return true;
+  },
   prepareCompose() { prepare(); compose(); },
   clickSky() { skySwap(11, T); renderNow(false); },
   clickUndo() {
@@ -182,6 +190,19 @@ function applyScenes() {
   return false;
 }
 
+/* a rollover while the app is open (Sunday -> Monday) runs the same path live */
+let liveWeek = null;
+function checkRollover() {
+  const now = wall(T), key = isoWeekKey(now);
+  if (liveWeek === null) { liveWeek = key; return; }
+  if (key === liveWeek || DEMO_ON || ritualActive()) return;
+  const from = liveWeek; liveWeek = key;
+  const dec = decideRitual(from, now, store.tasks);
+  archivePast(store, now); store.lastSeenWeek = key; flushSave();
+  rebuildStars(now); rebuildPast();
+  if (dec.run) api.beginRitual({ key: dec.liftKey });
+}
+
 async function boot() {
   const canvas = document.getElementById('c');
   initCanvas(canvas);
@@ -197,7 +218,9 @@ async function boot() {
   clearWidthCache();
   const wk = isoWeekKey(wall(0));
   const seed = FLAGS.seed !== null ? FLAGS.seed : (DEMO_ON ? 7 : seedForWeek(store.lastSeenWeek || wk));
-  makeSky(seed);
+  const nowW = wall(0), dec = (!FLAGS.dev || !FLAGS.freeze) && !DEMO_ON ? decideRitual(rolledFrom, nowW, store.tasks) : { run: false };
+  const doRitual = dec.run && dec.hasShape && !FLAGS.freeze;
+  makeSky(doRitual ? seedForWeek(dec.liftKey) : seed);
   setT(FLAGS.t || 0);
   clockTick(true);
   cloudsForce();
@@ -213,7 +236,9 @@ async function boot() {
   if (FLAGS.dev) installHooks(api);
   if (FLAGS.dev && applyScenes()) { document.documentElement.setAttribute('data-ready', '1'); return; }
 
-  // Monday ritual is wired in P3 (render/ritual.js). rolledFrom is the decision input.
+  if (doRitual) { rebuildPast(); startRitual({ key: dec.liftKey, week: weekLabel(dec.to), newSeed: seed }, skySwap); }
+  else if (dec.run) rebuildPast();
+  liveWeek = isoWeekKey(wall(0)); setInterval(checkRollover, 30000);
 
   window.addEventListener('resize', () => {
     if (FLAGS.parity && Math.abs((window.devicePixelRatio || 1) - dpr) < .001) return;

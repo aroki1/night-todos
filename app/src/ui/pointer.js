@@ -8,7 +8,7 @@ import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } fro
 import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo } from './bar.js';
 import { skySwap } from '../render/compose.js';
 import { setPointerGrain, clearPointerGrain } from '../sky/past.js';
-import { skipRitual } from '../choreo/ritual.js';
+import { skipRitual } from '../render/ritual.js';
 import { wake } from './bar.js';
 
 let selectedAt = -9, selWas = -1;

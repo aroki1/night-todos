@@ -12,7 +12,7 @@ import { events, doFinish, doUndo, pipTotal } from '../model/timeline.js';
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, focus, wg } from '../model/placement.js';
 import { bar, submitBar, barParse, msAvg } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
-import { skipRitual } from '../choreo/ritual.js';
+import { skipRitual, ritualInfo } from '../render/ritual.js';
 import { ensureWeeks, previousWeekKey } from '../model/week.js';
 import { selfTest } from './selftest.js';
 import { skySwap } from '../render/compose.js';
@@ -190,8 +190,8 @@ export function installHooks(a) {
       if (!opts.noRebuild) { rebuildStars(now); rebuildPast(); }
       return out;
     },
-    ritual(opts = {}) { return false; },
-    ritualInfo() { return { active: false }; },
+    ritual(opts = {}) { return api.beginRitual(opts); },
+    ritualInfo() { return ritualInfo() || { active: false }; },
     skipRitual() { skipRitual(); },
     weekKey() { return isoWeekKey(wall(T)); }
   };

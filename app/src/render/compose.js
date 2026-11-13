@@ -15,6 +15,7 @@ import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
 import { SPR } from '../sky/components.js';
 import { makeSky } from '../sky/sky.js';
+import { ritualActive, ritualTick, drawRitual } from './ritual.js';
 
 export const bump = new Float32Array(SIZE.maxStars);
 const dims = []; let dimN = 0;
@@ -25,10 +26,11 @@ export let frozenForce = false;
 export let xf = null;
 export function setFrozen(v) { frozen = !!v; }
 export function setFrozenForce(v) { frozenForce = !!v; }
-export function isAnimating() { return animating || !!xf; }
+export function isAnimating() { return animating || !!xf || ritualActive(); }
 
 export function prepare() {
   clockTick(false);
+  ritualTick();
   replay(T);
   animating = !!xf; actN = 0; dimN = 0;
   let nTot = 0, lt = -1e9;
@@ -274,16 +276,16 @@ export function compose() {
   drawEdges();
   for (let si = 0; si < NS; si++) drawHalos(si);
   for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis); }
+  drawRitual();
   for (let si = 0; si < NS; si++) drawSprite(si);
 }
 
 /* crossfade to a new sky (the old base is snapshotted, then the new week fades in) */
 export function skySwap(seed, atT, dur) {
-  if (atT !== null && atT !== undefined) T = atT;
   cloudsForce(); actN = 0; composeBase(acts, actN, dims, dimN);
   OR.set(BR); OG.set(BG); OB.set(BB);
   makeSky(seed); clockTick(true); cloudsForce();
-  xf = { t0: T, dur: dur || .9 };
+  xf = { t0: atT === null || atT === undefined ? T : atT, dur: dur || .9 };
 }
 
 

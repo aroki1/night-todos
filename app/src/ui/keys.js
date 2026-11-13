@@ -4,7 +4,7 @@ import { stars, NS } from '../model/store.js';
 import { doFinish, doUndo } from '../model/timeline.js';
 import { focus, selIdx, mouseHover, setSelIdx, setMouseHover, setForceFocus } from '../model/placement.js';
 import { bar, setBarFocus, setBarCaret, tryUndo } from './bar.js';
-import { skipRitual } from '../choreo/ritual.js';
+import { skipRitual } from '../render/ritual.js';
 import { wake } from './bar.js';
 
 export function aliveByGx() {
