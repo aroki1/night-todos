@@ -264,3 +264,9 @@ window.addEventListener('error', e => {
   document.documentElement.setAttribute('data-err', (e.message || '') + ' @' + e.lineno);
 });
 boot();
+
+/* service worker: web only; on localhost only with ?sw=1 so dev edits are never cached */
+if ('serviceWorker' in navigator && !isTauri && /^https?:$/.test(location.protocol)) {
+  const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  if (!local || /[?&]sw=1/.test(location.search)) navigator.serviceWorker.register('./sw.js').catch(() => { });
+}
