@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#07080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Night Sky</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; background: #07080c; }
+  #status { font: 14px ui-monospace, Consolas, monospace; color: #8a8f9c; padding: 24px; }
+</style>
+<div id="status"></div>
+<script type="module">
+  const status = document.querySelector('#status');
+  if (!navigator.gpu) {
+    status.textContent = 'night sky needs WebGPU \u2014 update to iOS 26+ / a current Chrome, Edge or Safari';
+  } else {
+    try {
+      const { default: init } = await import('./app.js');
+      await init();
+      status.remove();
+    } catch (error) {
+      status.textContent = 'night sky needs WebGPU \u2014 update to iOS 26+ / a current Chrome, Edge or Safari (' + error + ')';
+      console.error(error);
+    }
+  }
+</script>
+</html>
