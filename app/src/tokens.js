@@ -80,7 +80,7 @@ export const SIZE = {
 /* scene flags from the URL (dev-only) */
 export const Q = new URLSearchParams(location.search);
 export const FLAGS = {
-  dev: Q.get('dev') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1',
+  dev: Q.get('dev') !== '0' && (Q.get('dev') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'),
   demo: Q.get('demo') === '1',
   parity: Q.get('v10parity') === '1',
   debug: Q.get('debug') === '1',
