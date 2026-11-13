@@ -1,2 +1,6 @@
 target/
 dist/
+
+node_modules/
+desktop/target/
+rune-src/

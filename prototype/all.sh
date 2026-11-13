@@ -1,0 +1,18 @@
+cd "$(dirname "$0")"
+S="seed=7"
+./shoot.sh 00-ambient.png "$S&t=12&freeze=1"
+F="$S&scene=finish&star=patterns%20quiz%20prep&t=0"
+./shoot.sh 01-finish-0060.png "$F&at=60"; ./shoot.sh 02-0300.png "$F&at=300"; ./shoot.sh 03-0600.png "$F&at=600"; ./shoot.sh 03b-0690.png "$F&at=690"
+./shoot.sh 04-0900.png "$F&at=900"; ./shoot.sh 05b-1000.png "$F&at=1000"; ./shoot.sh 05-1200.png "$F&at=1200"; ./shoot.sh 06b-1400.png "$F&at=1400"; ./shoot.sh 06-1600.png "$F&at=1600"; ./shoot.sh 07-2600.png "$F&at=2600"
+./shoot.sh 08-finish-urgent-1200.png "$S&scene=urgent&at=1200"
+./shoot.sh 09-overlap.png "$S&scene=overlap&at=1200"; ./shoot.sh 09b-overlap-1650.png "$S&scene=overlap&at=1650"; ./shoot.sh 09c-overlap-2300.png "$S&scene=overlap&at=2300"
+./shoot.sh 10-undo-0350.png "$S&scene=undo&at=350"; ./shoot.sh 11-undo-1000.png "$S&scene=undo&at=1000"
+./shoot.sh 12-hover-alive.png "$S&t=12&freeze=1&hover=patterns%20quiz%20prep"
+./shoot.sh 13-hover-done.png "$S&t=12&freeze=1&hover=dp%20%C2%B7%20knapsack%20%2B%20lis"
+./shoot.sh 14-hover-missed.png "$S&t=12&freeze=1&hover=mentor"
+./shoot.sh 15-labels.png "$S&t=12&scene=labels"
+./shoot.sh 16-dpr125.png "$S&t=12&freeze=1" 1.25 1320 760
+./shoot.sh 17-dpr150.png "$S&t=12&freeze=1" 1.5 1320 760
+./shoot.sh 18-reduced-1200.png "$S&scene=finish&at=1200&reduced=1"
+./shoot.sh 19-crossfade.png "$S&t=12&scene=crossfade&at=450"
+./shoot.sh 20-undo-restore.png "$S&t=12&scene=undo&star=patterns%20quiz%20prep"

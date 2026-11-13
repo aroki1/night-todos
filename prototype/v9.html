@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Night Sky v9</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;background:#030407;overflow:hidden}
+canvas{display:block;margin:6px auto 0}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+/* =====================================================================
+   NIGHT SKY v9: stabilize + the finishing moment
+   Single file, no libraries. Everything in the sky is a value written
+   into a grain framebuffer (GW x SH grains, 2x2-ish dots on a 3px pitch).
+   Only text, the 1px hover frame and the bottom bar live outside it.
+   ===================================================================== */
+
+/* =====================================================================
+   1. CONSTANTS AND TOKENS
+   ===================================================================== */
+const GW = 404, SH = 196, ROWS = 216, N = GW * SH;   // sky grains, total grain rows (sky + bar)
+const UW = GW * 3, UH = ROWS * 3, BARY = SH * 3;     // layout units: 3 units per grain (= CSS px at 1x)
+const FONT = '"IBM Plex Mono", ui-monospace, Consolas, monospace';
+
+const TXT = { ink: '#f1ead6', ink2: '#b6af9a', dim: '#575b66', warn: '#eda55a',
+              done: '#9db1f0', pipOff: '#2a2d35', bg: '#030407', rule: '#181b24' };
+const hex = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+const K = { ink: hex(TXT.ink), ink2: hex(TXT.ink2), dim: hex(TXT.dim), warn: hex(TXT.warn), done: hex(TXT.done), pipOff: hex(TXT.pipOff) };
+
+// light colour table (unchanged from v8)
+const C = { ink: hex('#f1ead6'), ink2: hex('#b6af9a'), done: hex('#d3dfff'), core: hex('#ffffff'), glint: hex('#a8bbf2'),
+            warm: hex('#f5e3bb'), warmC: hex('#fff6e0'), cold: hex('#9fb8ff'), amb: hex('#f0a050'), ambC: hex('#ffd9a8'),
+            ambS: hex('#eda55a'), ash: hex('#43464e'), line: hex('#c4d2ff'), lineG: hex('#6e8cff'), pulse: hex('#d0dcff'),
+            met: hex('#e8eeff') };
+
+const PAL = [
+  { top: '#070912', bot: '#101830', hz: [80, 105, 180],  cl: [[58, 82, 160], [92, 64, 150]],  tint: ['#e3e9ff', '#cdd8ff', '#ffe7c8'] },
+  { top: '#09070f', bot: '#1a1230', hz: [150, 95, 175],  cl: [[110, 64, 150], [52, 78, 150]], tint: ['#efe6ff', '#d9ccff', '#ffdcc8'] },
+  { top: '#050a0d', bot: '#0a1f24', hz: [60, 150, 140],  cl: [[30, 112, 106], [44, 80, 124]], tint: ['#e2fbff', '#cdeaf0', '#fff1d6'] },
+  { top: '#09080c', bot: '#1f1715', hz: [190, 115, 75],  cl: [[124, 76, 58], [60, 64, 108]],  tint: ['#fff0dc', '#e8e4ff', '#ffd2a8'] },
+  { top: '#07070a', bot: '#111119', hz: [125, 125, 150], cl: [[64, 70, 98], [50, 56, 82]],    tint: ['#f2f2ff', '#d8dcf0', '#fff0dd'] }];
+
+const Q = new URLSearchParams(location.search);
+const REDUCED = Q.get('reduced') === '1' || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const DEBUG = Q.get('debug') === '1';
+
+// device pixel ratio geometry (set in setupCanvas)
+let dpr = 1, P = 3, D = 2, cv, ctx, img, u32;
+const BGPIX = (255 << 24) | (7 << 16) | (4 << 8) | 3;   // #030407, also the gap colour between dots
+
+/* =====================================================================
+   2. MATH AND NOISE
+   ===================================================================== */
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));      // progress of t inside [a, b]
+const ease = { out: p => 1 - Math.pow(1 - p, 3), inOut: p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2, in: p => p * p * p };
+const H = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return t - Math.floor(t); };
+function rng(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const vn = (px, py, o) => { const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy, s = t => t * t * (3 - 2 * t);
+  const a = H(ix + o, iy), b = H(ix + 1 + o, iy), c = H(ix + o, iy + 1), d = H(ix + 1 + o, iy + 1);
+  return a + (b - a) * s(fx) + (c - a) * s(fy) + (a - b - c + d) * s(fx) * s(fy); };
+const fbm = (px, py, o) => { let v = 0, a = .5, f = 1; for (let k = 0; k < 4; k++) { v += a * vn(px * f, py * f, o); f *= 2.03; a *= .5; } return v / .94; };
+const sm = (e0, e1, v) => { const t = clamp01((v - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
+const tone = v => { v = v < .82 ? v : .82 + .18 * (1 - Math.exp(-(v - .82) * 5)); return v <= 0 ? 0 : v >= 1 ? 255 : (v * 255) | 0; };
+const TONE = new Uint8Array(4097); for (let q = 0; q <= 4096; q++) TONE[q] = tone(q / 4096);
+const tn8 = v => v <= 0 ? 0 : v >= 1 ? 255 : TONE[(v * 4096) | 0];
+const SC = [0, 0, 0];                                      // scratch colour (no per-grain allocation)
+function mixTo(out, a, b, t) { out[0] = a[0] + (b[0] - a[0]) * t; out[1] = a[1] + (b[1] - a[1]) * t; out[2] = a[2] + (b[2] - a[2]) * t; return out; }
+const css = c => 'rgb(' + ((c[0] * 255 + .5) | 0) + ',' + ((c[1] * 255 + .5) | 0) + ',' + ((c[2] * 255 + .5) | 0) + ')';
+
+/* =====================================================================
+   3. FRAMEBUFFER: add, over, splat, halo, ring, dimRect
+   ===================================================================== */
+const BR = new Float32Array(N), BG = new Float32Array(N), BB = new Float32Array(N);       // composed light
+const SR = new Float32Array(N), SG = new Float32Array(N), SB = new Float32Array(N);       // sky gradient
+const CR = new Float32Array(N), CG = new Float32Array(N), CB = new Float32Array(N);       // gradient + clouds (refreshed with the clouds)
+const OR = new Float32Array(N), OG = new Float32Array(N), OB = new Float32Array(N);       // old base (crossfade)
+
+function add(i, j, c, w) { if (i < 0 || j < 0 || i >= GW || j >= SH || w <= 0) return; const k = j * GW + i; BR[k] += c[0] * w; BG[k] += c[1] * w; BB[k] += c[2] * w; }
+function over(i, j, c, a) { if (i < 0 || j < 0 || i >= GW || j >= SH || a <= 0) return; const k = j * GW + i; a = a > 1 ? 1 : a;
+  BR[k] += (c[0] - BR[k]) * a; BG[k] += (c[1] - BG[k]) * a; BB[k] += (c[2] - BB[k]) * a; }
+// bilinear splat by fractional position: anything that moves glides across grains
+function splat(fx, fy, c, w) { const i = Math.floor(fx), j = Math.floor(fy); let u = fx - i, v = fy - j; u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
+  add(i, j, c, w * (1 - u) * (1 - v)); add(i + 1, j, c, w * u * (1 - v)); add(i, j + 1, c, w * (1 - u) * v); add(i + 1, j + 1, c, w * u * v); }
+function halo(fx, fy, c, peak, sig, rad) { if (peak <= .002) return; const r = Math.ceil(rad), i0 = Math.round(fx), j0 = Math.round(fy), k2 = 1 / (2 * sig * sig), r2 = rad * rad;
+  for (let j = j0 - r; j <= j0 + r; j++) for (let i = i0 - r; i <= i0 + r; i++) { const d2 = (i - fx) * (i - fx) + (j - fy) * (j - fy); if (d2 > r2) continue; add(i, j, c, peak * Math.exp(-d2 * k2)); } }
+// one ring of light: profile exp(-d^2/0.45), per-grain sparkle
+function ring(cx, cy, rad, b, col) { if (b <= .002) return; const ri = Math.ceil(rad + 2);
+  for (let j = -ri; j <= ri; j++) for (let i = -ri; i <= ri; i++) { const d = Math.abs(Math.sqrt(i * i + j * j) - rad); if (d < 1.6) add(cx + i, cy + j, col, b * Math.exp(-d * d / .45) * (.6 + .4 * H(cx + i, cy + j))); } }
+// terminal-style cell background: x0..x1, y0..y1 half-open; outermost ring is feathered
+function dimRect(x0, y0, x1, y1, vis) {              // feather: outer ring x0.75, second ring x0.625, core x0.5
+  const f0 = 1 - (1 - .75) * vis, f1 = 1 - (1 - .625) * vis, fi = 1 - (1 - .5) * vis;
+  for (let j = Math.max(0, y0); j < Math.min(SH, y1); j++) for (let i = Math.max(0, x0); i < Math.min(GW, x1); i++) {
+    const e = Math.min(i - x0, x1 - 1 - i, j - y0, y1 - 1 - j), f = e === 0 ? f0 : e === 1 ? f1 : fi, k = j * GW + i; BR[k] *= f; BG[k] *= f; BB[k] *= f; } }
+
+/* =====================================================================
+   4. SKY
+   ===================================================================== */
+let sky = null, T = 0, cloudT = -9, xf = null;
+function makeSky(seed) {
+  const r = rng(seed), pal = PAL[Math.floor(r() * PAL.length)], off = Math.floor(r() * 900), top = hex(pal.top), bot = hex(pal.bot), hz = pal.hz.map(v => v / 255);
+  for (let j = 0; j < SH; j++) for (let i = 0; i < GW; i++) { const k = j * GW + i, t = sm(0, .78, j / SH), dx = (i - GW / 2) / GW, dy = (j - SH * .55) / GW,
+    vig = 1 - .4 * sm(.2, .62, Math.hypot(dx, dy)), h = Math.pow(sm(SH - 60, SH, j), 1.4) * .1;
+    SR[k] = (top[0] + (bot[0] - top[0]) * t) * vig * 1.5 + hz[0] * h; SG[k] = (top[1] + (bot[1] - top[1]) * t) * vig * 1.5 + hz[1] * h; SB[k] = (top[2] + (bot[2] - top[2]) * t) * vig * 1.5 + hz[2] * h; }
+  const W = GW + 24, layers = [{ n: 1100, sp: .73, a: [.08, .26], tw: .05 }, { n: 300, sp: 1.67, a: [.2, .42], tw: .25 }, { n: 46, sp: 3, a: [.42, .7], tw: .7 }].map(L => {
+    const S = []; let k = 0;
+    while (S.length < L.n && k < L.n * 8) { k++; const px = r() * W, py = r() * SH, dens = .35 + .65 * sm(.35, .7, fbm(px / 87, py / 87, off + 7)); if (r() > dens) continue;
+      const m = Math.pow(r(), 2.2), t = r();
+      S.push({ x: px, y: py, a: L.a[0] + (L.a[1] - L.a[0]) * (1 - m), c: hex(t < .72 ? pal.tint[0] : t < .9 ? pal.tint[1] : pal.tint[2]), ph: r() * 6.28, f: .3 + r() * .9, tw: r() < L.tw }); }
+    return { n: L.n, sp: L.sp, S, W }; });
+  const rgb = a => hex('#' + a.map(v => v.toString(16).padStart(2, '0')).join(''));
+  sky = { seed, pal, off, layers, cl: [rgb(pal.cl[0]), rgb(pal.cl[1])] };
+  cloudT = -9;
+}
+// clouds: half-res fbm, bilinear upsample. Refreshed ~15x per second of sky time.
+// Same formula as v8; the lattice hash H() is memoised per call (identical values, ~100x fewer sin() calls).
+const HW = GW / 2, HH = SH / 2, hr = new Float32Array(HW * HH * 3), TW = 96, TH = 48;
+const ctabs = [0, 1, 2].map(() => [0, 1, 2, 3].map(() => ({ d: new Float32Array(TW * TH), x0: 0, y0: 0 })));
+function Hc(t, o, ix, iy) { const a = ix - t.x0, b = iy - t.y0; if (a < 0 || b < 0 || a >= TW || b >= TH) return H(ix + o, iy); const k = a * TH + b; let v = t.d[k]; if (v !== v) { v = H(ix + o, iy); t.d[k] = v; } return v; }
+function vnc(px, py, o, t) { const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = Hc(t, o, ix, iy), b = Hc(t, o, ix + 1, iy), c = Hc(t, o, ix, iy + 1), d = Hc(t, o, ix + 1, iy + 1); return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy; }
+function fbmc(px, py, o, tabs) { let v = 0, a = .5, f = 1; for (let k = 0; k < 4; k++) { v += a * vnc(px * f, py * f, o, tabs[k]); f *= 2.03; a *= .5; } return v / .94; }
+function prepTabs(tabs, axMin, ayMin) { let f = 1; for (let k = 0; k < 4; k++) { const t = tabs[k]; t.x0 = Math.floor(axMin * f) - 1; t.y0 = Math.floor(ayMin * f) - 1; t.d.fill(NaN); f *= 2.03; } }
+let cycT = 0, cycRow = HH;                                  // sliced refresh state (live loop only)
+function cloudRows(t, j0, j1) {
+  const o = sky.off, ca = sky.cl[0], cb = sky.cl[1], tw = ctabs[0], tn = ctabs[1], tm = ctabs[2], sw = .3 * Math.sin(t * .05);
+  if (j0 === 0) { prepTabs(tw, t * 3 / 420 + sw, 0); prepTabs(tn, t * 3 / 230, -t * .004); prepTabs(tm, t * 3 / 600 - t * .002, 0); }
+  for (let j = j0; j < j1; j++) for (let i = 0; i < HW; i++) {
+    const px = i * 6 + t * 3, py = j * 6, w = fbmc(px / 420 + sw, py / 420, o, tw), n = fbmc(px / 230 + w * 1.6, py / 230 + w * .8 - t * .004, o + 31, tn), m = fbmc(px / 600 - t * .002, py / 600, o + 57, tm);
+    let a = sm(.5, .86, n) * (.55 + .45 * m) * sm(-10, BARY * .9, BARY - py + 40) * .3; if (a < 1e-5) a = 0;           // flush denormals
+    const k = sm(.35, .65, m), q = (j * HW + i) * 3;
+    for (let c = 0; c < 3; c++) hr[q + c] = (ca[c] + (cb[c] - ca[c]) * k) * a; }
+}
+function cloudUpsample(t) {
+  const h = hr, cr = CR, cg = CG, cb = CB, sr = SR, sg = SG, sb = SB;
+  for (let j = 0; j < SH; j++) for (let i = 0; i < GW; i++) {
+    const fx = Math.min(HW - 1.001, i / 2), fy = Math.min(HH - 1.001, j / 2), i0 = Math.floor(fx), j0 = Math.floor(fy), u = fx - i0, v = fy - j0, k = j * GW + i;
+    const q00 = (j0 * HW + i0) * 3, q10 = q00 + 3, q01 = q00 + HW * 3, q11 = q01 + 3;
+    cr[k] = sr[k] + (h[q00] * (1 - u) + h[q10] * u) * (1 - v) + (h[q01] * (1 - u) + h[q11] * u) * v;
+    cg[k] = sg[k] + (h[q00 + 1] * (1 - u) + h[q10 + 1] * u) * (1 - v) + (h[q01 + 1] * (1 - u) + h[q11 + 1] * u) * v;
+    cb[k] = sb[k] + (h[q00 + 2] * (1 - u) + h[q10 + 2] * u) * (1 - v) + (h[q01 + 2] * (1 - u) + h[q11 + 2] * u) * v; }
+  cloudT = t;
+}
+function clouds() { cloudRows(T, 0, HH); cloudUpsample(T); cycRow = HH; }            // full refresh (tests, sky swap)
+// live loop: ~15 refreshes per second of sky time, each spread over 5 frames so no frame pays for the whole thing
+function cloudsTick() {
+  if (cycRow >= HH) { if (T - cloudT < .0625) return; cycT = T; cycRow = 0; }
+  if (cycRow < HH) { const j1 = Math.min(HH, cycRow + 20); cloudRows(cycT, cycRow, j1); cycRow = j1; if (cycRow >= HH) cloudUpsample(cycT); }
+}
+// sky response to a ring front (pure): w in 0..1 for a bg star at distance d from the ring origin, ms after the click
+function skyW(d, ms) {
+  if (ms < 120 || ms > 1300) return 0;
+  const r = ringRadius(ms), q = clamp01((d - 3) / 25), tp = 120 + 780 * (1 - Math.pow(1 - q, 1 / 3));
+  const lead = clamp01((r - d + 2.5) / 2.5), decay = ms > tp ? Math.max(0, 1 - (ms - tp) / 350) : 1;
+  return lead * decay;
+}
+// the base: gradient + clouds + bg stars (+ sky response). No sprites, glows or meteors.
+let acts = [], actN = 0;
+function composeBase() {
+  BR.set(CR); BG.set(CG); BB.set(CB);
+  for (let li = 0; li < 3; li++) { const L = sky.layers[li], S = L.S;
+    for (let q = 0; q < S.length; q++) { const s = S[q], px = ((s.x - T * L.sp) % L.W + L.W) % L.W - 12; if (px < -3 || px > GW + 2) continue;
+      let a = s.a * (.45 + .55 * sm(SH, SH - 55, s.y)); if (s.tw) a *= .62 + .38 * Math.pow(.5 + .5 * Math.sin(T * s.f + s.ph), 1.5);
+      splat(px, s.y, s.c, a); if (li === 2) halo(px, s.y, s.c, a * .2, 1.1, 2.6);
+      if (actN) { let w = 0; for (let m = 0; m < actN; m++) { const A = acts[m], dx = px - A.x, dy = s.y - A.y; w += skyW(Math.sqrt(dx * dx + dy * dy), A.ms); }
+        if (w > 0) splat(px, s.y, s.c, Math.min(1, w) * .22); } } }
+}
+// meteors: pure function of T and the sky seed (one slot every 28 s, starts after 5 s)
+function drawMeteor() {
+  if (T < 5) return; const n = Math.floor((T - 5) / 28), sd = n + sky.seed * .137, st = 5 + n * 28 + H(sd, 4) * 18, u = T - st; if (u < 0 || u > 1.05) return;
+  const an = .38 + H(sd, 1) * .3, vx = Math.cos(an), vy = Math.sin(an), x0 = 50 + H(sd, 2) * 270, y0 = 6 + H(sd, 3) * 45;
+  const e = 1 - Math.pow(1 - Math.min(1, u / .8), 2), hx = x0 + vx * e * 75, hy = y0 + vy * e * 75;
+  const fade = (u < .7 ? Math.min(1, u / .1) : Math.max(0, 1 - (u - .7) / .35)) * .6, len = 24 * Math.min(1, u / .3);
+  for (let s = 0; s < len; s += .4) splat(hx - vx * s, hy - vy * s, C.met, fade * .22 * (1 - s / len));
+  halo(hx, hy, C.met, fade * .5, 1.1, 3);
+}
+// ↻ sky: snapshot the old composed base, build the new sky, crossfade 900 ms
+function skySwap(seed, atT) {
+  T = atT; clouds(); actN = 0; composeBase(); OR.set(BR); OG.set(BG); OB.set(BB);
+  makeSky(seed); clouds(); xf = { t0: atT };
+}
+
+/* =====================================================================
+   5. MODEL: stars, grow-only links, event replay
+   ===================================================================== */
+const DEF = [
+  { n: 'hm one-pager',         gx: 268, gy: 40,  big: 1, life: .86, left: '6d 02h', full: 'fri 20 nov 23:59 · 6d 02h' },
+  { n: 'dp · knapsack + lis',  gx: 96,  gy: 62,  done: 1, link: 2,    stamp: 'done · tue 10 nov 22:05' },
+  { n: 'hm weekly report',     gx: 58,  gy: 118, done: 1, link: null, stamp: 'done · mon 9 nov 18:40' },
+  { n: 'os linux hw 3',        gx: 186, gy: 128, life: .13, left: '26h',    full: 'sat 14 nov 23:59 · 26h' },
+  { n: 'patterns quiz prep',   gx: 150, gy: 84,  life: .55, left: '3d 10h', full: 'tue 17 nov 08:00 · 3d 10h' },
+  { n: 'read ch. 7 · os',      gx: 122, gy: 150, done: 1, link: 2,    stamp: 'done · thu 12 nov 21:10' },
+  { n: 'mentor session notes', gx: 300, gy: 150, miss: 1, stamp: 'missed · wed 11 nov' }];
+// pre-done links are stored (computed once in order: weekly report, knapsack, ch.7); never recomputed on load
+const stars = DEF.map(d => Object.assign({ gx0: d.gx, gy0: d.gy, done: 0, link: null, miss: 0, big: 0, life: 0, left: '', full: '', stamp: '', fin: null, und: null,
+  initDone: d.done || 0, initLink: d.link === undefined ? null : d.link, initStamp: d.stamp || '' }, d));
+const NS = stars.length;
+const R = s => s.big ? 5 : 3, CORE = s => s.big ? 2 : 1;
+const Rb = s => s.miss ? 0 : R(s);                         // sprite bounding radius
+const fmtT = at => String(10 + Math.floor(at / 60) % 50);
+
+let events = [];                                           // {type:'finish'|'undo', at, si, hov}
+let undoTarget = null;                                     // {si, at}: the latest finish that is still undoable
+function nearestDone(si) { const s = stars[si]; let best = null, bd = 1e9;
+  for (let j = 0; j < NS; j++) { if (j === si || !stars[j].done) continue; const d = Math.hypot(stars[j].gx - s.gx, stars[j].gy - s.gy); if (d < bd) { bd = d; best = j; } }
+  return best; }
+function edgeGeom(f, t) { const dx = t.gx - f.gx, dy = t.gy - f.gy, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len, sA = R(f) + 1, sB = len - (R(t) + 1);
+  return { ax: f.gx, ay: f.gy, ux, uy, len, sA, sB, path: Math.max(.1, sB - sA) }; }
+function makeFin(si, at, hov) {
+  const s = stars[si], link = s.link, o = { t0: at, link, reduced: REDUCED, hov, urgent: s.life < .25, line2: hov ? s.full : s.left };
+  o.n2 = o.line2.length; o.tEnd = REDUCED ? 0 : 300 + o.n2 * 28; o.len = 0; o.path = 0; o.D = 0;
+  if (link !== null) {
+    const g = edgeGeom(stars[link], s); o.len = g.len; o.path = g.path; o.D = Math.min(1200, Math.max(520, g.len * 11));
+    if (REDUCED) { o.chargeMs = 0; o.travelMs = 0; o.arriveMs = 300; }
+    else { const pf = stars[link].fin, parentArr = pf ? pf.t0 + pf.arriveMs / 1000 : -1e9;     // causality: wait for the source to have received its light
+      o.chargeMs = Math.max(450, (parentArr - at) * 1000); o.travelMs = o.chargeMs + 250; o.arriveMs = o.travelMs + o.D; }
+  } else o.arriveMs = REDUCED ? 250 : 650;
+  return o;
+}
+function makeUnd(s, at) {
+  const fin = s.fin, ms = (at - fin.t0) * 1000, fs = finishState(fin, ms), es = fin.link !== null ? edgeState(fin, ms) : null;
+  return { t0: at, fin, link: fin.link, cold0: fs.haloCold, titleK0: fs.titleK, lineLen0: es ? es.lineLen : 0, ff0: es ? es.ff : 0, pipWasOn: ms >= fin.arriveMs };
+}
+// the model is a pure replay of the event list up to T (scrubbable, deterministic)
+function replay(t) {
+  for (let i = 0; i < NS; i++) { const s = stars[i]; s.done = s.initDone; s.link = s.initLink; s.fin = null; s.und = null; s.stamp = s.initStamp; }
+  undoTarget = null;
+  for (let e = 0; e < events.length; e++) { const ev = events[e]; if (ev.at > t) break;
+    if (ev.type === 'finish') { const s = stars[ev.si]; if (s.done || s.miss) continue;
+      s.link = nearestDone(ev.si); s.done = 1; s.und = null; s.fin = makeFin(ev.si, ev.at, ev.hov); s.stamp = 'done · fri 13 nov 22:' + fmtT(ev.at);
+      undoTarget = { si: ev.si, at: ev.at }; }
+    else if (ev.type === 'undo') { if (!undoTarget || ev.at - undoTarget.at > 5) continue; const s = stars[undoTarget.si];
+      s.und = makeUnd(s, ev.at); s.done = 0; s.link = null; s.fin = null; undoTarget = null; } }
+}
+function pushEvent(ev) { events.push(ev); events.sort((a, b) => a.at - b.at); }
+function doFinish(si, at, hov) { const s = stars[si]; if (!s || s.done || s.miss) return false; pushEvent({ type: 'finish', at, si, hov: !!hov }); return true; }
+function doUndo(at) { pushEvent({ type: 'undo', at }); }
+
+/* =====================================================================
+   6. LAYOUT: label content, placement with scoring + hysteresis
+   ===================================================================== */
+const FS = new Array(NS).fill(null), US = new Array(NS).fill(null), hk = new Float32Array(NS), hp = new Float32Array(NS), frK = new Float32Array(NS);
+const lab = stars.map(() => ({ pick: -1, shown: false }));
+let focus = -1, mouseHover = -1, selIdx = -1, forceFocus = null;
+const widthCache = new Map();
+function wg(str) { if (!str) return 0; let w = widthCache.get(str); if (w === undefined) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.font = '400 12px ' + FONT; w = Math.ceil(ctx.measureText(str).width / 3 - 1e-6); ctx.restore(); widthCache.set(str, w); } return w; }
+
+function labelInfo(si) {
+  const s = stars[si], L = lab[si], fk = hk[si], foc = focus === si, cInk = mixTo([0, 0, 0], K.ink2, K.ink, fk);
+  let c1 = cInk, a1 = 1, t2 = '', c2 = K.dim, a2 = 1, place2 = '', l2vis = 1, vis = 1, shown = true;
+  const urgent = s.life < .25;
+  if (s.miss) { vis = fk; a1 = fk; a2 = fk; c1 = K.dim; t2 = s.stamp; place2 = s.stamp; shown = foc || fk > .001; }
+  else if (s.done) {
+    const fin = s.fin, fs = FS[si], ms = fin ? (T - fin.t0) * 1000 : 1e9;
+    c1 = mixTo([0, 0, 0], cInk, K.done, fs ? fs.titleK : 1);
+    if (fin && ms < fin.tEnd + 150) {
+      const left = Math.max(0, fin.n2 - fs.erased); t2 = fin.line2.slice(0, left); c2 = fin.urgent ? K.warn : K.dim; place2 = fin.line2;
+      l2vis = left > 0 ? 1 : 1 - seg(ms, fin.tEnd, fin.tEnd + (fin.reduced ? .001 : 150));
+    } else { t2 = s.stamp; a2 = fk; l2vis = fk; place2 = foc ? s.stamp : ''; }
+  } else {
+    const us = US[si], full = foc ? s.full : s.left; c2 = urgent ? K.warn : K.dim; place2 = full; t2 = full;
+    if (us) { c1 = mixTo([0, 0, 0], cInk, K.done, us.titleK); t2 = full.slice(0, Math.min(full.length, us.typed)); l2vis = seg((T - s.und.t0) * 1000, 250, 300); }
+  }
+  L.shown = shown; L.vis = vis; L.title = s.n; L.c1 = c1; L.a1 = a1; L.w1 = fk > .5 ? 500 : 400; L.t2 = t2; L.c2 = c2; L.a2 = a2;
+  L.wPlace = Math.max(wg(s.n), wg(place2)); L.rowsPlace = place2 ? 2 : 1; L.wDisp = l2vis > .01 ? Math.max(wg(s.n), wg(t2)) : wg(s.n); L.rows2h = Math.round(6 * l2vis);
+}
+const ovl = (a0, b0, a1, b1, c0, d0, c1, d1) => { const w = Math.min(a1, c1) - Math.max(a0, c0), h = Math.min(b1, d1) - Math.max(b0, d0); return w > 0 && h > 0 ? w * h : 0; };
+let edgeList = [];
+function placeLabels() {
+  edgeList.length = 0;
+  for (let i = 0; i < NS; i++) { const s = stars[i]; if (s.done && s.link !== null) { const f = stars[s.link]; edgeList.push(f.gx, f.gy, s.gx, s.gy); } }
+  for (let i = 0; i < NS; i++) labelInfo(i);
+  const order = [0, 1, 2, 3, 4, 5, 6].sort((a, b) => stars[a].gy - stars[b].gy || stars[a].gx - stars[b].gx || a - b), placed = [];
+  const cand = [0, 0, 0, 0, 0, 0];
+  for (let oi = 0; oi < NS; oi++) { const si = order[oi], s = stars[si], L = lab[si]; if (!L.shown) continue;
+    const r = Rb(s), w = L.wPlace, rows = L.rowsPlace, th = 6 * rows;
+    let best = -1, bestScore = 1e18, prevScore = 1e18, prev = L.pick, bx = 0, by = 0, px = [0, 0, 0, 0], py = [0, 0, 0, 0];
+    for (let ci = 0; ci < 4; ci++) {
+      let ax, y0;
+      if (ci === 0) { ax = s.gx + r + 4; y0 = s.gy - 3; }
+      else if (ci === 1) { ax = s.gx - r - 3 - w; y0 = s.gy - 3; }
+      else if (ci === 2) { ax = s.gx + 2; y0 = s.gy - r - 2 - th; }
+      else { ax = s.gx + 2; y0 = s.gy + r + 1 + 2; }
+      const x0 = ax - 1, x1 = ax + w + 1, y0p = y0 - 1, y1 = y0 + th + 1;
+      let sc = 100 * ((x1 - x0) * (y1 - y0p) - ovl(x0, y0p, x1, y1, 0, 0, GW, SH - 2));
+      for (let j = 0; j < NS; j++) { const o = stars[j], rr = Rb(o); sc += 40 * ovl(x0, y0p, x1, y1, o.gx - rr - 1, o.gy - rr - 1, o.gx + rr + 2, o.gy + rr + 2); }
+      for (let p = 0; p < placed.length; p++) { const q = placed[p]; sc += 25 * ovl(x0, y0p, x1, y1, q[0], q[1], q[2], q[3]); }
+      for (let e = 0; e < edgeList.length; e += 4) { const ex = edgeList[e], ey = edgeList[e + 1], dx = edgeList[e + 2] - ex, dy = edgeList[e + 3] - ey, len = Math.sqrt(dx * dx + dy * dy), n = Math.ceil(len / .5);
+        for (let k = 0; k <= n; k++) { const t = k / n, lx = ex + dx * t, ly = ey + dy * t; if (lx >= x0 && lx < x1 && ly >= y0p && ly < y1) sc += 1; } }
+      sc += 3 * ci;
+      px[ci] = ax; py[ci] = y0;
+      if (ci === prev) prevScore = sc;
+      if (sc < bestScore) { bestScore = sc; best = ci; } }
+    let pick = best; if (prev >= 0 && bestScore > prevScore - 20) pick = prev;       // hysteresis: labels never flicker
+    L.pick = pick; L.ax = px[pick]; L.y0 = py[pick];
+    L.bx0 = L.ax - 1; L.bx1 = L.ax + L.wDisp + 1; L.by0 = L.y0 - 1; L.by1 = L.y0 + 6 + L.rows2h + 1;
+    placed.push([L.ax - 1, L.y0 - 1, L.ax + L.wPlace + 1, L.y0 + th + 1]); }
+}
+
+/* =====================================================================
+   7. CHOREOGRAPHY (pure functions of elapsed ms; no mutation)
+   ===================================================================== */
+const ringRadius = ms => 3 + 25 * ease.out(seg(ms, 120, 900));
+const igT = d => 110 + (d - 1) * 45;                                    // when the arm grain at Chebyshev distance d ignites
+const ignA = (d, ms) => seg(ms, igT(d), igT(d) + 60);                   // alpha ramp of an igniting grain
+const ignK = (d, ms) => seg(ms, igT(d), igT(d) + 260);                  // colour progress: warm -> white (40%) -> cold (100%)
+const undoShr = (ms, d, R) => ease.out(seg(ms, Math.max(0, (R - d) * 40), Math.max(0, (R - d) * 40) + 80));   // 0 = still cold-size, 1 = back to life length
+function finishState(fin, ms) {
+  const o = { reduced: fin.reduced, ms };
+  if (fin.reduced) { const k = seg(ms, 0, 250); o.cc = 0; o.haloMul = 1; o.haloCold = k; o.k = k; o.ringOn = false; o.flashPeak = 0; o.titleK = 1; o.erased = 1e4; o.glint = k; }
+  else {
+    o.cc = ease.out(seg(ms, 0, 110));                                   // anticipation: contraction
+    o.haloMul = 1 - .35 * o.cc;
+    o.haloCold = ease.inOut(seg(ms, 110, 600));                         // wide halo warm -> cold
+    const pr = seg(ms, 120, 900); o.ringOn = ms >= 120 && ms <= 900; o.ringR = ringRadius(ms); o.ringB = .5 * Math.pow(1 - pr, 1.3);
+    const fq = ease.out(seg(ms, 120, 750));                             // core flash
+    o.flashPeak = ms < 120 || ms > 750 ? 0 : ms < 160 ? .55 * seg(ms, 120, 160) : .55 * (1 - ease.out(seg(ms, 160, 750)));
+    o.flashSig = 1.5 + 3.5 * fq; o.flashRad = 4 + 10 * fq;
+    o.titleK = seg(ms, 300, 700); o.erased = ms < 300 ? 0 : Math.floor((ms - 300) / 28) + 1;
+    o.glint = seg(ms, 330, 480);
+  }
+  o.pipMs = ms - fin.arriveMs;
+  return o;
+}
+function edgeState(fin, ms) {
+  if (fin.link === null) return null; const o = { tailSign: 1 };
+  if (fin.reduced) { o.lineLen = fin.path; o.mul = seg(ms, 0, 300); o.ff = 1; o.beadPeak = 0; o.bump = 0; o.arrHalo = 0; o.miniB = 0; o.pulseK = clamp01((ms - 300 - 1500) / 1000); return o; }
+  const ch = fin.chargeMs, tr = fin.travelMs, ar = fin.arriveMs;
+  o.lineLen = fin.path * ease.inOut(seg(ms, tr, tr + fin.D)); o.mul = 1; o.ff = seg(ms, ar, ar + 120);
+  o.beadPeak = ms < ch ? 0 : ms < tr ? .55 * ease.in(seg(ms, ch, tr)) : ms < ar ? .55 : .55 * (1 - seg(ms, ar, ar + 120));
+  o.bump = ms >= ch ? .15 * Math.sin(Math.PI * seg(ms, ch, ch + 550)) : 0;                      // the source "decides"
+  o.arrHalo = ms >= ar ? .3 * (1 - seg(ms, ar, ar + 380)) : 0;
+  const mp = seg(ms, ar, ar + 300); o.miniOn = ms >= ar && ms < ar + 300; o.miniR = 2 + 7 * ease.out(mp); o.miniB = .35 * (1 - mp);
+  o.pulseK = clamp01((ms - ar - 1500) / 1000);
+  return o;
+}
+function undoState(u, ms) {
+  return { cold: u.cold0 * (1 - ease.inOut(seg(ms, 200, 500))), titleK: u.titleK0 * (1 - seg(ms, 200, 500)), typed: ms < 300 ? 0 : Math.floor((ms - 300) / 20) + 1, pipK: 1 - seg(ms, 0, 200) };
+}
+function undoEdge(u, ms) {
+  const l0 = u.lineLen0; if (l0 <= 0) return null;
+  return { lineLen: l0 * (1 - ease.inOut(seg(ms, 0, 450))), mul: 1, ff: u.ff0 * (1 - seg(ms, 0, 100)), tailSign: -1, bump: 0, arrHalo: 0, miniB: 0, pulseK: 0,
+           beadPeak: ms < 450 ? .55 * seg(ms, 0, 100) : .55 * (1 - seg(ms, 450, 570)) };
+}
+
+/* =====================================================================
+   8. COMPOSE: one function writes the whole frame
+   ===================================================================== */
+function buildSprite(big) {
+  const r = big ? 5 : 3, I = [0], J = [0], DD = [0], CH = [0];
+  for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) { if (!i && !j) continue; const m = Math.abs(i) + Math.abs(j), core = big ? m <= 2 : (Math.abs(i) <= 1 && Math.abs(j) <= 1);
+    if (core || i === 0 || j === 0) { I.push(i); J.push(j); DD.push(core ? 0 : Math.max(Math.abs(i), Math.abs(j))); CH.push(Math.max(Math.abs(i), Math.abs(j))); } }
+  if (big) [[-4, -4], [4, -4], [-4, 4], [4, 4]].forEach(([i, j]) => { I.push(i); J.push(j); DD.push(-1); CH.push(5); });
+  return { n: I.length, I, J, DD, CH };
+}
+const SPR = [buildSprite(0), buildSprite(1)];
+const bump = new Float32Array(NS);
+let animating = false;
+
+function prepare() {
+  replay(T); animating = !!xf; actN = 0;
+  for (let si = 0; si < NS; si++) { const s = stars[si]; FS[si] = null; US[si] = null;
+    if (s.done && s.fin) { const ms = (T - s.fin.t0) * 1000; FS[si] = finishState(s.fin, ms);
+      if (ms < s.fin.arriveMs + 700) animating = true;
+      if (!s.fin.reduced && ms >= 120 && ms <= 1300) { if (!acts[actN]) acts[actN] = { x: 0, y: 0, ms: 0 }; const A = acts[actN++]; A.x = s.gx; A.y = s.gy; A.ms = ms; } }
+    else if (!s.done && s.und) { const ms = (T - s.und.t0) * 1000; if (ms < 700) { US[si] = undoState(s.und, ms); animating = true; } }
+    if (hk[si] > 0 && hk[si] < 1) animating = true; }
+  if (undoTarget && T - undoTarget.at < 5.4) animating = true;
+  focus = forceFocus !== null ? forceFocus : mouseHover >= 0 ? mouseHover : selIdx;
+  placeLabels();
+}
+
+function drawEdge(g, es, phase, si) {
+  const ax = g.ax, ay = g.ay, ux = g.ux, uy = g.uy, sA = g.sA, sE = sA + es.lineLen, owner = stars[si], from = stars[es.src];
+  // third stars the line passes behind (physical occlusion)
+  let occ = null;
+  for (let j = 0; j < NS; j++) { if (j === si || j === es.src) continue; const o = stars[j], rr = Rb(o) + 1, t = Math.max(0, Math.min(g.len, (o.gx - ax) * ux + (o.gy - ay) * uy)), dx = ax + ux * t - o.gx, dy = ay + uy * t - o.gy;
+    if (dx * dx + dy * dy < rr * rr) { if (!occ) occ = []; occ.push(o.gx - rr - 1, o.gy - rr - 1, o.gx + rr + 1, o.gy + rr + 1); } }
+  const inOcc = (i, j) => { if (!occ) return false; for (let q = 0; q < occ.length; q += 4) if (i >= occ[q] && j >= occ[q + 1] && i <= occ[q + 2] && j <= occ[q + 3]) return true; return false; };
+  if (es.lineLen > .01 && es.mul > 0) {
+    const px0 = ax + ux * sA, py0 = ay + uy * sA, px1 = ax + ux * sE, py1 = ay + uy * sE;
+    const i0 = Math.floor(Math.min(px0, px1)) - 3, i1 = Math.ceil(Math.max(px0, px1)) + 3, j0 = Math.floor(Math.min(py0, py1)) - 3, j1 = Math.ceil(Math.max(py0, py1)) + 3;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {                          // wide glow, only where the line exists
+      let s = (i - ax) * ux + (j - ay) * uy; s = s < sA ? sA : s > sE ? sE : s; const dx = ax + ux * s - i, dy = ay + uy * s - j, d2 = dx * dx + dy * dy;
+      if (d2 < 9) { let w = .07 * Math.exp(-d2 / 2.4) * es.mul; if (occ && inOcc(i, j)) w *= .3; add(i, j, C.lineG, w); } }
+    const beadK = es.beadPeak / .55;
+    for (let s = sA; s <= sE; s += .25) {                                                    // core: starts at R+1, 1.5-grain fades at the ends
+      const px = ax + ux * s, py = ay + uy * s; if (occ && inOcc(Math.round(px), Math.round(py))) continue;
+      const fi = clamp01((s - sA) / 1.5), fo = 1 - es.ff * (1 - clamp01((sE - s) / 1.5)), e = sE - s, bo = e < 10 ? .6 * (1 - e / 10) * beadK : 0;
+      splat(px, py, C.line, .11 * fi * fo * (1 + bo) * es.mul); } }
+  if (es.beadPeak > .003) {                                                                 // the bead of light + tail
+    const bx = ax + ux * sE, by = ay + uy * sE, bk = es.beadPeak / .55; halo(bx, by, C.pulse, es.beadPeak, 1.5, 5);
+    for (let k = 1; k <= 7; k++) { const s = sE - es.tailSign * k * .6; if (s < sA || s > g.sB) continue; splat(ax + ux * s, ay + uy * s, C.pulse, .5 * (1 - k / 7) * bk); } }
+  if (es.pulseK > 0) { const ph = (T * .16 + phase) % 1, pp = ph * g.len; if (pp > g.sA && pp < g.sB) halo(ax + ux * pp, ay + uy * pp, C.pulse, .45 * Math.sin(Math.PI * ph) * es.pulseK, 1.4, 4); }
+  if (es.bump > 0) bump[es.src] = Math.max(bump[es.src], es.bump);
+  if (es.arrHalo > 0) { const sg = owner.big ? 7.5 : 5.5; halo(owner.gx, owner.gy, C.cold, es.arrHalo, sg, sg * 3); }
+  if (es.miniOn) ring(owner.gx, owner.gy, es.miniR, es.miniB, C.done);
+}
+function drawEdges() {
+  bump.fill(0);
+  for (let si = 0; si < NS; si++) { const s = stars[si]; let es = null, src = -1;
+    if (s.done && s.link !== null) { src = s.link; const g = edgeGeom(stars[src], s);
+      if (s.fin) es = edgeState(s.fin, (T - s.fin.t0) * 1000);
+      else es = { lineLen: g.path, mul: 1, ff: 1, beadPeak: 0, tailSign: 1, bump: 0, arrHalo: 0, miniB: 0, pulseK: 1 };
+      if (es) { es.src = src; drawEdge(g, es, si * .37, si); } }
+    else if (!s.done && s.und && US[si] && s.und.link !== null) { src = s.und.link; es = undoEdge(s.und, (T - s.und.t0) * 1000);
+      if (es) { es.src = src; drawEdge(edgeGeom(stars[src], s), es, 0, si); } } }
+}
+function drawHalos(si) {
+  const s = stars[si]; if (s.miss) return; const fs = FS[si], us = US[si], b0 = s.big;
+  let cold = 0, mul = 1, hv = 1;
+  if (s.done) { cold = fs ? fs.haloCold : 1; mul = fs ? fs.haloMul : 1; } else if (us) cold = us.cold; else hv = 1 + .15 * hk[si];
+  const urgent = !s.done && s.life < .25, b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
+  if (cold < 1) { const w = (1 - cold) * mul * hv;
+    if (urgent) { halo(s.gx, s.gy, C.amb, .2 * b * w, 4.5, 13); halo(s.gx, s.gy, C.ambC, .38 * b * w, 1.4, 4); }
+    else { const rr = (b0 ? 7 : 5) * (.6 + .4 * s.life); halo(s.gx, s.gy, C.warm, (.08 + .12 * s.life) * w, rr, rr * 3); halo(s.gx, s.gy, C.warmC, .38 * w, 1.4, 4); } }
+  if (cold > 0) { halo(s.gx, s.gy, C.cold, .26 * cold, b0 ? 7.5 : 5.5, b0 ? 22 : 16); halo(s.gx, s.gy, C.core, .45 * cold, 1.5, 4); }
+  if (fs && !fs.reduced) { if (fs.ringOn) ring(s.gx, s.gy, fs.ringR, fs.ringB, C.done); if (fs.flashPeak > 0) halo(s.gx, s.gy, C.core, fs.flashPeak, fs.flashSig, fs.flashRad); }
+}
+function drawSprite(si) {
+  const s = stars[si]; if (s.miss) { over(s.gx, s.gy, C.ash, 1); return; }
+  const SP = SPR[s.big ? 1 : 0], r = R(s), core = CORE(s), fs = FS[si], us = US[si], urgent = !s.done && s.life < .25, b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
+  const alive = !s.done && !us, h = alive ? hk[si] : 0, v = Math.min(s.life * r, r - core), cc = fs ? fs.cc : 0, e = v - cc, ms = fs ? fs.ms : 0, ums = us ? (T - s.und.t0) * 1000 : 0, bp = bump[si];
+  for (let q = 0; q < SP.n; q++) {
+    const i = SP.I[q], j = SP.J[q], dd = SP.DD[q], ch = SP.CH[q], cent = i === 0 && j === 0;
+    let a0, c0;
+    if (dd === -1) { a0 = Math.max(0, (s.life - .7) / .3) * .75; c0 = C.ink2; }
+    else if (dd === 0) { a0 = urgent ? (.45 + .55 * b) * (cent ? 1 : .8) : 1; c0 = urgent ? (cent ? C.ambC : C.ambS) : C.ink; }
+    else { const sh = .88 + .12 * Math.sin(T * 1.3 + i + j); a0 = clamp01(e - (dd - core - 1)) * sh; c0 = urgent ? C.ambS : C.ink2;
+      if (h > 0) a0 += .45 * h * (clamp01(e + 1 - (dd - core - 1)) * sh - a0); }              // hover: preview one more arm grain at 45%
+    const cD = cent ? C.core : dd === -1 ? C.glint : C.done; let a = a0, c = c0;
+    if (s.done && !fs) { a = 1; c = cD; }
+    else if (fs && fs.reduced) { a = a0 + (1 - a0) * fs.k; c = mixTo(SC, c0, cD, fs.k); }
+    else if (fs) {
+      if (cent) { a = a0 + (1 - a0) * cc; c = mixTo(SC, c0, C.core, cc); }
+      else if (dd === -1) { a = Math.max(a0, fs.glint); c = mixTo(SC, c0, C.glint, fs.glint); }
+      else { a = Math.max(a0, ignA(ch, ms)); const k = ignK(ch, ms); c = k < .4 ? mixTo(SC, c0, C.core, k / .4) : mixTo(SC, C.core, cD, (k - .4) / .6); } }
+    else if (us) { a = a0 + (1 - a0) * (1 - undoShr(ums, ch, r)); c = mixTo(SC, c0, cD, us.cold); }
+    over(s.gx + i, s.gy + j, c, a);
+    if (bp > 0 && dd === 0) add(s.gx + i, s.gy + j, C.core, bp);
+  }
+}
+function compose() {
+  if (frozen || cloudT < 0 || T < cloudT) clouds(); else cloudsTick();
+  composeBase();
+  if (xf) { const k = ease.inOut(clamp01((T - xf.t0) / .9)); if (k >= 1) xf = null; else for (let q = 0; q < N; q++) { BR[q] = OR[q] * (1 - k) + BR[q] * k; BG[q] = OG[q] * (1 - k) + BG[q] * k; BB[q] = OB[q] * (1 - k) + BB[q] * k; } }
+  drawMeteor();
+  drawEdges();
+  for (let si = 0; si < NS; si++) drawHalos(si);
+  for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(L.bx0, L.by0, L.bx1, L.by1, L.vis); }     // label cell backing, before sprites
+  for (let si = 0; si < NS; si++) drawSprite(si);
+}
+
+/* =====================================================================
+   9. BLIT: grains to device pixels, drawn 1:1
+   ===================================================================== */
+function blit() {
+  const W = GW * P, br = BR, bg = BG, bb = BB, px = u32, d = D, pp = P, lut = TONE;       // local aliases: global lookups are slow in hot loops
+  for (let j = 0; j < SH; j++) { const row = j * pp * W;
+    for (let i = 0; i < GW; i++) { const k = j * GW + i, r = br[k], g = bg[k], b = bb[k];
+      const p = (255 << 24) | ((b <= 0 ? 0 : b >= 1 ? 255 : lut[(b * 4096) | 0]) << 16) | ((g <= 0 ? 0 : g >= 1 ? 255 : lut[(g * 4096) | 0]) << 8) | (r <= 0 ? 0 : r >= 1 ? 255 : lut[(r * 4096) | 0]), o = row + i * pp;
+      for (let dy = 0; dy < d; dy++) { const oo = o + dy * W; for (let dx = 0; dx < d; dx++) px[oo + dx] = p; } } }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.putImageData(img, 0, 0);
+}
+function setupCanvas() {
+  dpr = window.devicePixelRatio || 1; P = Math.max(3, Math.round(3 * dpr)); D = P - Math.max(1, Math.round(dpr));
+  cv.width = GW * P; cv.height = ROWS * P; cv.style.width = (cv.width / dpr) + 'px'; cv.style.height = (cv.height / dpr) + 'px';
+  img = ctx.createImageData(GW * P, SH * P); u32 = new Uint32Array(img.data.buffer); u32.fill(BGPIX);
+}
+
+/* =====================================================================
+   10. TEXT AND BAR (everything here sits on the grain grid)
+   ===================================================================== */
+let skyBtn = null, undoHit = null, msAvg = 0;
+function dot(gx, gy, col, alpha) { ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.fillRect(gx * P, gy * P, D, D); }
+function frameRect(x0, y0, x1, y1, col, alpha) { const t = Math.max(1, Math.round(dpr)); ctx.globalAlpha = alpha; ctx.fillStyle = col;
+  ctx.fillRect(x0 * P, y0 * P, (x1 - x0) * P, t); ctx.fillRect(x0 * P, y1 * P - t, (x1 - x0) * P, t); ctx.fillRect(x0 * P, y0 * P, t, (y1 - y0) * P); ctx.fillRect(x1 * P - t, y0 * P, t, (y1 - y0) * P); }
+function drawLabels() {
+  ctx.textBaseline = 'middle';
+  for (let si = 0; si < NS; si++) { const L = lab[si]; if (!L.shown) continue;
+    if (frK[si] > .01) { ctx.setTransform(1, 0, 0, 1, 0, 0); frameRect(L.bx0, L.by0, L.bx1, L.by1, TXT.dim, frK[si]);
+      ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); ctx.globalAlpha = frK[si]; ctx.fillStyle = TXT.dim; ctx.font = '400 12px ' + FONT; ctx.fillText('⏎', (L.bx1 + 2) * 3, (L.y0 + 3) * 3 + 1); }
+    ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
+    ctx.globalAlpha = L.a1; ctx.font = L.w1 + ' 12px ' + FONT; ctx.fillStyle = css(L.c1); ctx.fillText(L.title, L.ax * 3, (L.y0 + 3) * 3 + 1);
+    if (L.t2) { ctx.globalAlpha = L.a2; ctx.font = '400 12px ' + FONT; ctx.fillStyle = css(L.c2); ctx.fillText(L.t2, L.ax * 3, (L.y0 + 9) * 3 + 1); } }
+  ctx.globalAlpha = 1;
+}
+function pipColor(k, arr) {            // pip colour for the k-th pip in sorted-arrival order
+  if (k >= arr.length || arr[k] > T) return K.pipOff; const e = (T - arr[k]) * 1000;
+  return e < 80 ? mixTo([0, 0, 0], K.pipOff, C.core, e / 80) : e < 280 ? mixTo([0, 0, 0], C.core, C.done, (e - 80) / 200) : C.done;
+}
+function drawBar() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = TXT.bg; ctx.fillRect(0, SH * P, cv.width, cv.height - SH * P);
+  ctx.fillStyle = TXT.rule; ctx.fillRect(0, SH * P, cv.width, Math.max(1, Math.round(dpr)));
+  ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); ctx.textBaseline = 'middle'; const by = 618;
+  ctx.font = '500 12px ' + FONT; ctx.fillStyle = TXT.ink2; ctx.fillText('›', 18, by);
+  if (Math.floor(T * 1.8) % 2 === 0) { ctx.fillStyle = TXT.ink2; ctx.fillRect(33, 609, 6, 18); }
+  const ua = undoTarget ? (T - undoTarget.at < 5 ? 1 : 1 - seg(T - undoTarget.at, 5, 5.3)) : 0; undoHit = null;
+  if (ua < 1) { ctx.globalAlpha = 1 - ua; ctx.font = '400 12px ' + FONT; ctx.fillStyle = TXT.dim; ctx.fillText('title, deadline', 51, by); ctx.globalAlpha = 1; }
+  if (ua > 0 && undoTarget) {
+    let t = stars[undoTarget.si].n; if (t.length > 28) t = t.slice(0, 27) + '…'; ctx.font = '400 12px ' + FONT; ctx.globalAlpha = ua;
+    const parts = [['finished · ', TXT.dim], [t, TXT.ink2], ['    ', TXT.dim], ['undo', TXT.ink2], ['  ', TXT.dim], ['z', TXT.dim]]; let x = 51;
+    for (let p = 0; p < parts.length; p++) { ctx.fillStyle = parts[p][1]; ctx.fillText(parts[p][0], x, by); const w = ctx.measureText(parts[p][0]).width; if (p === 3) undoHit = { x0: x / 3, x1: (x + w) / 3 }; x += w; }
+    const wgr = Math.ceil((x - 51) / 3), rem = Math.ceil(wgr * (1 - clamp01((T - undoTarget.at) / 5)));        // the 5 s timer: a row of grains draining right to left
+    ctx.setTransform(1, 0, 0, 1, 0, 0); for (let g = 0; g < rem; g++) dot(17 + g, 210, TXT.dim, ua); ctx.globalAlpha = 1;
+    ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); }
+  // counter: pips fill at the arrival of each connection
+  const arr = []; for (let i = 0; i < NS; i++) { const s = stars[i]; if (s.done) arr.push(s.fin ? s.fin.t0 + s.fin.arriveMs / 1000 : -1e9); } arr.sort((a, b) => a - b);
+  let cnt = 0; for (let i = 0; i < arr.length; i++) if (arr[i] <= T) cnt++;
+  const cs = cnt + ' / ' + NS; ctx.font = '500 12px ' + FONT; const cw = ctx.measureText(cs).width; ctx.fillStyle = TXT.ink2; ctx.fillText(cs, Math.floor((UW - 18 - cw) / 3) * 3, by);
+  let vac = -1, vk = 0; for (let i = 0; i < NS; i++) { const s = stars[i]; if (!s.done && s.und && US[i] && s.und.pipWasOn) { vac = cnt; vk = US[i].pipK; } }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (let k = 0; k < NS; k++) { const gx = Math.floor((UW - 30 - cw) / 3) - (NS - k) * 3; let c = pipColor(k, arr); if (k === vac && vk > 0) c = mixTo([0, 0, 0], K.pipOff, C.done, vk);
+    dot(gx, 205, css(c), 1); dot(gx, 206, css(c), 1); }
+  ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); ctx.font = '400 12px ' + FONT;
+  const bx = Math.floor((UW - 48 - cw - NS * 9 - 54) / 3) * 3; skyBtn = { x: bx - 6, y: BARY + 10, w: 66, h: 40 }; ctx.fillStyle = skyBtn.hover ? TXT.ink2 : TXT.dim; ctx.fillText('↻ sky', bx, by);
+  if (DEBUG) { ctx.fillStyle = TXT.dim; ctx.font = '400 12px ' + FONT; ctx.fillText(msAvg.toFixed(1) + ' ms/frame · P' + P + ' D' + D + ' dpr' + dpr, 9, 12); }
+}
+
+/* =====================================================================
+   11. INPUT
+   ===================================================================== */
+function toUnits(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * UW, (e.clientY - r.top) / r.height * UH]; }
+const inBtn = (px, py) => skyBtn && px >= skyBtn.x && px <= skyBtn.x + skyBtn.w && py >= skyBtn.y && py <= skyBtn.y + skyBtn.h;
+function hitStar(px, py) {
+  const gx = px / 3, gy = py / 3; let best = -1, bd = 1e9;
+  for (let i = 0; i < NS; i++) { const s = stars[i], r = Rb(s) + 2, L = lab[i]; let hit = Math.abs(gx - s.gx) <= r && Math.abs(gy - s.gy) <= r;
+    if (!hit && L.shown && L.bx0 !== undefined && (!stars[i].miss || hk[i] > 0)) hit = gx >= L.bx0 && gx <= L.bx1 && gy >= L.by0 && gy <= L.by1;
+    if (hit) { const d = Math.abs(gx - s.gx) + Math.abs(gy - s.gy); if (d < bd) { bd = d; best = i; } } }
+  return best;
+}
+function wake() { animating = true; }
+function finishFocused() { const i = focus; if (i >= 0 && doFinish(i, T, true)) { selIdx = -1; wake(); } }
+function tryUndo() { if (undoTarget && T - undoTarget.at < 5) { doUndo(T); wake(); } }
+function aliveByGx() { return stars.map((s, i) => i).filter(i => !stars[i].done && !stars[i].miss).sort((a, b) => stars[a].gx - stars[b].gx); }
+function bindInput() {
+  cv.addEventListener('mousemove', e => { const [px, py] = toUnits(e); if (skyBtn) skyBtn.hover = inBtn(px, py); mouseHover = hitStar(px, py);
+    const onUndo = undoHit && undoTarget && T - undoTarget.at < 5 && Math.abs(py - 618) < 12 && px / 3 >= undoHit.x0 && px / 3 <= undoHit.x1;
+    cv.style.cursor = (mouseHover >= 0 || inBtn(px, py) || onUndo) ? 'pointer' : 'default'; });
+  cv.addEventListener('mouseleave', () => { mouseHover = -1; });
+  cv.addEventListener('click', e => { const [px, py] = toUnits(e);
+    if (inBtn(px, py)) { skySwap(Math.floor(Math.random() * 1e9), T); wake(); return; }
+    if (undoHit && undoTarget && T - undoTarget.at < 5 && Math.abs(py - 618) < 12 && px / 3 >= undoHit.x0 && px / 3 <= undoHit.x1) { tryUndo(); return; }
+    const i = hitStar(px, py); if (i >= 0) { focus = i; finishFocused(); } });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Tab') { e.preventDefault(); const l = aliveByGx(); if (!l.length) return; let k = l.indexOf(selIdx); k = e.shiftKey ? (k <= 0 ? l.length - 1 : k - 1) : (k + 1) % l.length; selIdx = l[k]; mouseHover = -1; wake(); }
+    else if (e.key === 'Enter') { if (focus >= 0) { finishFocused(); } }
+    else if (e.key === 'Escape') { selIdx = -1; wake(); }
+    else if ((e.key === 'z' || e.key === 'Z')) { tryUndo(); } });
+}
+
+/* =====================================================================
+   12. LOOP
+   ===================================================================== */
+let frozen = false, rafId = 0, lastTs = 0, tick = 0;
+function updateHover(dt) {
+  for (let i = 0; i < NS; i++) { const tgt = focus === i ? 1 : 0, rate = tgt > hp[i] ? dt / .15 : dt / .2;
+    hp[i] = tgt > hp[i] ? Math.min(tgt, hp[i] + rate) : Math.max(tgt, hp[i] - rate); hk[i] = ease.out(hp[i]);
+    const ft = (focus === i && !stars[i].done && !stars[i].miss) ? 1 : 0; frK[i] = ft > frK[i] ? Math.min(1, frK[i] + dt / .15) : Math.max(0, frK[i] - dt / .2); }
+}
+function render() {
+  const t0 = performance.now(); prepare(); compose(); blit(); const ms = performance.now() - t0; msAvg = msAvg ? msAvg * .9 + ms * .1 : ms;
+  drawLabels(); drawBar();
+}
+function loop(ts) {
+  rafId = requestAnimationFrame(loop);
+  if (!lastTs) lastTs = ts; const dt = Math.min(.05, (ts - lastTs) / 1000); lastTs = ts; T += dt; tick++;
+  focus = forceFocus !== null ? forceFocus : mouseHover >= 0 ? mouseHover : selIdx; updateHover(dt);
+  if (!animating && (tick & 1)) return;                    // ambient: 30 fps; any choreography / hover / crossfade: 60 fps
+  render();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) cancelAnimationFrame(rafId); else if (!frozen) { lastTs = 0; rafId = requestAnimationFrame(loop); } });
+
+/* =====================================================================
+   13. TEST HOOKS
+   ===================================================================== */
+const findStar = n => { const k = stars.findIndex(s => s.n === n); return k >= 0 ? k : stars.findIndex(s => s.n.indexOf(n) >= 0); };
+window.ns = {
+  setSeed(n) { makeSky(n); },
+  freeze(t) { frozen = true; cancelAnimationFrame(rafId); T = t; ns.render(); },
+  finish(name, atT, hov) { return doFinish(findStar(name), atT, hov); },
+  undo(atT) { doUndo(atT); },
+  hover(name) { forceFocus = name === null ? null : findStar(name); const f = forceFocus === null ? -1 : forceFocus; focus = f;
+    for (let i = 0; i < NS; i++) { hp[i] = hk[i] = i === f ? 1 : 0; frK[i] = (i === f && !stars[i].done && !stars[i].miss) ? 1 : 0; } },
+  skySwap(seed, atT) { skySwap(seed, atT); },
+  move(name, gx, gy) { const s = stars[findStar(name)]; s.gx = gx; s.gy = gy; },
+  render() { cloudT = -9; focus = forceFocus !== null ? forceFocus : mouseHover >= 0 ? mouseHover : selIdx; render(); },
+  bench(n) { const t0 = T; let sum = 0, mx = 0, fr = []; cancelAnimationFrame(rafId); frozen = false; cloudT = -9;
+    for (let i = 0; i < n; i++) { T = t0 + i / 60; const a = performance.now(); prepare(); compose(); blit(); const d = performance.now() - a; sum += d; fr.push(d); if (i > 10) mx = Math.max(mx, d); }
+    frozen = true; fr.sort((x, y) => x - y); return { avg: sum / n, median: fr[n >> 1], p95: fr[Math.floor(n * .95)], max: mx }; },
+  now() { return T; },
+  stats() { return { ms: msAvg, grains: N, dpr, P, D }; }
+};
+
+/* ---------- boot ---------- */
+(async function boot() {
+  cv = document.getElementById('c'); ctx = cv.getContext('2d'); setupCanvas();
+  const fontsReady = Promise.race([Promise.all([document.fonts.load('400 12px "IBM Plex Mono"'), document.fonts.load('500 12px "IBM Plex Mono"')]), new Promise(r => setTimeout(r, 3000))]);
+  makeSky(Q.has('seed') ? +Q.get('seed') : Math.floor(Math.random() * 1e9));
+  await fontsReady; widthCache.clear();
+  const scene = Q.get('scene'), at = Q.has('at') ? +Q.get('at') : null; let tFreeze = Q.has('t') ? +Q.get('t') : 0, freeze = Q.get('freeze') === '1';
+  const sname = Q.get('star');
+  if (scene === 'finish' || scene === 'urgent') { const nm = sname || (scene === 'urgent' ? 'os linux hw 3' : 'patterns quiz prep'); ns.finish(nm, 2.0, false); tFreeze = 2.0 + (at === null ? 850 : at) / 1000; freeze = true; }
+  else if (scene === 'overlap') { ns.finish('patterns quiz prep', 2.0, false); ns.finish('os linux hw 3', 2.3, false); tFreeze = 2.0 + (at === null ? 1200 : at) / 1000; freeze = true; }
+  else if (scene === 'undo') { ns.finish(sname || 'patterns quiz prep', 2.0, false); ns.undo(4.0); tFreeze = Q.has('t') ? tFreeze : 4.0 + (at === null ? 350 : at) / 1000; freeze = true; }
+  else if (scene === 'labels') { ns.move('hm one-pager', 394, 40); ns.move('os linux hw 3', 62, 90); ns.move('patterns quiz prep', 392, 124); freeze = true; }
+  else if (scene === 'crossfade') { ns.skySwap(+(Q.get('seed2') || 11), tFreeze); tFreeze += (at === null ? 450 : at) / 1000; freeze = true; }
+  if (Q.has('hover')) ns.hover(Q.get('hover'));
+  bindInput();
+  window.addEventListener('resize', () => { if (Math.abs((window.devicePixelRatio || 1) - dpr) > .001) { setupCanvas(); widthCache.clear(); } });
+  if (Q.get('bench') === '1') { const r = ns.bench(+Q.get('frames') || 120); document.title = 'bench ' + JSON.stringify(r) + ' P' + P + ' D' + D; return; }
+  if (freeze) ns.freeze(tFreeze); else { T = tFreeze; ns.render(); requestAnimationFrame(ts => { lastTs = ts; rafId = requestAnimationFrame(loop); }); }
+  document.documentElement.setAttribute('data-ready', '1');
+})();
+</script>
+</body>
+</html>
