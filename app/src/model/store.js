@@ -10,7 +10,7 @@ import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
 let persistence = { load: async () => null, save: async () => { } };
 export function setPersistence(p) { persistence = p || { load: async () => null, save: async () => { } }; }
 
-export const DEMO_ON = FLAGS.demo;
+export const DEMO_ON = FLAGS.demo && FLAGS.dev;   // demo tasks never exist in the product
 export const MAXS = 48;
 const HR = 36e5;
 
@@ -180,7 +180,7 @@ export function replaceData(raw) {
   if (!data) return null;
   Object.assign(store, data);
   ensureWeeks(store, wall(0));
-  store.lastSeenWeek = isoWeekKeySafe(wall(0));
+  store.lastSeenWeek = isoWeekKey(wall(0));
   saveSoon();
   return data.tasks.length;
 }

@@ -66,6 +66,9 @@ if (typeText) {
   for (const ch of typeText) { await key(ch === ' ' ? 'Space' : ch); await sleep(30); }
 }
 if (keyName) { await key(keyName); }
+const eval1 = flag('eval1', null);
+if (eval1) { await send('Runtime.evaluate', { expression: eval1, returnByValue: true, awaitPromise: true }); }
+if (args.includes('--reload')) { await send('Page.reload', {}); await sleep(Number(flag('postwait', '1800'))); }
 if (evalExpr) {
   const r = await send('Runtime.evaluate', { expression: evalExpr, returnByValue: true, awaitPromise: true });
   logs.push('EVAL ' + JSON.stringify(r.result?.result?.value));

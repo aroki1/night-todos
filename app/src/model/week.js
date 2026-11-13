@@ -61,6 +61,16 @@ export function archivePast(store, nowMs) {
   return nowKey;
 }
 
+/* Monday ritual decision. Only the most recently finished week lifts, even if several were missed. */
+export function decideRitual(lastSeenWeek, nowMs, tasks = []) {
+  const nowKey = isoWeekKey(nowMs);
+  if (!lastSeenWeek || lastSeenWeek === nowKey) return { run: false, from: null, to: nowKey, liftKey: null, missed: 0 };
+  const liftKey = previousWeekKey(nowKey);
+  const missed = Math.max(0, weekDistance(lastSeenWeek, nowKey));
+  const hasShape = tasks.some(t => t.week === liftKey && t.doneAt);
+  return { run: true, from: lastSeenWeek, to: nowKey, liftKey, missed, hasShape };
+}
+
 /* the archived weeks that still have done stars, newest first, at most `max` */
 export function archivedWeeks(store, max = 26) {
   const out = [];

@@ -89,6 +89,7 @@ export function barTick() {
 
 /* ---------- commands ---------- */
 async function runCommand(cmd) {
+  document.documentElement.setAttribute('data-cmd', cmd);
   const [name, ...rest] = cmd.slice(1).trim().split(/\s+/);
   const arg = rest.join(' ');
   if (name === 'motion') {

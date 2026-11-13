@@ -51,6 +51,10 @@ function renderNow(force) {
   drawLabels(); drawPastHover(); drawBar();
   setFrozenForce(false);
   updateAria();
+  for (let i = 0; i < NS; i++) {
+    const s = stars[i];
+    if (s.miss && s.mT >= 0 && !missedAnnounced.has(i)) { missedAnnounced.add(i); announce(s.n + ' missed'); }
+  }
 }
 function updateAria() {
   let done = 0, total = 0;

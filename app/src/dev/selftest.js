@@ -1,7 +1,7 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
 import { parseDeadline } from '../model/parser.js';
 import { fmtLeft, isoWeekKey, isoWeekOf } from '../sky/clock.js';
-import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey } from '../model/week.js';
+import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize } from '../model/store.js';
 
 export function selfTest() {
@@ -59,6 +59,60 @@ export function selfTest() {
   ok(round && round.tasks[0].x === .2 && round.weeks['2026-W45'].seed === 1, 'store JSON round-trip');
   ok(sanitize({ tasks: 'nope' }) === null, 'corrupt store rejected');
   ok(sanitize({ version: 1, tasks: [{ title: 3 }] }) !== null, 'junk tasks are dropped, store survives');
+  ok(sanitize({ version: 2, tasks: [] }) === null, 'unknown version is corrupt');
+
+  /* golden fixtures: now = Fri 2026-11-13 21:00 local, week 2026-W46 */
+  const F = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
+  const fx = {
+    a: { deadline: F(2026, 11, 20, 23, 59) },
+    b: { doneAt: F(2026, 11, 12, 18), deadline: F(2026, 11, 20, 23, 59) },
+    c: { doneAt: F(2026, 11, 6, 12), deadline: F(2026, 11, 20, 23, 59) },
+    d: { deadline: F(2026, 11, 11, 23, 59) },
+    e: { deadline: F(2026, 11, 4, 23, 59) },
+    f: { doneAt: F(2026, 11, 9, 0, 0), deadline: F(2026, 11, 20) },
+    g: { doneAt: F(2026, 11, 8, 23, 59), deadline: F(2026, 11, 20) },
+    h: { createdAt: F(2026, 10, 28), deadline: F(2026, 11, 14, 12) },
+    i: { createdAt: F(2026, 11, 10), deadline: F(2026, 11, 13, 20, 59) }
+  };
+  const fixNow = F(2026, 11, 13, 21, 0);
+  const on = k => inCurrentWeek(Object.assign(mk({}), fx[k]), fixNow);
+  ok(on('a'), 'fixture a alive on sky');
+  ok(on('b'), 'fixture b done W46 on sky');
+  ok(!on('c') && taskWeekKey(Object.assign(mk({}), fx.c)) === '2026-W45', 'fixture c archived W45');
+  ok(on('d'), 'fixture d missed W46 on sky');
+  ok(!on('e') && taskWeekKey(Object.assign(mk({}), fx.e)) === '2026-W45', 'fixture e archived');
+  ok(on('f'), 'fixture f monday 00:00 inclusive');
+  ok(!on('g') && taskWeekKey(Object.assign(mk({}), fx.g)) === '2026-W45', 'fixture g sunday 23:59 W45');
+  ok(on('h'), 'fixture h alive always');
+  ok(on('i'), 'fixture i just missed, on sky');
+  ok(isoWeekKey(F(2026, 12, 31, 12)) === '2026-W53', '2026-12-31 W53');
+  ok(isoWeekKey(F(2027, 1, 1, 12)) === '2026-W53', '2027-01-01 W53');
+  ok(isoWeekKey(F(2027, 1, 3, 12)) === '2026-W53', '2027-01-03 W53');
+  ok(isoWeekKey(F(2027, 1, 4, 12)) === '2027-W01', '2027-01-04 W01');
+  ok(isoWeekKey(F(2025, 12, 29, 12)) === '2026-W01', '2025-12-29 W01');
+  ok(isoWeekKey(F(2026, 11, 15, 23)) === '2026-W46', '2026-11-15 W46');
+  ok(isoWeekKey(F(2026, 11, 16, 0)) === '2026-W47', '2026-11-16 W47');
+  const rd = decideRitual('2026-W45', fixNow);
+  ok(rd.run && rd.liftKey === '2026-W45' && rd.to === '2026-W46', 'ritual W45 -> W46');
+  ok(!decideRitual('2026-W46', fixNow).run, 'no ritual same week');
+  const rd2 = decideRitual('2026-W42', fixNow);
+  ok(rd2.run && rd2.liftKey === '2026-W45' && rd2.missed === 4, 'only most recent week lifts');
+  ok(!decideRitual(null, fixNow).run, 'first launch has no ritual');
+
+  /* archive is idempotent */
+  const st2 = { version: 1, tasks: [mk({ deadline: F(2026, 11, 2, 12) })], weeks: {}, lastSeenWeek: '2026-W45', prefs: { reducedMotion: 'system' } };
+  archivePast(st2, fixNow); const before = JSON.stringify(st2.tasks[0]);
+  archivePast(st2, fixNow); ok(JSON.stringify(st2.tasks[0]) === before, 'archive is idempotent');
+
+  /* past brightness formula */
+  const bright = age => Math.max(.05, .22 * Math.pow(.88, age));
+  ok(Math.abs(bright(1) - .1936) < 1e-9, 'past brightness age 1');
+  ok(Math.abs(bright(6) - .1022) < 1e-4, 'past brightness age 6');
+  ok(bright(20) === .05, 'past brightness floor');
+
+  /* store deep round-trip */
+  const deepEq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  ok(deepEq(sanitize(JSON.parse(JSON.stringify(good))), sanitize(good)), 'store deep round-trip');
 
   return { pass, fail, total: pass + fail, failed };
 }

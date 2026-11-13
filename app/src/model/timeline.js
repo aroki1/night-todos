@@ -6,7 +6,7 @@ import { GW, SH } from '../framebuffer.js';
 import {
   stars, NS, setNS, MAXS, DEMO_ON, mkStar, expAt, lifeAt, timeStr, nearestDone,
   addTask, removeTask, markDone, clearDone, announce, newId,
-  snapshotData, restoreData, replaceData, onRebuild
+  snapshotData, restoreData, replaceData, onRebuild, rebuildStars
 } from './store.js';
 import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
@@ -90,7 +90,7 @@ export function doFinish(si, at, hov) {
 }
 export function doUndo(at) {
   if (externalUndo && at - externalUndo.at <= 5) {
-    restoreData(externalUndo.snapshot); externalUndo = null; return true;
+    restoreData(externalUndo.snapshot); externalUndo = null; rebuildStars(); return true;
   }
   const u = undoTarget;
   if (!u || at - u.at > 5) return false;
@@ -122,7 +122,7 @@ export function applyImport(raw, atT) {
   const snapshot = snapshotData();
   const n = replaceData(raw);
   if (n === null) return null;
-  // rebuild is owned by the caller (main) to keep this module free of view assembly
+  rebuildStars();
   externalUndo = { at: atT, type: 'import', n, snapshot };
   return n;
 }
