@@ -5,6 +5,7 @@ import { FLAGS, URGENT, PACE, STEPS } from '../tokens.js';
 import { CLOCK0, wall, fmtDate, fmtDay, fmtLeft, isoWeekKey } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
 import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
+import { nextDue } from './morning.js';
 
 /* persistence is injected by main; the default is in-memory so tests/scenes never touch storage */
 let persistence = { load: async () => null, save: async () => { } };
@@ -15,7 +16,7 @@ export const DEMO_ON = (FLAGS.demo || STEPS_SCENE) && FLAGS.dev;   // demo tasks
 export const MAXS = 48;
 const HR = 36e5;
 
-export const store = { version: 1, tasks: [], weeks: {}, lastSeenWeek: null, prefs: { reducedMotion: 'system' } };
+export const store = { version: 1, tasks: [], weeks: {}, lastSeenWeek: null, morningDue: null, prefs: { reducedMotion: 'system' } };
 
 const DEF = [
   { n: 'hm one-pager',         gx: 268, gy: 40,  big: 1, life: .86, off: (7 * 24 + 2) * HR + 59 * 6e4 },
@@ -154,7 +155,7 @@ export function saveSoon() {
 export function flushSave() {
   if (!dirty) return;
   dirty = false;
-  persistence.save({ version: 1, tasks: store.tasks, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs });
+  persistence.save({ version: 1, tasks: store.tasks, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, morningDue: store.morningDue, prefs: store.prefs });
 }
 
 /* tasks saved before steps existed load with steps: []. Junk steps are dropped, never the task. */
@@ -168,6 +169,27 @@ export function sanitizeSteps(a) {
     while (seen.has(id)) id = newId();
     seen.add(id);
     out.push({ id, text: t.text.trim().slice(0, STEPS.maxText), doneAt: Number.isFinite(t.doneAt) ? t.doneAt : null });
+  }
+  return out;
+}
+/* week entries pass through as they are; only `name` and `summary` are checked, and a key that was absent is never added */
+function sanitizeWeeks(w) {
+  if (!w || typeof w !== 'object') return {};
+  const out = {};
+  for (const k of Object.keys(w)) {
+    const e = w[k];
+    if (!e || typeof e !== 'object') { out[k] = e; continue; }
+    const c = Object.assign({}, e);
+    if ('name' in c) {
+      const n = typeof c.name === 'string' ? c.name.trim().slice(0, 32) : '';
+      if (n) c.name = n; else delete c.name;
+    }
+    if ('summary' in c) {
+      const s = c.summary, okN = v => Number.isInteger(v) && v >= 0;
+      if (s && typeof s === 'object' && okN(s.done) && okN(s.missed) && okN(s.carried) && okN(s.steps)) c.summary = { done: s.done, missed: s.missed, carried: s.carried, steps: s.steps };
+      else delete c.summary;
+    }
+    out[k] = c;
   }
   return out;
 }
@@ -188,8 +210,9 @@ export function sanitize(raw) {
   }));
   return {
     version: 1, tasks,
-    weeks: raw.weeks && typeof raw.weeks === 'object' ? raw.weeks : {},
+    weeks: sanitizeWeeks(raw.weeks),
     lastSeenWeek: typeof raw.lastSeenWeek === 'string' ? raw.lastSeenWeek : null,
+    morningDue: typeof raw.morningDue === 'string' && /^\d{4}-W\d{2}$/.test(raw.morningDue) ? raw.morningDue : null,
     prefs: { reducedMotion: (raw.prefs && ['on', 'off', 'system'].includes(raw.prefs.reducedMotion)) ? raw.prefs.reducedMotion : 'system' }
   };
 }
@@ -205,6 +228,7 @@ export async function loadModel() {
     ensureWeeks(store, now, prevSeen || isoWeekKey(now));
     const nowKey = isoWeekKey(now);
     rolledFrom = prevSeen && prevSeen !== nowKey ? prevSeen : null;
+    store.morningDue = nextDue(prevSeen, now, store.morningDue);
     store.lastSeenWeek = nowKey;
     saveSoon();
   } else ensureWeeks(store, wall(0));
@@ -222,7 +246,9 @@ export function restoreData(snap) {
 export function replaceData(raw) {
   const data = sanitize(raw);
   if (!data) return null;
+  const due = store.morningDue;
   Object.assign(store, data);
+  store.morningDue = due;
   ensureWeeks(store, wall(0));
   store.lastSeenWeek = isoWeekKey(wall(0));
   saveSoon();

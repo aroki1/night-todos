@@ -35,6 +35,34 @@ export const PAL = [
   { top: '#07070a', bot: '#111119', hz: [125, 125, 150], cl: [[64, 70, 98], [50, 56, 82]],    tint: ['#f2f2ff', '#d8dcf0', '#fff0dd'] }
 ];
 
+/* the morning scene (docs/specs/SPEC-morning.md). Grain colours are hex() arrays (0..1, before the tone curve); text colours are strings.
+   Start values; M1b tunes them. sky = [top, mid, horizon]; grass = [far, near, tips, shadow]. */
+export const MORNING = {
+  seasons: {
+    autumn: { sky: [hex('#9fb7d6'), hex('#d9b48c'), hex('#eebd78')], grass: [hex('#7f8456'), hex('#46501e'), hex('#b39a3c'), hex('#1e240c')], stem: hex('#86ad3c'), foliage: [hex('#e2b53a'), hex('#c9822a'), hex('#b4501f'), hex('#8a7a22')], species: ['aster', 'chrysanthemum', 'daisy'], sunY: .40 },
+    summer: { sky: [hex('#7fb1e6'), hex('#cfe3f2'), hex('#fbe7b0')], grass: [hex('#6f9a5c'), hex('#2f6a26'), hex('#9bcb52'), hex('#14301a')], stem: hex('#5fb044'), foliage: [hex('#4f9a3a'), hex('#6fb347'), hex('#3a7a2e'), hex('#8cc95a')], species: ['poppy', 'cornflower', 'daisy'], sunY: .42 },
+    spring: { sky: [hex('#8fbfe8'), hex('#dbeaf0'), hex('#f8e4c0')], grass: [hex('#93b87a'), hex('#4f8f3a'), hex('#b5d873'), hex('#2c5222')], stem: hex('#58a040'), foliage: [hex('#6fb347'), hex('#8cc95a'), hex('#4f9a3a'), hex('#e8a0b0')], species: ['crocus', 'tulip', 'daisy'], sunY: .40 },
+    winter: { sky: [hex('#b8c6d8'), hex('#e3e2e6'), hex('#f2dcc4')], grass: [hex('#e8eef5'), hex('#b9c6d6'), hex('#7d8060'), hex('#8f9bb0')], stem: hex('#6e8a5a'), foliage: [hex('#8a9a6a'), hex('#a8a890'), hex('#6e8a5a'), hex('#b0a080')], species: ['snowdrop', 'hellebore'], sunY: .48 }
+  },
+  /* [petals, core] */
+  flowers: {
+    daisy: [hex('#f7f3ea'), hex('#f2c94c')], poppy: [hex('#d94a3a'), hex('#2b1d1a')], cornflower: [hex('#4a6fd8'), hex('#2e3f8f')],
+    aster: [hex('#9b7fd1'), hex('#f2c94c')], chrysanthemum: [hex('#e8963a'), hex('#a8541f')], snowdrop: [hex('#f4f6f8'), hex('#8fb87a')],
+    hellebore: [hex('#e9d8e4'), hex('#c9b45a')], crocus: [hex('#9d6fd6'), hex('#f0b43c')], tulip: [hex('#e2553f'), hex('#3a2a1a')]
+  },
+  sun: { core: hex('#fffbee'), limb: hex('#ffd890'), halo: hex('#ffe2a8'), r: .15, x: .5, nudge: .06, yPhone: .52 },
+  /* the valley: trunk, reeds and cattails, river glints, mist */
+  valley: { trunk: hex('#4a3626'), reed: hex('#7a8a3a'), cattail: hex('#6b4a2a'), glint: hex('#fff2c8'), mist: hex('#fff0d0') },
+  /* backlight: rim gold, long shadows, rolling ground */
+  light: { rim: hex('#ffd36e'), rimGrass: .62, rimBase: .1, rimSpread: .36, roll: .4, rollWarm: .16, shadowA: .55, shadowLen: .95, shadowDx: .32 },
+  horizon: .64, horizonPhone: .68,
+  skyMid: .45,                                   // where the mid sky colour sits, as a share of the horizon height
+  minGap: 12,                                     // grains between flower stems
+  gap: { night: [3 / 255, 4 / 255, 7 / 255], paper: hex('#d8ccb4'), mosaicK: .72 },
+  text: { ink: '#14120f', dim: '#2e2a22', x: .06, y: .10, yPhone: .08, lineGrains: 6 },
+  quote: { text: 'a placeholder line until the quotes arrive', by: '' }
+};
+
 /* layout, in grains and layout units (1 grain = 3 units = 3 CSS px at 1x) */
 export const LAYOUT = {
   pitch: 3,
@@ -59,6 +87,7 @@ export const TIME = {
   undoWindow: 5,
   crossfade: .9, crossfadeRitual: 1.5,
   ritual: { boost: 600, lift0: 600, lift1: 3000, sky0: 1800, sky1: 3300, barIn: 2600, barOut: 3800, end: 4200, reduced: 600 },
+  morning: { idleMs: 1500, shownMs: 2000, driftMs: 2000 },   // presence: no input for idleMs, or the page shown less than shownMs ago; clock resync when wall time drifts more than driftMs
   clockTick: .25, cloudChunk: .0625, auroraTick: .25,
   barOut: .08, previewDelay: [.15, .27]
 };
@@ -105,7 +134,12 @@ export const FLAGS = {
   star: Q.get('star'),
   script: Q.get('script'),
   devSeed: Q.get('seed2') ? +Q.get('seed2') : null,
-  steps: Q.get('steps')                       // dev: steps=1 puts steps on the demo tasks
+  steps: Q.get('steps'),                      // dev: steps=1 puts steps on the demo tasks
+  morning: Q.get('morning') === '1',          // dev: show the morning hold frame (M1)
+  season: Q.get('season'),                     // dev: winter | spring | summer | autumn
+  gap: Q.get('gap'),                           // dev: paper | mosaic
+  flowers: Q.has('flowers') ? +Q.get('flowers') : null,
+  buds: Q.has('buds') ? +Q.get('buds') : null
 };
 
 /* reduced motion: system default, overridable at runtime by /motion and prefs */

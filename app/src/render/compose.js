@@ -16,6 +16,7 @@ import { undoState, undoEdge } from '../choreo/undo.js';
 import { SPR } from '../sky/components.js';
 import { makeSky } from '../sky/sky.js';
 import { ritualActive, ritualTick, drawRitual } from './ritual.js';
+import { morningScene, drawMorning } from './morning.js';
 import { stepsUpdate } from '../model/steps.js';
 import * as pf from '../stageprof.js';
 import { stepsBack, stepsFront, stepsBullets, stepsPanel } from './steps.js';
@@ -270,6 +271,7 @@ import { igA, igK } from '../choreo/finish.js';
 import { undoShr } from '../choreo/undo.js';
 
 export function compose() {
+  if (morningScene()) { drawMorning(); return; }
   if (frozen || isCloudStale() || T < cloudTime()) clouds(); else cloudsTick();
   if (pf.on) pf.mark('clouds');
   composeBase(acts, actN, dims, dimN);

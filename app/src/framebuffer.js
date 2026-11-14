@@ -29,6 +29,15 @@ function alloc() {
 }
 alloc();
 
+/* the gap between dots: flat colour `gapRGB` (display values 0..1, no tone curve), or with gapM > 0 a mix toward the dot's own
+   tone-mapped colour x gapK ("mosaic"). Night = BGPIX, gapM 0: identical to the old fixed gap. */
+let gapRGB = [(BGPIX & 255) / 255, ((BGPIX >> 8) & 255) / 255, ((BGPIX >> 16) & 255) / 255], gapM = 0, gapK = 0, gapFill2d = false;
+let guBg = null, guGm = null, guGk = null;
+export function setGap(rgb, m = 0, k = 0) {
+  gapRGB = [rgb[0], rgb[1], rgb[2]]; gapM = m; gapK = k; gapFill2d = true;
+  if (gl && gprog) { gl.uniform3f(guBg, gapRGB[0], gapRGB[1], gapRGB[2]); gl.uniform1f(guGm, gapM); gl.uniform1f(guGk, gapK); }
+}
+
 export const LM = [1, 1, 1];                 // layer multipliers (time of day, moon)
 export const skyResets = [];
 export function onSkyReset(fn) { skyResets.push(fn); }
@@ -44,17 +53,19 @@ export function initCanvas(canvas) {
 /* GPU presenter: an offscreen WebGL canvas draws the grains (one texel per grain, expanded to P x P with a D x D dot in the shader) and blit() copies it into #c with drawImage;
    text and the bar are drawn on #c as before. Any failure leaves gl === null and blit() uses the 2D putImageData path. */
 const VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
-const FS = 'precision highp float;uniform sampler2D t;uniform vec4 s;uniform float h;uniform vec3 bg;' +   // s = (GW, SH, P, D), h = GL canvas height in device px
+const FS = 'precision highp float;uniform sampler2D t;uniform vec4 s;uniform float h;uniform vec3 bg;uniform float gm,gk;' +   // s = (GW, SH, P, D), h = GL canvas height in device px
   'void main(){float px=floor(gl_FragCoord.x),py=h-1.-floor(gl_FragCoord.y);' +
   'vec2 c=floor((vec2(px,py)+.5)/s.z),o=vec2(px,py)-c*s.z;' +
-  'if(o.x<s.w&&o.y<s.w&&c.y<s.y)gl_FragColor=vec4(texture2D(t,(c+.5)/s.xy).rgb,1.);else gl_FragColor=vec4(bg,1.);}';
+  'if(o.x<s.w&&o.y<s.w&&c.y<s.y)gl_FragColor=vec4(texture2D(t,(c+.5)/s.xy).rgb,1.);' +
+  'else if(gm>0.&&c.y<s.y)gl_FragColor=vec4(mix(bg,texture2D(t,(c+.5)/s.xy).rgb*gk,gm),1.);else gl_FragColor=vec4(bg,1.);}';
 /* WebGL2: BR/BG/BB go up as R32F textures and the shader does the TONE lookup (mirrors blit2d: v<=0 or NaN -> 0, v>=1 -> 255, else TONE[floor(v*4096)]) */
 const VS2 = '#version 300 es\nin vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
-const FS2 = '#version 300 es\nprecision highp float;precision highp sampler2D;uniform sampler2D tr,tg,tb,tl;uniform vec4 s;uniform float h;uniform vec3 bg;out vec4 o;' +
+const FS2 = '#version 300 es\nprecision highp float;precision highp sampler2D;uniform sampler2D tr,tg,tb,tl;uniform vec4 s;uniform float h;uniform vec3 bg;uniform float gm,gk;out vec4 o;' +
   'float tm(float v){return v>=1.?1.:v>0.?texelFetch(tl,ivec2(int(floor(v*4096.)),0),0).r:0.;}' +
   'void main(){float px=floor(gl_FragCoord.x),py=h-1.-floor(gl_FragCoord.y);' +
   'vec2 c=floor((vec2(px,py)+.5)/s.z),d=vec2(px,py)-c*s.z;' +
-  'if(d.x<s.w&&d.y<s.w&&c.y<s.y){ivec2 q=ivec2(c);o=vec4(tm(texelFetch(tr,q,0).r),tm(texelFetch(tg,q,0).r),tm(texelFetch(tb,q,0).r),1.);}else o=vec4(bg,1.);}';
+  'if(d.x<s.w&&d.y<s.w&&c.y<s.y){ivec2 q=ivec2(c);o=vec4(tm(texelFetch(tr,q,0).r),tm(texelFetch(tg,q,0).r),tm(texelFetch(tb,q,0).r),1.);}' +
+  'else if(gm>0.&&c.y<s.y){ivec2 q=ivec2(c);o=vec4(mix(bg,vec3(tm(texelFetch(tr,q,0).r),tm(texelFetch(tg,q,0).r),tm(texelFetch(tb,q,0).r))*gk,gm),1.);}else o=vec4(bg,1.);}';
 function initGL() {
   try {
     glc = document.createElement('canvas');
@@ -82,16 +93,17 @@ function initGL() {
       ['tr', 'tg', 'tb', 'tl'].forEach((n, i) => gl.uniform1i(gl.getUniformLocation(gprog, n), i));
     } else { gtex = mkTex(0); gl.uniform1i(gl.getUniformLocation(gprog, 't'), 0); }
     guSize = gl.getUniformLocation(gprog, 's'); guH = gl.getUniformLocation(gprog, 'h');
-    gl.uniform3f(gl.getUniformLocation(gprog, 'bg'), (BGPIX & 255) / 255, ((BGPIX >> 8) & 255) / 255, ((BGPIX >> 16) & 255) / 255);
+    guBg = gl.getUniformLocation(gprog, 'bg'); guGm = gl.getUniformLocation(gprog, 'gm'); guGk = gl.getUniformLocation(gprog, 'gk');
+    gl.uniform3f(guBg, gapRGB[0], gapRGB[1], gapRGB[2]); gl.uniform1f(guGm, gapM); gl.uniform1f(guGk, gapK);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     glc.addEventListener('webglcontextlost', e => { e.preventDefault(); dropGL(); });
   } catch (e) { dropGL(); }
 }
 function dropGL() {                                                    // no GL, or it was lost: the 2D path takes over for good
-  glc = gl = gprog = gtex = gtx3 = gu32 = gu8 = null; g2 = false;
+  glc = gl = gprog = gtex = gtx3 = gu32 = gu8 = null; guBg = guGm = guGk = null; g2 = false;
   if (cv && !img) allocImg();
 }
-function allocImg() { img = ctx.createImageData(GW * P, SH * P); u32 = new Uint32Array(img.data.buffer); u32.fill(BGPIX); }
+function allocImg() { img = ctx.createImageData(GW * P, SH * P); u32 = new Uint32Array(img.data.buffer); u32.fill(BGPIX); gapFill2d = true; }
 
 /* gw/sh are in grains; barRows in grains. ratio is devicePixelRatio. */
 export function configure(gw, sh, barRows, ratio) {
@@ -191,14 +203,28 @@ export const glActive = () => !!gl;
 /* grains to device pixels, drawn 1:1 (2D path) */
 function blit2d() {
   const W = GW * P, br = BR, bg = BG, bb = BB, px = u32, d = D, pp = P, lut = TONE;
+  if (gapFill2d && gapM === 0) {
+    const fr = Math.round(gapRGB[0] * 255), fg = Math.round(gapRGB[1] * 255), fb = Math.round(gapRGB[2] * 255);
+    px.fill((255 << 24) | (fb << 16) | (fg << 8) | fr); gapFill2d = false;
+  }
+  const mos = gapM > 0, im = 1 - gapM;
   for (let j = 0; j < SH; j++) {
     const row = j * pp * W;
     for (let i = 0; i < GW; i++) {
       const k = j * GW + i, r = br[k], g = bg[k], b = bb[k];
-      const p = (255 << 24) | ((b <= 0 ? 0 : b >= 1 ? 255 : lut[(b * 4096) | 0]) << 16) |
-        ((g <= 0 ? 0 : g >= 1 ? 255 : lut[(g * 4096) | 0]) << 8) | (r <= 0 ? 0 : r >= 1 ? 255 : lut[(r * 4096) | 0]);
+      const rb = r <= 0 ? 0 : r >= 1 ? 255 : lut[(r * 4096) | 0];
+      const gb = g <= 0 ? 0 : g >= 1 ? 255 : lut[(g * 4096) | 0];
+      const bb2 = b <= 0 ? 0 : b >= 1 ? 255 : lut[(b * 4096) | 0];
+      const p = (255 << 24) | (bb2 << 16) | (gb << 8) | rb;
       const o = row + i * pp;
-      for (let dy = 0; dy < d; dy++) { const oo = o + dy * W; for (let dx = 0; dx < d; dx++) px[oo + dx] = p; }
+      if (mos) {
+        const gr = Math.round(gapRGB[0] * 255 * im + rb * gapK * gapM), gg = Math.round(gapRGB[1] * 255 * im + gb * gapK * gapM), gbk = Math.round(gapRGB[2] * 255 * im + bb2 * gapK * gapM);
+        const gp = (255 << 24) | (gbk << 16) | (gg << 8) | gr;
+        for (let dy = 0; dy < pp; dy++) {
+          const oo = o + dy * W;
+          for (let dx = 0; dx < pp; dx++) px[oo + dx] = dx < d && dy < d ? p : gp;
+        }
+      } else for (let dy = 0; dy < d; dy++) { const oo = o + dy * W; for (let dx = 0; dx < d; dx++) px[oo + dx] = p; }
     }
   }
   if (pf.on) pf.mark('blit.paint');

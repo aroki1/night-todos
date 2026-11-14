@@ -105,6 +105,8 @@ const SCENES = {
   ambient: 'freeze=1&t=12',
   /* no demo, 2 tasks without steps (count 2 mod 3). hints: selected star shows the dim "+ step" row */
   hints: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.select('task 1 · essay')" },
+  morning: 'morning=1',
+  morningSummer: 'morning=1&season=summer',
   barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true)" }   // nothing selected: the bar placeholder is the step syntax
 };
 const PERF = { size: '1917x933', dpr: 2, frames: 300 };

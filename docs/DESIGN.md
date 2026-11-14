@@ -7,9 +7,9 @@ Written for a future contributor or AI. Change `app/src/tokens.js` first; this d
 1. **One system.** The whole scene is one grain framebuffer. Why: a single material is what makes the sky feel like one object. Never draw a smooth shape (arc, stroke, gradient) over it; the only things outside the framebuffer are text and the 1 px hover frame.
 2. **Calm by default, alive on close look.** Nothing blinks, jumps or moves fast unless the user just acted. Why: the sky must never ask for attention.
 3. **Smooth motion inside the grid.** Moving light is splatted across neighbouring grains by its fractional position; it glides, never snaps.
-4. **Light, not decoration.** Warm ivory is alive, amber is urgent, cold blue-white is done, ash is missed. No new colours. Why: brightness and hue carry meaning.
+4. **Light carries meaning.** At night four colours have fixed meanings: warm ivory is alive, amber is urgent, cold blue-white is done, ash is missed. They never mean anything else. Other colours are allowed where a scene needs them (the morning has its own palette); every colour lives in `tokens.js`.
 5. **The user caused it, the sky responds.** Only a user action earns motion bigger than ambient, and it has a beginning, middle and end that start where the eye already is.
-6. **Restraint.** No stats, no dates in a header, no app name. The only chrome is the bottom bar.
+6. **Restraint at night.** The night has no chrome but the bottom bar. Numbers appear only where the user looks back: the morning summary and the Atlas.
 7. **Determinism.** A seed and a time fully determine a frame. Why: tests, parity checks, and the week's sky being the same everywhere.
 8. **New things are rare and quiet.** At most one special (moon, comet, aurora, satellite, shower) is visible at once, usually none.
 9. **Past weeks are sky.** If a past constellation is noticed before the user's stars, it is too bright.
@@ -113,4 +113,4 @@ Full history in `docs/specs/archive/`; one-line decisions in `docs/dev/DECISIONS
 
 ## 10. Don'ts
 
-Smooth shapes over the sky; new colours; blinking; particles flying across the screen; more than one special event at once; header or stats chrome; labels on past weeks; reading the clock outside `sky/clock.js`.
+Smooth shapes over the sky; using the alive, urgent, done or missed colours for anything else; blinking; particles flying across the night sky (the morning may have slow life); more than one special event at once; header or stats chrome at night; labels on past weeks in the night sky; reading the clock outside `sky/clock.js`.

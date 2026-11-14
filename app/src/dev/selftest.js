@@ -1,8 +1,9 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
 import { parseDeadline, splitBar } from '../model/parser.js';
-import { fmtLeft, isoWeekKey, isoWeekOf } from '../sky/clock.js';
+import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
+import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList } from '../model/morning.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 
@@ -170,5 +171,63 @@ export function selfTest() {
   ok(clampScroll(-3, 40) === 0 && clampScroll(55, 40) === 40 && clampScroll(12, 40) === 12, 'steps: scroll clamps to the content');
   const lr = stepRows({ id: 'zz', n: 'zz', steps: Array.from({ length: 9 }, (_, k) => ({ id: 'w' + k, text: 'row ' + k, doneAt: null })) });
   ok(lr.length === 9 && !lr.some(r => r.k === 'more') && lr.filter(r => r.num > 0).length === 5, 'steps: every open row is listed, no +k more row, keys 1-5 only on the first five');
+
+  /* morning M0: local week boundary, due rule, presence rule, store fields, clock resync */
+  ok(isoWeekKey(at(2026, 11, 15, 23, 59)) === '2026-W46' && isoWeekKey(at(2026, 11, 16, 0, 0)) === '2026-W47', 'week: a new week starts at local Monday 00:00');
+  ok(isoWeekKey(at(2027, 1, 3, 23, 59)) === '2026-W53' && isoWeekKey(at(2027, 1, 4, 0, 0)) === '2027-W01', 'week: local year boundary W53 -> W01');
+  const t47 = at(2026, 11, 16, 9, 0);
+  ok(nextDue(null, t47, null) === null, 'due: first use has no morning');
+  ok(nextDue('2026-W46', t47, null) === '2026-W46', 'due: a new week makes the last week due');
+  ok(nextDue('2026-W47', t47, '2026-W46') === '2026-W46', 'due: survives a reload in the same week');
+  ok(nextDue('2026-W47', t47, null) === null, 'due: same week, nothing due');
+  ok(nextDue('2026-W43', t47, null) === '2026-W46', 'due: away for weeks, the most recent finished week is due');
+  ok(nextDue('2026-W45', t47, '2026-W44') === '2026-W46', 'due: a newer week replaces an unseen older one');
+  ok(nextDue('2026-W48', t47, null) === null, 'due: a clock that went back makes nothing due');
+  ok(nextDue('2026-W53', at(2027, 1, 4, 9, 0), null) === '2026-W53', 'due: year boundary');
+  const pr = { due: '2026-W46', visible: true, focused: true, busy: false, barText: false, sinceInput: 5000, sinceShown: 60000 };
+  ok(shouldStartMorning(pr), 'presence: idle and present starts the morning');
+  ok([{ due: null }, { visible: false }, { focused: false }, { busy: true }, { barText: true }].every(d => !shouldStartMorning(Object.assign({}, pr, d))), 'presence: not due, hidden, unfocused, busy or typing never starts');
+  ok(!shouldStartMorning(Object.assign({}, pr, { sinceInput: 500 })), 'presence: never interrupts an action in progress');
+  ok(shouldStartMorning(Object.assign({}, pr, { sinceInput: 500, sinceShown: 1000 })), 'presence: starts right after the page is shown');
+  ok(shouldStartMorning(Object.assign({}, pr, { sinceInput: 1500 })) && shouldStartMorning(Object.assign({}, pr, { sinceInput: 0, sinceShown: 2000 })), 'presence: boundaries are inclusive');
+  ok(sanitize({ version: 1, tasks: [], morningDue: '2026-W46' }).morningDue === '2026-W46' && [42, 'soon', '2026-46', undefined, null].every(v => sanitize({ version: 1, tasks: [], morningDue: v }).morningDue === null), 'store: morningDue keeps only a week key');
+  const wk = sanitize({ version: 1, tasks: [], weeks: {
+    '2026-W45': { seed: 5, archivedAt: 3, name: '  moving day  ', summary: { done: 7, missed: 2, carried: 3, steps: 12 } },
+    '2026-W44': { seed: 4, archivedAt: 2, name: 7, summary: { done: -1, missed: 0, carried: 0, steps: 0 } },
+    '2026-W43': { seed: 3, archivedAt: 1, name: 'x'.repeat(40), summary: { done: 1, missed: 0, carried: 0 } } } });
+  const w45 = wk.weeks['2026-W45'], w44 = wk.weeks['2026-W44'], w43 = wk.weeks['2026-W43'];
+  ok(w45.name === 'moving day' && deepEq(w45.summary, { done: 7, missed: 2, carried: 3, steps: 12 }) && w45.seed === 5 && !('name' in w44) && !('summary' in w44) && w44.seed === 4 && w43.name.length === 32 && !('summary' in w43), 'store: week name and summary are checked, bad ones dropped');
+  ok(deepEq(sanitize(JSON.parse(JSON.stringify(wk))), wk), 'store: week name and summary round-trip');
+  const cb0 = clockBase;
+  setClockBase(1e12 - T * 1000);
+  const rs1 = resyncClock(1e12 + 60000), w1 = wall(T), rs2 = resyncClock(1e12 + 61000);
+  setClockBase(cb0);
+  ok(rs1 && Math.abs(w1 - (1e12 + 60000)) < 1 && !rs2, 'clock: resync after a 60 s gap, not within 2 s');
+
+  /* morning M1: season, summary, lines, flower list */
+  ok(Array.from({ length: 12 }, (_, m) => seasonOf(new Date(2026, m, 15, 12).getTime())).join() === 'winter,winter,spring,spring,spring,summer,summer,summer,autumn,autumn,autumn,winter', 'morning: season by month');
+  const W = new Date(2026, 10, 2, 0, 0).getTime(), Dm = 864e5, nowM = W + 15 * Dm;            // Mon 2 Nov 2026 = start of 2026-W45; now = Tue 17 Nov (W47)
+  const mst = (k, d) => Array.from({ length: 10 }, (_, i) => ({ id: 's' + i, text: 's' + i, doneAt: i < d ? W + Dm : null }));
+  const mt = (id, o) => Object.assign({ id, title: id, createdAt: W - 8 * Dm, deadline: W + 5 * Dm, big: 0, x: .5, y: .4, doneAt: null, link: null, week: null, steps: [] }, o);
+  const MT = [
+    mt('a', { doneAt: W + 2 * Dm, week: '2026-W45', x: .5, y: .3, steps: mst(10, 2) }),
+    mt('b', { doneAt: W + 1 * Dm, week: '2026-W45', x: .501, y: .2 }),
+    mt('c', { doneAt: W + 3 * Dm, week: '2026-W45', x: .9, steps: mst(10, 9) }),
+    mt('m', { week: '2026-W45' }),
+    mt('o', { doneAt: W - 3 * Dm, week: '2026-W44' }),
+    mt('l', { x: .2, deadline: nowM + Dm }),
+    mt('f', { createdAt: W + 9 * Dm, deadline: nowM + Dm })
+  ];
+  ok(deepEq(weekSummary(MT, '2026-W45', nowM), { done: 3, missed: 1, carried: 1, steps: 11 }), 'morning: week summary');
+  const FL = flowerList(MT, '2026-W45', nowM, .05);
+  ok(FL.map(f => f.id).join() === 'b,a,c,l' && FL.map(f => f.bud).join() === 'false,false,false,true', 'morning: flowers by doneAt, then buds; missed and other weeks left out');
+  const fa = FL.find(f => f.id === 'a');
+  ok(FL.map(f => f.petals).join() === '0,4,8,0' && Math.abs(fa.depth - .7) < 1e-9 && FL[0].pick === FL[0].pick >>> 0, 'morning: petals from steps, depth from y, a stable pick');
+  ok(FL.every(f => f.x >= 0 && f.x <= 1) && FL.slice().sort((p, q) => p.x - q.x).every((f, i, s) => i === 0 || f.x - s[i - 1].x >= .05 - 1e-9), 'morning: stems pushed at least minGap apart');
+  ok(summaryLines({ done: 3, missed: 1, carried: 1, steps: 11 }, '2026-W45').join('|') === 'week 45|3 done · 1 missed · 1 carry over|11 steps', 'morning: summary line');
+  ok(summaryLines({ done: 0, missed: 0, carried: 0, steps: 0 }, '2026-W45').join('|') === 'week 45|a quiet week', 'morning: a quiet week');
+  ok(summaryLines({ done: 0, missed: 2, carried: 3, steps: 0 }, '2026-W45').join('|') === 'week 45|nothing finished · 2 missed · 3 carry over', 'morning: nothing finished');
+  ok(summaryLines({ done: 7, missed: 0, carried: 0, steps: 1 }, '2026-W45', 'moving day').join('|') === 'week 45 · moving day|7 done|1 step', 'morning: name and one step');
+  ok(summaryLines({ done: 7, missed: 0, carried: 0, steps: 4 }, '2026-W45', '', 3).join('|') === 'week 45|3 weeks away', 'morning: away');
   return { pass, fail, total: pass + fail, failed };
 }

@@ -1,6 +1,6 @@
 /* clock.js — sky time, wall clock, time-of-day mood, lunar phase, ISO weeks. */
 import { clamp01, sm } from '../math.js';
-import { C, FLAGS } from '../tokens.js';
+import { C, FLAGS, TIME } from '../tokens.js';
 import { GW, SH, LM, SR, SG, SB, SBR, SBG, SBB, AGR, AGG, AGB, PROF, onSkyReset } from '../framebuffer.js';
 
 export let T = 0;                                        // sky time, seconds
@@ -11,6 +11,16 @@ export let clockBase = CLOCK0;
 export const wall = t => clockBase + t * 1000;
 export function setClockBase(ms) { clockBase = ms; }
 export function setClockISO(iso) { clockBase = new Date(iso).getTime() - T * 1000; }
+
+/* real time catches up with sky time (a hidden tab stops RAF, so T and wall(T) stop too).
+   Never when the clock is pinned (?clock=) or frozen. Returns true when the clock moved. */
+export function resyncClock(nowMs = Date.now()) {
+  if (FLAGS.clock || FLAGS.freeze) return false;
+  if (Math.abs(wall(T) - nowMs) <= TIME.morning.driftMs) return false;
+  clockBase = nowMs - T * 1000;
+  resetClockCache();
+  return true;
+}
 
 export const WDN = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 export const WDFULL = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];

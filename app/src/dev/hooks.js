@@ -14,6 +14,7 @@ import { bar, submitBar, barParse, msAvg } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { skipRitual, ritualInfo } from '../render/ritual.js';
 import { ensureWeeks, previousWeekKey } from '../model/week.js';
+import { seasonOf } from '../model/morning.js';
 import { selfTest } from './selftest.js';
 import { skySwap, setFrozen, frozen } from '../render/compose.js';
 import { isReduced } from '../tokens.js';
@@ -263,6 +264,20 @@ export function installHooks(a) {
     ritual(opts = {}) { return api.beginRitual(opts); },
     ritualInfo() { return ritualInfo() || { active: false }; },
     skipRitual() { skipRitual(); },
+    /* dev (M1): synthetic tasks for the morning of the week before now; nothing is written to the store */
+    morning(o = {}) {
+      const now = wall(T), key = previousWeekKey(isoWeekKey(now)), ws = weekStartMs(key), r = rng(777);
+      const n = o.flowers === null || o.flowers === undefined ? 7 : o.flowers, b = o.buds === null || o.buds === undefined ? 3 : o.buds, D = 864e5;
+      const titles = ['essay', 'lab report', 'reading', 'problem set', 'call mom', 'gym', 'notes', 'quiz prep'];
+      const tasks = [];
+      for (let i = 0; i < n; i++) tasks.push({ id: 'm' + i, title: titles[i % 8], createdAt: ws - 2 * D, deadline: ws + 6 * D, big: i % 4 === 0 ? 1 : 0,
+        x: .1 + r() * .8, y: .12 + r() * .55, doneAt: ws + (i + .5) * (6.5 * D / Math.max(1, n)), link: null, week: key,
+        steps: i % 3 === 1 ? Array.from({ length: 6 }, (_, k) => ({ id: 's' + k, text: 'step ' + k, doneAt: k < 3 + (i % 4) ? ws + D : null })) : [] });
+      for (let i = 0; i < b; i++) tasks.push({ id: 'b' + i, title: 'carry ' + i, createdAt: ws, deadline: now + 3 * D, big: 0, x: .1 + r() * .8, y: .12 + r() * .55, doneAt: null, link: null, week: null, steps: [] });
+      for (let i = 0; i < 2; i++) tasks.push({ id: 'x' + i, title: 'missed ' + i, createdAt: ws, deadline: ws + D, big: 0, x: r(), y: r(), doneAt: null, link: null, week: key, steps: [] });
+      return api.showMorning({ tasks, weekKey: key, nowMs: now, season: o.season || seasonOf(now), gapMode: o.gap === 'paper' ? 'paper' : 'mosaic', seed: seedForWeek(key), name: '' });
+    },
+    noMorning() { return api.hideMorning(); },
     weekKey() { return isoWeekKey(wall(T)); }
   };
   const ns = window.ns;

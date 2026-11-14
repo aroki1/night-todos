@@ -3,7 +3,7 @@
    and falls back to the network on a miss; individual responses are never written into the cache, so old and new modules can never mix.
    Updates come from the browser re-checking sw.js: VERSION changes whenever any shell file changes, the new worker precaches a complete new set, and the next open uses it.
    The page is never reloaded. All paths relative (works under a subpath). */
-const VERSION = 'ns-412219a419';
+const VERSION = 'ns-ec6c818d7f';
 const SHELL = [
   './',
   './fonts/IBMPlexMono-Medium.woff2',
@@ -24,6 +24,7 @@ const SHELL = [
   './src/framebuffer.js',
   './src/main.js',
   './src/math.js',
+  './src/model/morning.js',
   './src/model/parser.js',
   './src/model/placement.js',
   './src/model/steps.js',
@@ -32,16 +33,21 @@ const SHELL = [
   './src/model/week.js',
   './src/platform.js',
   './src/render/compose.js',
+  './src/render/morning.js',
   './src/render/ritual.js',
   './src/render/steps.js',
   './src/render/text.js',
   './src/sky/clock.js',
   './src/sky/clouds.js',
   './src/sky/components.js',
+  './src/sky/day.js',
   './src/sky/events.js',
+  './src/sky/flora.js',
+  './src/sky/land.js',
   './src/sky/moon.js',
   './src/sky/past.js',
   './src/sky/sky.js',
+  './src/sky/valley.js',
   './src/stageprof.js',
   './src/tokens.js',
   './src/ui/bar.js',
