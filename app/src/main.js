@@ -210,7 +210,8 @@ function applyScenes() {
   if (FLAGS.dev && new URLSearchParams(location.search).get('ritual') === '1') {
     setT(FLAGS.t || 12);
     ns.ritual();
-    if (new URLSearchParams(location.search).has('at')) { tFreeze = (FLAGS.t || 12) + at / 1000; freeze = true; }
+    const rq = new URLSearchParams(location.search);          // frozen by default so a shot is a pure function of T; &live=1 runs it in real time
+    if (rq.get('live') !== '1') { tFreeze = (FLAGS.t || 12) + (at === null ? 1500 : at) / 1000; freeze = true; }
   }
   if (freeze) api.freeze(tFreeze);
   return false;
