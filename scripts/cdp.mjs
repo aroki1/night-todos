@@ -80,6 +80,7 @@ try {
   for (const j of jobs) {
     const sz = (j.size || size.join('x')).split('x').map(Number), d = Number(j.dpr ?? dpr);
     await send('Emulation.setDeviceMetricsOverride', { width: sz[0], height: sz[1], deviceScaleFactor: d, mobile: d > 1 && sz[0] < 768 });
+    if (j.offline !== undefined) await send('Network.emulateNetworkConditions', { offline: !!j.offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });   // job.offline: true/false
     await send('Page.navigate', { url: j.url });
     await sleep(Number(j.wait ?? wait));
     if (j.prefix) await key('n');

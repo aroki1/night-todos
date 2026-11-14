@@ -63,10 +63,12 @@ export function isCloudStale() { return cloudT < 0; }
 export function cloudTime() { return cloudT; }
 export function cloudReset() { cloudT = -9; cycRow = HH; }
 /* live loop: refresh ~15x/s of sky time, each refresh spread over 5 frames (6 at dpr>=2) */
+let paceFrames = 0;
+export function setCloudPace(n) { paceFrames = n; }       // idle loop renders ~4x less often: finish a refresh in fewer renders (0 = default)
 export function cloudsTick() {
   if (cycRow >= HH) { if (T - cloudT < .0625) return; cycT = T; cycRow = 0; }
   if (cycRow < HH) {
-    const frames = dpr >= 2 ? 6 : 5, chunk = Math.ceil(HH / frames);
+    const frames = paceFrames || (dpr >= 2 ? 6 : 5), chunk = Math.ceil(HH / frames);
     const j1 = Math.min(HH, cycRow + chunk);
     cloudRows(cycT, cycRow, j1); cycRow = j1;
     if (cycRow >= HH) cloudUpsample(cycT);

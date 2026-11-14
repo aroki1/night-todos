@@ -65,6 +65,9 @@ export const TIME = {
   barOut: .08, previewDelay: [.15, .27]
 };
 
+/* frame pacing (fps): active = something is moving or the user just touched it; idle = a calm sky drifting. Sky time T still advances every RAF. */
+export const FPS = { active: 60, idle: 15 };
+
 /* sizes and budgets */
 /* urgency: a star goes amber when its remaining life fraction is low OR the absolute time left is short.
    1 h: a 3-minute task has a tiny life fraction budget, so life alone stays calm until its last 45 s;

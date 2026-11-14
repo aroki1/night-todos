@@ -36,6 +36,7 @@ Everything lives in `app/src/tokens.js`. Colour groups: `TXT` (text), `C` (light
 | line / lineG / pulse | #c4d2ff / #6e8cff / #d0dcff | constellation lines, glow, travelling pulse |
 | dim | #575b66 | quiet text |
 | bg | #030407 | background and the gap between grains |
+| FPS | `{ active: 60, idle: 15 }` | frame pacing. Active (animating, hover or scroll easing, pointer or key in the last 300 ms): every display frame. Idle: at most 15 renders/s; sky time `T` still advances every frame |
 
 Sizes: star radius 3 (big 5), core 1 (big 2), max 48 stars on a sky, title ellipsis at 22 characters, past scale 0.32, bottom band without past anchors 15%, anchors at least 40 grains apart.
 

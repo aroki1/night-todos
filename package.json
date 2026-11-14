@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "node scripts/serve.mjs app 5173",
     "serve": "node scripts/serve.mjs app 5173",
+    "shell": "node scripts/gen-shell.mjs",
+    "check": "node scripts/gen-shell.mjs --check",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build"

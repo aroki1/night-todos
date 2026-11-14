@@ -13,6 +13,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Night Sky">
+<link rel="preload" href="./fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/IBMPlexMono-Medium.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 @font-face{font-family:"IBM Plex Mono";src:url("./fonts/IBMPlexMono-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
 @font-face{font-family:"IBM Plex Mono";src:url("./fonts/IBMPlexMono-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block}
@@ -34,6 +36,39 @@ body.parity canvas{margin:6px auto 0}
 <noscript>Night Sky needs JavaScript.</noscript>
 <script>window.addEventListener('error', e => { document.documentElement.setAttribute('data-err', (e.message || '') + ' @' + (e.filename || '') + ':' + (e.lineno || 0)); });
 window.addEventListener('unhandledrejection', e => { document.documentElement.setAttribute('data-err', 'reject ' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason)); });</script>
+<!-- gen:preload -->
+<link rel="modulepreload" href="./src/choreo/create.js">
+<link rel="modulepreload" href="./src/choreo/expire.js">
+<link rel="modulepreload" href="./src/choreo/finish.js">
+<link rel="modulepreload" href="./src/choreo/ritual.js">
+<link rel="modulepreload" href="./src/choreo/step.js">
+<link rel="modulepreload" href="./src/choreo/undo.js">
+<link rel="modulepreload" href="./src/framebuffer.js">
+<link rel="modulepreload" href="./src/main.js">
+<link rel="modulepreload" href="./src/math.js">
+<link rel="modulepreload" href="./src/model/parser.js">
+<link rel="modulepreload" href="./src/model/placement.js">
+<link rel="modulepreload" href="./src/model/steps.js">
+<link rel="modulepreload" href="./src/model/store.js">
+<link rel="modulepreload" href="./src/model/timeline.js">
+<link rel="modulepreload" href="./src/model/week.js">
+<link rel="modulepreload" href="./src/platform.js">
+<link rel="modulepreload" href="./src/render/compose.js">
+<link rel="modulepreload" href="./src/render/ritual.js">
+<link rel="modulepreload" href="./src/render/steps.js">
+<link rel="modulepreload" href="./src/render/text.js">
+<link rel="modulepreload" href="./src/sky/clock.js">
+<link rel="modulepreload" href="./src/sky/clouds.js">
+<link rel="modulepreload" href="./src/sky/components.js">
+<link rel="modulepreload" href="./src/sky/events.js">
+<link rel="modulepreload" href="./src/sky/moon.js">
+<link rel="modulepreload" href="./src/sky/past.js">
+<link rel="modulepreload" href="./src/sky/sky.js">
+<link rel="modulepreload" href="./src/tokens.js">
+<link rel="modulepreload" href="./src/ui/bar.js">
+<link rel="modulepreload" href="./src/ui/keys.js">
+<link rel="modulepreload" href="./src/ui/pointer.js">
+<!-- /gen:preload -->
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

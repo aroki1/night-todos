@@ -27,7 +27,9 @@ export function setSelIdx(v) { selIdx = v; }
 export function setForceFocus(v) { forceFocus = v; }
 export function setTapSelected(v) { tapSelected = !!v; }
 export function computeFocus() { focus = forceFocus !== null ? forceFocus : mouseHover >= 0 ? mouseHover : selIdx; return focus; }
+/* returns true while any hover / frame / list-scroll value is still easing towards its target */
 export function updateHover(dt) {
+  let moving = false;
   for (let i = 0; i < stars.length; i++) {
     const tgt = focus === i ? 1 : 0, rate = tgt > hp[i] ? dt / .15 : dt / .2;
     hp[i] = tgt > hp[i] ? Math.min(tgt, hp[i] + rate) : Math.max(tgt, hp[i] - rate);
@@ -38,7 +40,9 @@ export function updateHover(dt) {
     lk[i] = lt > lk[i] ? Math.min(1, lk[i] + dt / .15) : Math.max(0, lk[i] - dt / .15);
     const d = sui.st[i] - sui.sy[i];                                              // smooth scroll of the list: eases towards its target
     if (d !== 0) sui.sy[i] = Math.abs(d) < .02 ? sui.st[i] : sui.sy[i] + d * (1 - Math.exp(-dt * STEPS.scrollEase));
+    if (hp[i] !== tgt || frK[i] !== ft || lk[i] !== lt || sui.sy[i] !== sui.st[i]) moving = true;
   }
+  return moving;
 }
 
 const SIZE_INDENT = STEPS.indent;

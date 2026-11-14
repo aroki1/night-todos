@@ -1,11 +1,11 @@
 /* main.js — boot, geometry, the loop, resize and visibility. */
-import { FLAGS, isReduced, setReducedPref, LAYOUT, SIZE } from './tokens.js';
+import { FLAGS, FPS, isReduced, setReducedPref, LAYOUT, SIZE } from './tokens.js';
 import { initCanvas, configure, cv, GW, SH, ROWS, dpr, blit } from './framebuffer.js';
 import { setT, T, wall, clockTick, isoWeekKey, seedForWeek, weekLabel } from './sky/clock.js';
 import { previousWeekKey, decideRitual, archivePast } from './model/week.js';
 import { startRitual, drawRitualText, ritualActive } from './render/ritual.js';
 import { makeSky } from './sky/sky.js';
-import { cloudsForce, cloudReset } from './sky/clouds.js';
+import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
 import { store, loadModel, flushSave, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, rolledFrom, setPersistence } from './model/store.js';
 import { doFinish, doUndo } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
@@ -16,12 +16,12 @@ import { bindPointer, toUnits, hitStar } from './ui/pointer.js';
 import { prepare, compose, setFrozen, setFrozenForce, isAnimating, skySwap } from './render/compose.js';
 import { computeFocus, updateHover, clearWidthCache, setForceFocus, setMouseHover, setSelIdx } from './model/placement.js';
 import { updatePastHover, rebuildPast, resetPastHover, setPointerGrain } from './sky/past.js';
-import { installHooks } from './dev/hooks.js';
 import { notifyUrgent, notifyMissed, isTauri, loadStore, saveStore } from './platform.js';
 import { moonSt } from './sky/moon.js';
 
-let raf = 0, lastTs = 0, tick = 0, running = false, booted = false, sceneFrozen = false;
+let raf = 0, lastTs = 0, lastRenderTs = -1e9, lastInput = -1e9, textReady = true, running = false, booted = false, sceneFrozen = false;
 const missedAnnounced = new Set();
+const INPUT_ACTIVE_MS = 300;   // after a pointer move or key press the loop renders at the active rate for this long
 
 function computeGeometry() {
   const vw = window.innerWidth, vh = window.innerHeight, ratio = window.devicePixelRatio || 1;
@@ -48,11 +48,12 @@ function applyGeometry() {
 }
 
 function renderNow(force) {
+  if (FLAGS.dev) window.__nsRenders = (window.__nsRenders || 0) + 1;     // dev only: render counter for perf checks
   setFrozenForce(!!force);
   barTick();
   setGhostInfo({ title: bar.title, gCommit: bar.gCommit });
   prepare(); compose(); blit();
-  drawLabels(); drawPastHover(); drawRitualText(); drawBar();
+  if (textReady) { drawLabels(); drawPastHover(); drawRitualText(); drawBar(); }   // no canvas text until the fonts are in
   setFrozenForce(false);
   updateAria();
   for (let i = 0; i < NS; i++) {
@@ -85,16 +86,21 @@ function loop(ts) {
   raf = requestAnimationFrame(loop);
   if (!lastTs) lastTs = ts;
   const dt = Math.min(.05, (ts - lastTs) / 1000); lastTs = ts;
-  setT(T + dt); tick++;
-  computeFocus(); updateHover(dt); updatePastHover(dt);
-  if (!isAnimating() && !barAnimating() && (tick & 1)) return;
+  setT(T + dt);
+  computeFocus();
+  const hm = updateHover(dt), pm = updatePastHover(dt);
+  const active = isAnimating() || barAnimating() || hm || pm || ts - lastInput < INPUT_ACTIVE_MS;
+  /* active: every RAF (the display rate). idle: at most FPS.idle renders/s; 3 ms of slack so a 60 Hz display gets 4 frames, not 5 */
+  if (!active && ts - lastRenderTs < 1000 / FPS.idle - 3) return;
+  lastRenderTs = ts;
+  setCloudPace(active ? 0 : 2);
   renderNow(false);
   desktopNotify();
 }
 
 function startLoop() {
   if (running) return;
-  running = true; lastTs = 0;
+  running = true; lastTs = 0; lastRenderTs = -1e9;
   raf = requestAnimationFrame(loop);
 }
 function stopLoop() { running = false; cancelAnimationFrame(raf); }
@@ -235,15 +241,18 @@ async function boot() {
   clockTick(true);
   cloudsForce();
   initBar(document.getElementById('bar-input'));
-  setWake(() => { booted = true; });
+  setWake(() => { booted = true; lastInput = lastTs; });
   bindKeys(); bindPointer();
+  for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel', 'input']) window.addEventListener(ev, e => { lastInput = e.timeStamp; }, { capture: true, passive: true });
   setAnnouncer(announce);
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('tabindex', '0');
-  await fontsReady;
-  clearWidthCache();
+  /* production: draw the sky at once and add canvas text when the fonts arrive. deterministic paths (freeze, scenes, parity, bench, script, dev) await the fonts first, as before */
+  const fast = !FLAGS.dev && !FLAGS.freeze && !FLAGS.scene && !FLAGS.parity && !FLAGS.bench && !FLAGS.script;
+  if (fast) textReady = false;
+  else { await fontsReady; clearWidthCache(); }
 
-  if (FLAGS.dev) installHooks(api);
+  if (FLAGS.dev) (await import('./dev/hooks.js')).installHooks(api);
   if (FLAGS.dev && applyScenes()) { document.documentElement.setAttribute('data-ready', '1'); return; }
 
   if (doRitual) { rebuildPast(); startRitual({ key: dec.liftKey, week: weekLabel(dec.to), newSeed: seed }, skySwap); }
@@ -267,6 +276,7 @@ async function boot() {
 
   if (!FLAGS.freeze && !sceneFrozen) { renderNow(true); startLoop(); }
   else renderNow(true);
+  if (fast) { const go = () => { clearWidthCache(); textReady = true; renderNow(true); }; fontsReady.then(go, go); }
   document.documentElement.setAttribute('data-ready', '1');
 }
 
@@ -279,4 +289,8 @@ boot();
 if ('serviceWorker' in navigator && !isTauri && /^https?:$/.test(location.protocol)) {
   const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   if (!local || /[?&]sw=1/.test(location.search)) navigator.serviceWorker.register('./sw.js').catch(() => { });
+  else {                                                   // dev host: drop any service worker and cache an earlier ?sw=1 run left behind (not awaited)
+    navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister()))).catch(() => { });
+    if (window.caches) caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('ns-')).map(k => caches.delete(k)))).catch(() => { });
+  }
 }

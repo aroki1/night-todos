@@ -105,6 +105,7 @@ export function updatePastHover(dt) {
     if (hoverAlpha > 0) { hoverAlpha = Math.max(0, hoverAlpha - dt / .15); if (hoverInfo) hoverInfo.a = hoverAlpha; }
     if (hoverAlpha <= 0) { hoverKey = null; hoverInfo = null; }
   }
+  return found ? hoverAlpha < 1 : hoverAlpha > 0;                       // true while the fade is still moving
 }
 export let hoverInfo = null;
 export function pastHoverInfo() { return hoverInfo; }
