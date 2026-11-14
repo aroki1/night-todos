@@ -1,23 +1,22 @@
 /* main.js — boot, geometry, the loop, resize and visibility. */
-import { FLAGS, FPS, isReduced, setReducedPref, LAYOUT, SIZE } from './tokens.js';
+import { FLAGS, FPS, TIME, isReduced, setReducedPref, LAYOUT, SIZE } from './tokens.js';
 import { initCanvas, configure, cv, GW, SH, ROWS, dpr, blit } from './framebuffer.js';
 import { setT, T, wall, clockTick, isoWeekKey, seedForWeek, weekLabel, resyncClock } from './sky/clock.js';
-import { previousWeekKey, archivePast } from './model/week.js';
-import { startRitual, drawRitualText, ritualActive } from './render/ritual.js';
-import { setMorningScene, clearMorningScene, drawMorningText } from './render/morning.js';
+import { archivePast } from './model/week.js';
+import { setMorningScene, clearMorningScene, morningScene, morningNow, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
-import { store, loadModel, flushSave, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
-import { shouldStartMorning, nextDue } from './model/morning.js';
-import { doFinish, doUndo } from './model/timeline.js';
+import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
+import { shouldStartMorning, nextDue, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
+import { doFinish, doUndo, pushMorning, clearMorning } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
 import { drawLabels, drawPastHover } from './render/text.js';
 import { setGhostInfo } from './model/placement.js';
 import { bindKeys, finishFocused } from './ui/keys.js';
 import { bindPointer, toUnits, hitStar } from './ui/pointer.js';
 import { prepare, compose, setFrozen, setFrozenForce, isAnimating, skySwap } from './render/compose.js';
-import { computeFocus, updateHover, clearWidthCache, setForceFocus, setMouseHover, setSelIdx } from './model/placement.js';
-import { updatePastHover, rebuildPast, resetPastHover, setPointerGrain } from './sky/past.js';
+import { computeFocus, updateHover, clearWidthCache, setForceFocus, setMouseHover, setSelIdx, lab } from './model/placement.js';
+import { updatePastHover, rebuildPast, resetPastHover, setPointerGrain, setPastSkip } from './sky/past.js';
 import { notifyUrgent, notifyMissed, isTauri, loadStore, saveStore } from './platform.js';
 import { moonSt } from './sky/moon.js';
 import * as pf from './stageprof.js';
@@ -57,9 +56,11 @@ function renderNow(force) {
   if (pf.on) pf.mark('pre');
   prepare(); compose(); blit();
   if (textReady) {                                                                   // no canvas text until the fonts are in
-    drawLabels(); if (pf.on) pf.mark('text.labels');
-    drawPastHover(); if (pf.on) pf.mark('text.pastHover');
-    drawRitualText(); if (pf.on) pf.mark('text.ritual');
+    if (morningScene()) { drawLabelsFaded(morningLabelK()); if (pf.on) { pf.mark('text.labels'); pf.mark('text.pastHover'); } }
+    else {
+      drawLabels(); if (pf.on) pf.mark('text.labels');
+      drawPastHover(); if (pf.on) pf.mark('text.pastHover');
+    }
     drawMorningText(); if (pf.on) pf.mark('text.morning');
     drawBar(); if (pf.on) pf.mark('text.bar');
   }
@@ -70,6 +71,14 @@ function renderNow(force) {
     if (s.miss && s.mT >= 0 && !missedAnnounced.has(i)) { missedAnnounced.add(i); announce(s.n + ' missed'); }
   }
   if (pf.on) { pf.mark('post'); pf.end(); }
+}
+/* the labels while the morning plays: the night's own labels, faded by k (the night closes on them, the sunset gives them back) */
+function drawLabelsFaded(k) {
+  if (k <= .01) return;
+  const keep = [];
+  for (let i = 0; i < NS; i++) { const L = lab[i]; if (!L.shown) continue; keep.push(L.a1, L.a2, L.a3, L.hintK, L.listK); L.a1 *= k; L.a2 *= k; L.a3 *= k; L.hintK *= k; L.listK *= k; }
+  drawLabels();
+  for (let i = 0, q = 0; i < NS; i++) { const L = lab[i]; if (!L.shown) continue; L.a1 = keep[q]; L.a2 = keep[q + 1]; L.a3 = keep[q + 2]; L.hintK = keep[q + 3]; L.listK = keep[q + 4]; q += 5; }
 }
 function updateAria() {
   let done = 0, total = 0;
@@ -140,17 +149,14 @@ const api = {
     if (doRender) renderNow(true);
   },
   stop() { stopLoop(); },
-  beginRitual(opts = {}) {
-    const nowKey = isoWeekKey(wall(T)), liftKey = opts.key || previousWeekKey(nowKey);
-    makeSky(seedForWeek(liftKey)); cloudsForce();
-    rebuildPast();
-    startRitual({ key: liftKey, week: weekLabel(nowKey), newSeed: seedForWeek(nowKey) }, skySwap);
-    return true;
-  },
   frame() { setCloudPace(0); renderNow(false); },                       // dev: one active-rate frame (what the loop does when not idle), for ns.profRun
   prepareCompose() { prepare(); compose(); },
-  showMorning(cfg) { setMorningScene(cfg); renderNow(true); return true; },   // dev (M1): a static morning hold frame
-  hideMorning() { clearMorningScene(); renderNow(true); return true; },
+  showMorning(cfg, o = {}) {
+    beginMorning(cfg);
+    if (o.leaveMs !== null && o.leaveMs !== undefined) leaveMorning(cfg.t0 + o.leaveMs / 1000, '');
+    renderNow(true); return true;
+  },
+  hideMorning() { clearMorningScene(); clearMorning(); setPastSkip(null); renderNow(true); return true; },
   clickSky() { skySwap(11, T); renderNow(false); },
   clickUndo() {
     const u = undoHit;
@@ -212,38 +218,69 @@ function applyScenes() {
     ns.injectWeeks(+new URLSearchParams(location.search).get('weeks') || 6);
     freeze = true;
   }
-  if (FLAGS.dev && new URLSearchParams(location.search).get('ritual') === '1') {
-    setT(FLAGS.t || 12);
-    ns.ritual();
-    const rq = new URLSearchParams(location.search);          // frozen by default so a shot is a pure function of T; &live=1 runs it in real time
-    if (rq.get('live') !== '1') { tFreeze = (FLAGS.t || 12) + (at === null ? 1500 : at) / 1000; freeze = true; }
-  }
-  if (FLAGS.morning) {                                            // dev: ?morning=1 [&season=&gap=paper|mosaic&flowers=&buds=], frozen unless &live=1
-    ns.morning({ season: FLAGS.season, gap: FLAGS.gap, flowers: FLAGS.flowers, buds: FLAGS.buds });
-    freeze = new URLSearchParams(location.search).get('live') !== '1';
+  if (FLAGS.morning) {      // dev: ?morning=1 [&at=<ms>&leave=<ms>&season=&gap=paper|mosaic&flowers=&buds=], frozen unless &live=1
+    const q = new URLSearchParams(location.search);
+    ns.morning({ season: FLAGS.season, gap: FLAGS.gap, flowers: FLAGS.flowers, buds: FLAGS.buds, at: FLAGS.at, leave: q.has('leave') ? +q.get('leave') : null });
+    freeze = q.get('live') !== '1';
   }
   if (freeze) api.freeze(tFreeze);
   return false;
 }
 
 /* a rollover while the app is open (Sunday -> Monday) runs the same path live */
-let liveWeek = null, shownAt = 0, morningOn = false;
+let liveWeek = null, shownAt = 0;
 function checkRollover() {
   const now = wall(T), key = isoWeekKey(now);
   if (liveWeek === null) { liveWeek = key; return; }
-  if (key === liveWeek || DEMO_ON || ritualActive()) return;
+  if (key === liveWeek || DEMO_ON || morningScene()) return;
   const from = liveWeek; liveWeek = key;
   archivePast(store, now); store.morningDue = nextDue(from, now, store.morningDue); store.lastSeenWeek = key; flushSave();
   rebuildStars(now); rebuildPast();
 }
 
-/* the weekly morning (for now the old ritual) starts only when the user is present; morningDue is cleared when it has played or been skipped */
+/* the weekly morning. beginMorning starts any morning (real or dev); the controls are timeline events, so the state stays a pure function of T */
+function beginMorning(cfg) {
+  clearMorning();
+  setSelIdx(-1); setMouseHover(-1);
+  setMorningScene(cfg);
+  setPastSkip(cfg.weekKey);
+}
+/* the real morning of week `key` (from the store): its summary is written once, now */
+function startRealMorning(key) {
+  const now = wall(T), nowKey = isoWeekKey(now);
+  const w = store.weeks[key] || { seed: seedForWeek(key), archivedAt: now };
+  store.weeks[key] = withSummary(w, weekSummary(store.tasks, key, now)); saveSoon();
+  makeSky(seedForWeek(key)); cloudsForce(); rebuildPast();
+  beginMorning({ tasks: store.tasks, weekKey: key, nowMs: now, season: seasonOf(now), gapMode: 'mosaic', seed: seedForWeek(key),
+    name: store.weeks[key].name || '', t0: T, reduced: isReduced(), newSeed: seedForWeek(nowKey), newWeek: weekLabel(nowKey), write: true });
+}
+/* the sunset starts at sky time `at`. A real morning saves the name and clears morningDue here (by any path) */
+function leaveMorning(at, name) {
+  const c = morningCfg(); if (!c) return false;
+  const nm = cleanName(name);
+  if (nm) setMorningName(nm);
+  if (c.write) {
+    if (nm) store.weeks[c.weekKey] = withName(store.weeks[c.weekKey], nm);
+    store.morningDue = null; flushSave();
+  }
+  pushMorning('leave', at, !!nm);
+  skySwap(c.newSeed, at, TIME.crossfadeMorning);
+  setPastSkip(null);
+  return true;
+}
+Object.assign(morningCtl, {
+  advance() { const p = (morningNow() || {}).phase; if (p === 'night' || p === 'rise') pushMorning('advance', T); },
+  leave(name) { const p = (morningNow() || {}).phase; return p === 'night' || p === 'rise' || p === 'hold' ? leaveMorning(T, name) : false; },
+  cut() { if ((morningNow() || {}).phase === 'set') pushMorning('cut', T); }
+});
+
+/* the weekly morning starts only when the user is present; morningDue is cleared when the sunset starts */
 function morningTick(ts) {
-  if (morningOn) {
-    if (!ritualActive()) { morningOn = false; store.morningDue = null; flushSave(); }
+  if (morningScene()) {
+    if (morningNow().phase === 'end') { clearMorningScene(); clearMorning(); setPastSkip(null); }
     return;
   }
-  if (!store.morningDue || DEMO_ON || FLAGS.freeze || FLAGS.scene) return;
+  if (!store.morningDue || DEMO_ON || FLAGS.freeze || FLAGS.scene || FLAGS.morning) return;
   const go = shouldStartMorning({
     due: store.morningDue,
     visible: document.visibilityState === 'visible',
@@ -253,7 +290,7 @@ function morningTick(ts) {
     sinceInput: ts - lastInput,
     sinceShown: ts - shownAt
   });
-  if (go) { api.beginRitual({ key: store.morningDue }); morningOn = true; }
+  if (go) startRealMorning(store.morningDue);
 }
 
 async function boot() {
@@ -267,7 +304,7 @@ async function boot() {
   if (!FLAGS.freeze && !FLAGS.scene && !DEMO_ON) setPersistence({ load: loadStore, save: saveStore });
   else setPersistence(null);
   await loadModel();
-  setReducedPref(store.prefs.reducedMotion || 'system');
+  setReducedPref(FLAGS.reduced ? 'on' : (store.prefs.reducedMotion || 'system'));
   clearWidthCache();
   const wk = isoWeekKey(wall(0));
   const seed = FLAGS.seed !== null ? FLAGS.seed : (DEMO_ON ? 7 : seedForWeek(store.lastSeenWeek || wk));

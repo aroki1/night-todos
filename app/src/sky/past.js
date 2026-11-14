@@ -55,9 +55,12 @@ export function rebuildPast() {
 }
 geometryListeners.push(rebuildPast);
 
-export function drawPast() {
+/* k: the morning's fade of every constellation; boostKey: the one week brightened by `boost` (the week just left). The plain night draws with the defaults */
+export function drawPast(k = 1, boostKey = null, boost = 1) {
+  if (k <= 0) return;
   for (const p of past) {
     if (p.hidden) continue;
+    const kk = boostKey !== null && p.key === boostKey ? k * boost : k, la = p.la * kk, pa = p.a * kk;
     const W = GW + 24;
     let ox = p.ax - T * .73;
     ox = ((ox % W) + W) % W - 12;
@@ -70,10 +73,10 @@ export function drawPast() {
         const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy), n = Math.max(1, Math.ceil(len / .5));
         for (let i = 0; i <= n; i++) {
           const t = i / n;
-          splat(bx + a.x + dx * t, p.ay + a.y + dy * t, C.line, p.la);
+          splat(bx + a.x + dx * t, p.ay + a.y + dy * t, C.line, la);
         }
       }
-      for (const s of p.shape.rel) splat(bx + s.x, p.ay + s.y, C.done, p.a);
+      for (const s of p.shape.rel) splat(bx + s.x, p.ay + s.y, C.done, pa);
     }
   }
 }
@@ -110,7 +113,7 @@ export function updatePastHover(dt) {
 export let hoverInfo = null;
 export function pastHoverInfo() { return hoverInfo; }
 
-/* used by the Monday ritual: one week's shape lifted to its far-field anchor */
+/* one week's shape at its far-field anchor (the morning looks up the week it just left) */
 export function pastFor(key) { return past.find(p => p.key === key) || null; }
 export function pastDrift(p) { const W = GW + 24; return ((p.ax - T * .73) % W + W) % W - 12; }
 export function resetPastHover() { hoverKey = null; hoverInfo = null; hoverAlpha = 0; }

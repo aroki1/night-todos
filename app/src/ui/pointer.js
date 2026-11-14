@@ -8,7 +8,7 @@ import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } fro
 import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo } from './bar.js';
 import { skySwap } from '../render/compose.js';
 import { setPointerGrain, clearPointerGrain } from '../sky/past.js';
-import { skipRitual } from '../render/ritual.js';
+import { morningPhase, morningCtl } from '../render/morning.js';
 import { wake } from './bar.js';
 import { stepsLive, toggleDoneRows, sui, isDrag, clampScroll } from '../model/steps.js';
 
@@ -95,6 +95,12 @@ function finishOrSelect(i) {
 export function bindPointer() {
   cv.addEventListener('mousemove', e => {
     const [px, py] = toUnits(e);
+    const mp = morningPhase();
+    if (mp && mp !== 'end') {                             // the morning: no star hover; the bar still reads as text
+      setMouseHover(-1); sui.rowHover = -1;
+      cv.style.cursor = py >= BARY ? 'text' : 'default';
+      return;
+    }
     if (skyBtn) skyBtn.hover = inBtn(px, py);
     setMouseHover(hitStar(px, py, false));
     const hr = hitRow(px, py); sui.rowHover = hr ? hr.r : -1; sui.rowStar = hr ? hr.si : -1;
@@ -106,7 +112,12 @@ export function bindPointer() {
   cv.addEventListener('click', e => {
     if (e.pointerType === 'touch') return;             // handled by pointerdown
     const [px, py] = toUnits(e);
-    skipRitual();
+    const mp = morningPhase();
+    if (mp && mp !== 'end') {                             // the morning: the bar still opens; a click on the sky only hurries the sunrise
+      if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
+      if (mp === 'night' || mp === 'rise') morningCtl.advance();
+      wake(); return;
+    }
     if (inBtn(px, py)) { skySwap(11, T); wake(); return; }
     if (inUndo(px, py)) { tryUndo(doUndo); return; }
     if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
@@ -126,6 +137,8 @@ export function bindPointer() {
   cv.addEventListener('pointercancel', lpClear);
   cv.addEventListener('pointermove', e => { if (e.pointerType === 'touch') lpMove(e); });
   cv.addEventListener('wheel', e => {                                    // desktop: the wheel scrolls the panel under the pointer
+    const mp = morningPhase();
+    if (mp && mp !== 'end') return;
     const [px, py] = toUnits(e), si = hitPanel(px, py); if (si < 0) return;
     e.preventDefault();
     const L = lab[si], d = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 300 : 1) * unitsPerCss() / 3;
@@ -134,7 +147,12 @@ export function bindPointer() {
   cv.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'touch') return;
     const [px, py] = toUnits(e);
-    skipRitual();
+    const mp = morningPhase();
+    if (mp && mp !== 'end') {                             // the morning: the bar still opens; a tap on the sky only hurries the sunrise
+      if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
+      if (mp === 'night' || mp === 'rise') morningCtl.advance();
+      wake(); return;
+    }
     if (inBtn(px, py)) { skySwap(11, T); wake(); return; }
     if (inUndo(px, py)) { tryUndo(doUndo); wake(); return; }
     if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }

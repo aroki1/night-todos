@@ -25,9 +25,19 @@ const S = [0, 0, 0];
 const L = MORNING.light;
 let rimK = 0;                                  // this flower's backlight (strongest under the sun)
 
-export function drawFlora(sc) {
+/* o (the sunrise and the sunset, M2b): { bloom(order) -> { stem, head } 0..1, bud: 0..1, dark: 0..1 (toward the silhouette), shadow: 0..1, dy: rows the whole land is lowered by, keep: (i, j) -> 0..1 or null }.
+   No o = the grown meadow of the hold: every factor is 1 and every offset 0, so the grains are exactly those of M1. */
+let DY = 0;
+let KEEP = null;                               // M2c: (i, j) -> 0..1, how much of the land is still there at that grain (the dissolving land takes its flowers with it)
+const ov = (i, j, c, a) => over(i, j + DY, c, KEEP ? a * KEEP(i, j + DY) : a);
+const SIL = MORNING.rise.sil, SIL_B = MORNING.rise.silBase, SIL_G = MORNING.rise.silGain;
+
+export function drawFlora(sc, o) {
   const g = sc.pal.grass, stemC = sc.pal.stem, leafC = mix3(stemC, g[2], 0.3), sky = sc.pal.sky[2], shadow = g[3];
   const sz = Math.max(SMALL_MIN, Math.min(1, GW / SMALL_W));
+  const BL = o ? o.bloom : null, budK = o ? o.bud : 1, shK = o ? o.shadow : 1, dark = o ? o.dark : 0;
+  DY = o ? o.dy | 0 : 0; KEEP = o && o.keep ? o.keep : null;
+  const grow = f => (f.bud ? budK : BL ? BL(f.order).stem : 1);                      // how much of its stem is up
   const list = sc.flowers.slice().sort((a, b) => b.depth - a.depth || a.x - b.x);   // far first
   const spot = f => {
     let x = Math.round(f.x * (GW - 1));
@@ -38,47 +48,61 @@ export function drawFlora(sc) {
   /* long soft shadows first (the sun is in front: they fall toward the viewer and a little away from the sun's x), so no flower is ever darkened by another's */
   const dk = mix3(shadow, [0, 0, 0], 0.35);
   for (const f of list) {
-    const [x, base] = spot(f), far = f.depth, h = f.bud ? 9 : STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0), len = Math.round(h * sz * lerp(1, FAR_STEM, far) * L.shadowLen), dir = x < sc.sun.x ? -1 : 1;
+    const gk = grow(f); if (gk <= 0 || shK <= 0) continue;
+    const hk = f.bud ? gk : BL ? BL(f.order).head : 1;
+    const [x, base] = spot(f), far = f.depth, h = f.bud ? 9 : STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0), len = Math.round(h * sz * lerp(1, FAR_STEM, far) * L.shadowLen * gk), dir = x < sc.sun.x ? -1 : 1;
     const R = f.bud ? 1.5 : Math.max(R_MIN, (f.big ? R_BIG : R_NEAR) * sz * lerp(1, FAR_R, far)), fade = 1 - 0.5 * far;
     for (let q = 1; q <= len; q++) {
       const cx = x + dir * q * L.shadowDx, y = base + q; if (y >= SH) break; if (inWater(sc, cx, y, 1)) continue;
-      over(Math.round(cx), y, dk, L.shadowA * fade * (1 - 0.65 * q / len)); if (far < 0.6) over(Math.round(cx) + dir, y, dk, L.shadowA * 0.5 * fade * (1 - q / len));
+      ov(Math.round(cx), y, dk, L.shadowA * fade * (1 - 0.65 * q / len) * shK); if (far < 0.6) ov(Math.round(cx) + dir, y, dk, L.shadowA * 0.5 * fade * (1 - q / len) * shK);
     }
+    if (hk <= 0) continue;
     const ex = x + dir * len * L.shadowDx, ey = base + len, rw = R * 0.85;                // the head's shadow: a flat smudge of grains at the end
     for (let dy = -2; dy <= 2; dy++) for (let dx = -Math.ceil(rw); dx <= Math.ceil(rw); dx++) {
       const e = (dx / rw) * (dx / rw) + (dy / 2.2) * (dy / 2.2), y = ey + dy; if (e > 1 || y >= SH || y < 0 || inWater(sc, ex + dx, y, 1)) continue;
-      over(Math.round(ex + dx), y, dk, L.shadowA * 0.55 * fade * (1 - e) * (0.6 + 0.6 * ((dx * 7 + dy * 3 + f.pick) & 1)));
+      ov(Math.round(ex + dx), y, dk, L.shadowA * 0.55 * fade * (1 - e) * (0.6 + 0.6 * ((dx * 7 + dy * 3 + f.pick) & 1)) * hk * shK);
     }
   }
   for (const f of list) {
+    const gk = grow(f); if (gk <= 0) continue;
     const [x, base] = spot(f);
     rimK = L.rimBase + (1 - L.rimBase) * Math.exp(-Math.pow((x - sc.sun.x) / (GW * L.rimSpread), 2));
     const haze = FAR_HAZE * f.depth, far = f.depth, sp = sc.pal.species[f.pick % sc.pal.species.length], [pet, core] = MORNING.flowers[sp];
     const px = (i, j, c, a = 1) => {
-      if (a <= 0) return; S[0] = lerp(c[0], sky[0], haze); S[1] = lerp(c[1], sky[1], haze); S[2] = lerp(c[2], sky[2], haze); over(i, j, S, a);
+      if (a <= 0) return; S[0] = lerp(c[0], sky[0], haze); S[1] = lerp(c[1], sky[1], haze); S[2] = lerp(c[2], sky[2], haze);
+      if (dark > 0) { const m = SIL_B + SIL_G * (0.299 * S[0] + 0.587 * S[1] + 0.114 * S[2]); for (let q = 0; q < 3; q++) S[q] = lerp(S[q], SIL[q] * m, dark); }   // the silhouette hour: colour drains toward the dark land
+      ov(i, j, S, a);
     };
     const lean = ((f.pick >> 3) % 5) - 2;                               // -2..2: stems are not ruled lines
-    const stem = (h, c) => { for (let q = 0; q < h; q++) px(x + Math.round(lean * (q / h) * (q / h)), base - q, c); return x + Math.round(lean); };
+    const stem = (hs, h, c) => { for (let q = 0; q < hs; q++) px(x + Math.round(lean * (q / h) * (q / h)), base - q, c); return x + Math.round(lean * (hs / h) * (hs / h)); };
     px(x - 1, base, shadow, 0.5); px(x + 1, base, shadow, 0.5);
     if (f.bud) {
-      const h = Math.max(4, Math.round((8 + (f.pick % 3)) * lerp(1, FAR_STEM, far))), tx = stem(h, stemC), ty = base - h, bw = far < 0.6 ? 1 : 1;
+      const h = Math.max(4, Math.round((8 + (f.pick % 3)) * lerp(1, FAR_STEM, far))), hs = Math.max(1, Math.round(h * gk)), tx = stem(hs, h, stemC), ty = base - hs, bw = far < 0.6 ? 1 : 1;
       const green = mix3(stemC, g[2], 0.25);
       px(tx, ty, green); for (let k = -bw; k <= bw; k++) px(tx + k, ty - 1, green); for (let k = -bw; k <= bw; k++) px(tx + k, ty - 2, mix3(green, pet, 0.8));
       px(tx, ty - 3, pet);
       continue;
     }
+    const BLf = BL ? BL(f.order) : null, hh = BLf ? BLf.head * BLf.head * (3 - 2 * BLf.head) : 1;
     const R = Math.max(R_MIN, (f.big ? R_BIG : R_NEAR) * sz * lerp(1, FAR_R, far));
-    const h = Math.max(6, Math.round((STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0)) * sz * lerp(1, FAR_STEM, far)));
-    const tx = stem(h, stemC), ty = base - h;
+    const h = Math.max(6, Math.round((STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0)) * sz * lerp(1, FAR_STEM, far))), hs = Math.max(1, Math.round(h * gk));
+    const tx = stem(hs, h, stemC), ty = base - hs;
     if (h >= 10) {                                                      // two leaves, one each side, pointing up and out
       const q1 = Math.round(h * 0.3), q2 = Math.round(h * 0.55), xq = q => x + Math.round(lean * (q / h) * (q / h));
-      px(xq(q1) + 1, base - q1, leafC); px(xq(q1) + 2, base - q1 - 1, leafC); px(xq(q1) + 3, base - q1 - 2, leafC);
-      px(xq(q2) - 1, base - q2, leafC); px(xq(q2) - 2, base - q2 - 1, leafC);
+      if (hs >= q1 + 2) { px(xq(q1) + 1, base - q1, leafC); px(xq(q1) + 2, base - q1 - 1, leafC); px(xq(q1) + 3, base - q1 - 2, leafC); }
+      if (hs >= q2 + 2) { px(xq(q2) - 1, base - q2, leafC); px(xq(q2) - 2, base - q2 - 1, leafC); }
     }
-    if (sp === 'tulip' || sp === 'crocus') cup(px, tx, ty, R, sp === 'crocus', pet, core);
-    else if (sp === 'snowdrop') bell(px, tx, ty, R, stemC, pet, core);
-    else radial(px, RADIAL[sp] || RADIAL.daisy, tx, ty - Math.round(R) + 1, R, f.petals, pet, core);
+    if (gk < 1) continue;                                               // the head waits until the stem is up
+    if (hh < 0.2) {                                                     // a closed head: a green nub with a hint of petal
+      const green = mix3(stemC, g[2], 0.25);
+      px(tx, ty, green); px(tx, ty - 1, mix3(green, pet, 0.8 * hh / 0.2)); continue;
+    }
+    const Rh = R * hh;
+    if (sp === 'tulip' || sp === 'crocus') cup(px, tx, ty, Rh, sp === 'crocus', pet, core);
+    else if (sp === 'snowdrop') bell(px, tx, ty, Rh, stemC, pet, core);
+    else radial(px, RADIAL[sp] || RADIAL.daisy, tx, ty - Math.round(Rh) + 1, Rh, f.petals, pet, core);
   }
+  DY = 0; KEEP = null;
 }
 
 /* a head seen from the front: petals as lobes of cos around the core, anti-aliased by edge distance */

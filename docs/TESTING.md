@@ -16,17 +16,20 @@ localStorage.setItem('night-sky:v1',JSON.stringify({version:1,weeks:{},lastSeenW
 
 | What | URL | Expect |
 |---|---|---|
-| Monday after a week with done stars | `?clock=2026-11-16T09:00` | ritual plays once the page is visible and focused (if DevTools has focus, click the page). Then only "alive project" is left, counter 0 / 1 |
-| Same, week without done stars (delete a, b, c from the seed) | `?clock=2026-11-16T09:00` | no ritual, week still archived |
+| Monday after a week with done stars | `?clock=2026-11-16T09:00` | the morning plays once the page is visible and focused (if DevTools has focus, click the page): sunrise, meadow with 3 flowers and 1 bud, it holds; Esc or Enter starts the sunset; then only "alive project" is left, counter 0 / 1 |
+| Same, week without done stars (delete a, b, c from the seed) | `?clock=2026-11-16T09:00` | the morning still plays (a quiet meadow), week archived |
 | Missed 3 weeks (set `lastSeenWeek:'2026-W43'`, move tasks to October) | `?clock=2026-11-16T09:00` | no crash, old weeks recorded |
 | Year boundary (`lastSeenWeek:'2026-W53'`, tasks end of Dec) | `?clock=2027-01-04T09:00` | W53 to W01 works |
-| Same week reopen | `?clock=2026-11-18T09:00` after seeding W47 | no ritual |
-| Live Sunday to Monday | `?clock=2026-11-15T23:59:50` and wait ~40 s | ritual starts by itself (check runs every 30 s) |
-| Ritual frame by frame | `?ritual=1&t=12&at=1500` (change `at`) | frozen frame; add `&live=1` to watch |
+| Same week reopen | `?clock=2026-11-18T09:00` after seeding W47 | no morning |
+| Live Sunday to Monday | `?clock=2026-11-15T23:59:50` and wait ~40 s | morning starts by itself (check runs every 30 s) |
+| Morning frame by frame | `?morning=1&at=3000` (change `at`; `&leave=9500&at=14000` for the sunset) | frozen frame; `&at=0&live=1` plays it with working controls |
 | Past weeks as constellations | `?weeks=6&t=12` | faint archived shapes at the top |
-| Reload while the ritual plays | reload during the first 4 s | it plays again (morningDue survives) |
+| Reload while the morning plays | reload during the sunrise or the hold | it plays again (morningDue survives until the sunset starts) |
 | Background tab | open the URL in a background tab, wait 10 s, switch to it | nothing plays while hidden; it plays right after you switch |
-| Seen once | reload after it finished | no ritual, and in the console JSON.parse(localStorage['night-sky:v1']).morningDue is null |
+| Seen once | reload after it finished | no morning, and in the console JSON.parse(localStorage['night-sky:v1']).morningDue is null |
+| Name the week | in the hold type `moving day`, Enter | sunset starts, `week 46 · moving day` stays until ~1 s; console: JSON.parse(localStorage['night-sky:v1']).weeks['2026-W46'].name |
+| Task from the morning | in the hold type `essay, fri`, Enter | sunset starts; the new star assembles near its end; no name saved |
+| Controls | click or Space during the sunrise; Esc during the sunset | jumps to the hold in 0.4 s; the sunset ends in 0.6 s |
 
 Reset: `localStorage.clear()` on any page.
 

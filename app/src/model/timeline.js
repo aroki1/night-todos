@@ -1,4 +1,4 @@
-/* model/timeline.js — the session event log (finish, undo, create, import, ritual).
+/* model/timeline.js — the session event log (finish, undo, create, import, morning controls).
    Events are never persisted; the store keeps only durable state. */
 import { isReduced, SIZE, STEPS } from '../tokens.js';
 import { wall, fmtDate, fmtDay } from '../sky/clock.js';
@@ -89,6 +89,12 @@ export function replay(t) {
 }
 
 export function pushEvent(ev) { events.push(ev); events.sort((a, b) => a.at - b.at); }
+
+/* the morning's controls (advance, leave, cut). Kept apart from `events`: a rebuild (import, rollover) must not drop them */
+let mev = [];
+export function pushMorning(op, at, named = false) { mev.push({ op, at, named: !!named }); }
+export function morningEvents(t0) { return mev.map(e => ({ op: e.op, ms: (e.at - t0) * 1000, named: e.named })); }
+export function clearMorning() { mev = []; }
 
 export function doFinish(si, at, hov) {
   const s = stars[si];

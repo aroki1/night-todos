@@ -3,6 +3,7 @@ import { TIME } from '../tokens.js';
 import { clamp01, hstr } from '../math.js';
 import { isoWeekKey, weekDistance, weekLabel } from '../sky/clock.js';
 import { previousWeekKey } from './week.js';
+import { splitBar, parseDeadline } from './parser.js';
 
 /* the week whose morning is still unseen, after the app learns it is now `nowMs` and the last week it saw was `prevWeek`.
    A new week makes the most recent finished week due (an older unseen one is replaced). Same week: keep what was due. */
@@ -68,6 +69,33 @@ export function flowerList(tasks, weekKey, nowMs, minGap = 0) {
   const out = done.map((t, i) => mk(t, i, false)).concat(buds.map((t, i) => mk(t, done.length + i, true)));
   spreadX(out, minGap);
   return out;
+}
+
+/* a week name: trimmed, at most 32 characters (sanitizeWeeks in store.js keeps the same rule) */
+export function cleanName(s) { return String(s === null || s === undefined ? '' : s).trim().slice(0, 32).trim(); }
+
+/* Enter in the bar during the morning hold. A '/' command runs as usual; text that parses with a deadline is a task;
+   any other text names the week; empty text just lets the morning go. */
+export function morningEnter(text, nowMs) {
+  const tx = String(text === null || text === undefined ? '' : text).trim();
+  if (!tx) return { kind: 'none' };
+  if (tx[0] === '/') return { kind: 'cmd' };
+  const p = splitBar(tx);
+  const r = p.dls !== null && p.dls.trim() !== '' ? parseDeadline(p.dls, new Date(nowMs)) : null;
+  if (p.title !== '' && r && r.ok) return { kind: 'task' };
+  return { kind: 'name', name: cleanName(tx) };
+}
+
+/* a week entry with its summary: written once, when its sunrise starts, so the Atlas keeps these numbers. Returns a new object */
+export function withSummary(entry, sum) {
+  if (entry && entry.summary) return entry;
+  return Object.assign({}, entry || {}, { summary: { done: sum.done, missed: sum.missed, carried: sum.carried, steps: sum.steps } });
+}
+/* a week entry with a new name (an empty name removes it). Returns a new object */
+export function withName(entry, name) {
+  const o = Object.assign({}, entry || {}), n = cleanName(name);
+  if (n) o.name = n; else delete o.name;
+  return o;
 }
 
 /* push x apart to at least g, keeping everything inside [g/2, 1 - g/2] when it fits */

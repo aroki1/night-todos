@@ -96,17 +96,18 @@ const nodeMs = Date.now() - T0;
 /* ---------- tier 2: browser ---------- */
 const BASE = 'dev=1&seed=7&clock=2026-11-13T21:00';
 const SIZES = { d125: { size: '1917x933', dpr: 1.25 }, ph: { size: '375x812', dpr: 2 } };
-/* the spec's scene names -> dev URLs. ambient = no scene (plain frozen sky). ritual is a ?ritual=1 param, not a scene. */
+/* the spec's scene names -> dev URLs. ambient = no scene (plain frozen sky). */
 const SCENES = {
   steps: 'scene=steps',
   finish: 'scene=finish',
   labels: 'scene=labels&demo=1&hover=hm%20one-pager',   // demo=1 + hover: star labels and the hover frame are drawn, so TXT/label tokens are covered
-  ritual: 'ritual=1&t=12&at=1500',
   ambient: 'freeze=1&t=12',
   /* no demo, 2 tasks without steps (count 2 mod 3). hints: selected star shows the dim "+ step" row */
   hints: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.select('task 1 · essay')" },
   morning: 'morning=1',
   morningSummer: 'morning=1&season=summer',
+  morningRise: 'morning=1&at=4500',                    // the sunrise, half way: the land up, the sky turning
+  morningSet: 'morning=1&leave=9500&at=14000',         // the sunset, 4.5 s in: dusk, the sun low, the heads closing
   barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true)" }   // nothing selected: the bar placeholder is the step syntax
 };
 const PERF = { size: '1917x933', dpr: 2, frames: 300 };

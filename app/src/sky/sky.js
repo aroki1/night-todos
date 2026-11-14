@@ -1,6 +1,6 @@
 /* sky/sky.js — palettes, the seeded sky, star layers, the sky's response, crossfade base. */
 import { rng, fbm, sm, clamp01, hex } from '../math.js';
-import { PAL } from '../tokens.js';
+import { PAL, MORNING } from '../tokens.js';
 import { GW, SH, BR, BG, BB, CR, CG, CB, SR, SG, SB, AGR, AGG, AGB, PROF, SBR, SBG, SBB, LM, skyResets, onSkyReset, splat, halo } from '../framebuffer.js';
 import { extendLayers } from './components.js';
 import { ringRadius } from '../choreo/finish.js';
@@ -69,8 +69,17 @@ export function makeSky(seed) {
 }
 export { onSkyReset };
 
+/* the morning's fade of the star field (1 = every star, the plain night). The brightest stars are the last to go and the first to come:
+   t is the share of the field that is lit, bn a star's nominal brightness 0..1 */
+export const starFade = { t: 1 };
+function starLit(t, bn) {
+  const W = MORNING.rise.starSoft;
+  return clamp01((t - (1 - bn) * (1 - W)) / W);
+}
+
 /* stars and their twinkle; acts/dims are light events owned by the choreography */
 export function composeBase(acts, actN, dims, dimN) {
+  const fade = starFade.t, SMAX = MORNING.rise.starMax;
   BR.set(CR); BG.set(CG); BB.set(CB);
   if (pf.on) pf.mark('base.copy');
   for (let li = 0; li < 3; li++) {
@@ -79,20 +88,22 @@ export function composeBase(acts, actN, dims, dimN) {
     for (let q = 0; q < S.length; q++) {
       const s = S[q], px = (((s.x - T * L.sp) % L.W) + L.W) % L.W - 12;
       if (px < -3 || px > GW + 2) continue;
+      const lmS = fade < 1 ? lm * starLit(fade, Math.min(1, (s.vp ? s.vp.hi : s.a) / SMAX)) : lm;
+      if (lmS <= .003) continue;
       const hf = .45 + .55 * sm(SH, SH - 55, s.y); let tf = 1, a;
       if (s.vp) a = (s.vp.lo + (s.vp.hi - s.vp.lo) * Math.pow(.5 + .5 * Math.sin(T * 6.2832 / s.vp.P + s.vp.ph), 1.6)) * hf;
       else { a = s.a * hf; if (s.tw) { tf = .62 + .38 * Math.pow(.5 + .5 * Math.sin(T * s.f + s.ph), 1.5); a *= tf; } }
-      a *= lm;
+      a *= lmS;
       if (dimN) {
         let dm = 1;
         for (let m = 0; m < dimN; m++) { const A = dims[m], dx = px - A.x, dy = s.y - A.y; dm -= A.k * (1 - sm(14, 18, Math.sqrt(dx * dx + dy * dy))); }
         if (dm < 1) a *= dm;
       }
       splat(px, s.y, s.c, a);
-      if (s.hl) halo(px, s.y, s.c, s.hl * lm, 1.4, 3);
+      if (s.hl) halo(px, s.y, s.c, s.hl * lmS, 1.4, 3);
       else if (li === 2) halo(px, s.y, s.c, a * .2, 1.1, 2.6);
       if (s.cross) {
-        const w1 = .35 * tf * lm * hf, w2 = .15 * tf * lm * hf;
+        const w1 = .35 * tf * lmS * hf, w2 = .15 * tf * lmS * hf;
         splat(px + 1, s.y, s.c, w1); splat(px - 1, s.y, s.c, w1); splat(px, s.y + 1, s.c, w1); splat(px, s.y - 1, s.c, w1);
         splat(px + 2, s.y, s.c, w2); splat(px - 2, s.y, s.c, w2); splat(px, s.y + 2, s.c, w2); splat(px, s.y - 2, s.c, w2);
       }

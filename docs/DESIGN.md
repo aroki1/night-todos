@@ -67,7 +67,7 @@ Every choreography is a pure function of elapsed milliseconds (`choreo/*.js`, im
 | collapse | finishing a task that has steps: the orbit folds into the core over 400 ms (250 ms fade when reduced), the core lifts +12% at the end, then the existing finish runs, shifted by that time. Open steps stay in the data |
 | create | motes 0-600, assembly 550+45/ring, label from 700 |
 | expire | label fade-out 900-1000, fade-in 1000-1100 (sequential, not crossfade) |
-| ritual | 0-600 boost +15%; 600-3000 lift to 0.32 at far anchor; 1800-3300 sky crossfade (1.5 s); 2600-4200 `week N` centred; reduced motion 600 ms crossfade; click or key skips |
+| morning | once a week (`choreo/morning.js`, timings in `TIME.morning`). A, night closes 0-1500: labels out, done stars +15%. B, sunrise 1500-7500: stars fade (done stars last, 4500-5500), the sun rises 3000-6500, land 3500-7000, flowers open from 5500, 120 ms apart. C, the hold from 7500 until the user acts; text rows 200 ms apart. D, sunset 10.5 s from the leave: sun down 0-9000, dusk 2500-6000, new stars 5000-8500, `week N` 8500-10500. Click, tap, Space or Enter fast-forwards A-B into C in 400 ms; Esc leaves; Esc in D fast-forwards it in 600 ms. Reduced motion: 800 ms crossfades |
 
 ## 6. Components
 
@@ -107,10 +107,14 @@ A task may have up to 20 steps, `task.steps = [{ id, text, doneAt }]`. Tasks sav
 Full history in `docs/specs/archive/`; one-line decisions in `docs/dev/DECISIONS.md`.
 
 - The product is `app/` only: one grain framebuffer, text the only off-grain layer, no framework, no build step.
-- Weeks are ISO weeks; finished stars archive into past-week constellations and the Monday ritual decides what carries over (`model/week.js`).
+- Weeks are ISO weeks; finished stars archive into past-week constellations and the weekly morning shows what carries over (`model/week.js`).
 - Data is local-first: tasks, weeks and prefs persist through `platform.js` (localStorage on the web, Tauri storage on desktop); the session event log is memory only.
 - Performance: the live frame is paced (idle 15 fps), clouds are keyframed and upsampled in slices, and the GPU only presents the grain (the frame stays a pure function of T).
 
 ## 10. Don'ts
 
 Smooth shapes over the sky; using the alive, urgent, done or missed colours for anything else; blinking; particles flying across the night sky (the morning may have slow life); more than one special event at once; header or stats chrome at night; labels on past weeks in the night sky; reading the clock outside `sky/clock.js`.
+
+## 11. Scenes
+
+There are three scenes: night, morning and atlas. Each has its own palette group in `tokens.js` (night: `C` and `PAL`; morning: `MORNING`; atlas: `ATLAS`, later) and its own gap colour rule (night: the fixed dark gap; morning: mosaic, the gap is the grain's own colour x 0.72; atlas: paper). Text is still the only off-grain layer. The morning plays once a week, the first time the user is present in a new week (`model/morning.js`); night interactions are off while it plays.

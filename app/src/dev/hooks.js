@@ -1,6 +1,6 @@
 /* dev/hooks.js — window.ns test hooks. Installed only with ?dev=1 or on localhost. */
 import { rng, clamp01 } from '../math.js';
-import { setT, wall, T, isoWeekKey, seedForWeek, setClockISO, setClockBase, weekDistance, wc } from '../sky/clock.js';
+import { setT, wall, T, isoWeekKey, seedForWeek, setClockISO, setClockBase, weekDistance, weekLabel, wc } from '../sky/clock.js';
 import { sky, skyFlags, makeSky } from '../sky/sky.js';
 import { cloudReset, cloudDebug } from '../sky/clouds.js';
 import { resetClockCache, clockTick } from '../sky/clock.js';
@@ -12,7 +12,8 @@ import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDe
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
 import { bar, submitBar, barParse, msAvg } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
-import { skipRitual, ritualInfo } from '../render/ritual.js';
+import { HOLD_END } from '../choreo/morning.js';
+import { morningInfo as morningInfoR } from '../render/morning.js';
 import { ensureWeeks, previousWeekKey } from '../model/week.js';
 import { seasonOf } from '../model/morning.js';
 import { selfTest } from './selftest.js';
@@ -261,10 +262,7 @@ export function installHooks(a) {
       if (!opts.noRebuild) { rebuildStars(now); rebuildPast(); }
       return out;
     },
-    ritual(opts = {}) { return api.beginRitual(opts); },
-    ritualInfo() { return ritualInfo() || { active: false }; },
-    skipRitual() { skipRitual(); },
-    /* dev (M1): synthetic tasks for the morning of the week before now; nothing is written to the store */
+    /* dev (M1/M2): synthetic tasks for the morning of the week before now; nothing is written to the store */
     morning(o = {}) {
       const now = wall(T), key = previousWeekKey(isoWeekKey(now)), ws = weekStartMs(key), r = rng(777);
       const n = o.flowers === null || o.flowers === undefined ? 7 : o.flowers, b = o.buds === null || o.buds === undefined ? 3 : o.buds, D = 864e5;
@@ -273,10 +271,15 @@ export function installHooks(a) {
       for (let i = 0; i < n; i++) tasks.push({ id: 'm' + i, title: titles[i % 8], createdAt: ws - 2 * D, deadline: ws + 6 * D, big: i % 4 === 0 ? 1 : 0,
         x: .1 + r() * .8, y: .12 + r() * .55, doneAt: ws + (i + .5) * (6.5 * D / Math.max(1, n)), link: null, week: key,
         steps: i % 3 === 1 ? Array.from({ length: 6 }, (_, k) => ({ id: 's' + k, text: 'step ' + k, doneAt: k < 3 + (i % 4) ? ws + D : null })) : [] });
+      for (let i = 1; i < n; i++) if (i % 3 !== 0) tasks[i].link = tasks[i - 1].id;                       // a few chains, so the night shows lines
       for (let i = 0; i < b; i++) tasks.push({ id: 'b' + i, title: 'carry ' + i, createdAt: ws, deadline: now + 3 * D, big: 0, x: .1 + r() * .8, y: .12 + r() * .55, doneAt: null, link: null, week: null, steps: [] });
       for (let i = 0; i < 2; i++) tasks.push({ id: 'x' + i, title: 'missed ' + i, createdAt: ws, deadline: ws + D, big: 0, x: r(), y: r(), doneAt: null, link: null, week: key, steps: [] });
-      return api.showMorning({ tasks, weekKey: key, nowMs: now, season: o.season || seasonOf(now), gapMode: o.gap === 'paper' ? 'paper' : 'mosaic', seed: seedForWeek(key), name: '' });
+      const at = o.at === null || o.at === undefined ? HOLD_END + 400 : o.at;
+      return api.showMorning({ tasks, weekKey: key, nowMs: now, season: o.season || seasonOf(now), gapMode: o.gap === 'paper' ? 'paper' : 'mosaic',
+        seed: seedForWeek(key), name: '', t0: T - at / 1000, reduced: isReduced(), newSeed: seedForWeek(isoWeekKey(now)), newWeek: weekLabel(isoWeekKey(now)), write: false },
+        { leaveMs: o.leave });
     },
+    morningInfo() { return morningInfoR() || { active: false }; },
     noMorning() { return api.hideMorning(); },
     weekKey() { return isoWeekKey(wall(T)); }
   };

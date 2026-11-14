@@ -1,12 +1,14 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
-import { TXT, K, C, FLAGS, SIZE, STEPS, setReducedPref, getReducedPref } from '../tokens.js';
+import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, setReducedPref, getReducedPref } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, dpr } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtLeft } from '../sky/clock.js';
 import { parseDeadline, splitBar } from '../model/parser.js';
+import { morningEnter } from '../model/morning.js';
 import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars } from '../model/store.js';
 import { undoTarget, externalUndo, doCreate, doStepAdd, applyImport } from '../model/timeline.js';
 import { placeNew, selIdx, setSelIdx } from '../model/placement.js';
+import { morningPhase, morningCtl } from '../render/morning.js';
 
 export const bar = {
   text: '', caret: 0, focus: false, last: -9, title: '', big: false, res: null, pv: '', pvWarn: false,
@@ -58,6 +60,13 @@ export function setBarCaret() { if (input) { try { input.setSelectionRange(bar.c
 function onInputKey(e) {
   if (e.key === 'Escape') {
     e.preventDefault();
+    const mp = morningPhase();
+    if (mp && mp !== 'end') {
+      if (mp === 'set') morningCtl.cut();
+      else if (mp === 'hold' && bar.text !== '') { bar.text = ''; bar.caret = 0; input.value = ''; }   // the first Esc clears what was typed
+      else { setBarFocus(false); morningCtl.leave(''); }
+      wake(); return;
+    }
     if (stepTarget() >= 0) { bar.text = ''; bar.caret = 0; input.value = ''; setSelIdx(-1); }     // step mode: Esc deselects, the bar returns to normal
     setBarFocus(false); wake(); return;
   }
@@ -77,6 +86,7 @@ export function barParse() {
   const r = bar.res; bar.pvWarn = !!(r && r.err);
   const ns = bar.steps.length;
   bar.pv = !r ? '' : r.ok ? '→ ' + fmtDate(r.date.getTime()) + ' · ' + fmtLeft(r.date.getTime() - wall(T)) + (ns ? ' · ' + ns + (ns === 1 ? ' step' : ' steps') : '') : r.err === 'past' ? "that's already gone" : "can't read that";
+  if (morningPhase() === 'hold' && !(r && r.ok)) { bar.pv = ''; bar.pvWarn = false; }
 }
 export function ghostAlphaNow() {
   if (bar.gCommit >= 0) return 1 - seg((T - bar.gCommit) * 1000, 550, 900);
@@ -144,6 +154,8 @@ function pickImport() {
 
 export function submitBar() {
   barParse();
+  const mp = morningPhase();
+  if (mp && mp !== 'end') return submitMorning(mp);
   if (bar.text.trim().startsWith('/')) return runCommand(bar.text.trim());
   const sel = stepTarget();
   if (sel >= 0) {                                                  // step mode: the whole text is one step; a full list quietly refuses
@@ -158,6 +170,24 @@ export function submitBar() {
   doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps);
   bar.ctr++; bar.out = { text: bar.text, t0: T }; bar.gpos = pos; bar.gCommit = T; bar.gOn = true;
   bar.text = ''; bar.caret = 0; if (input) input.value = '';
+  setBarFocus(false); wake(); return true;
+}
+/* Enter during the morning: before the hold it hurries the sunrise; in the hold the text names the week, or adds a task when it
+   parses with a deadline (morningEnter decides); then the sunset starts. The new star assembles near the end of the sunset. */
+function submitMorning(mp) {
+  if (mp === 'night' || mp === 'rise') { morningCtl.advance(); wake(); return true; }
+  if (mp !== 'hold') return false;
+  const m = morningEnter(bar.text, wall(T));
+  if (m.kind === 'cmd') return runCommand(bar.text.trim());
+  if (m.kind === 'task') {
+    const r = bar.res;
+    if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
+    morningCtl.leave('');
+    const pos = placeNew(bar.title, bar.ctr, bar.big);
+    doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T + TIME.morning.createAt / 1000, bar.steps);
+    bar.ctr++;
+  } else morningCtl.leave(m.kind === 'name' ? m.name : '');
+  bar.out = { text: bar.text, t0: T }; bar.text = ''; bar.caret = 0; if (input) input.value = '';
   setBarFocus(false); wake(); return true;
 }
 export function tryUndo(doUndoFn) {
@@ -182,6 +212,7 @@ export function fitText(t, maxW) {
   return t.slice(0, n).trimEnd() + '…';
 }
 export function barPlaceholder() {
+  if (morningPhase() === 'hold') return MORNING.text.name;
   const st = stepTarget();
   if (st >= 0) { const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n); }
   const any = DEMO_ON ? true : store.tasks.length > 0;

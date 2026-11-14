@@ -3,9 +3,10 @@ import { parseDeadline, splitBar } from '../model/parser.js';
 import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
-import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList } from '../model/morning.js';
+import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName } from '../model/morning.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
+import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
 
 export function selfTest() {
   const now = new Date(2026, 10, 13, 21, 0, 0), at = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime(), D = 864e5;
@@ -96,11 +97,11 @@ export function selfTest() {
   ok(isoWeekKey(F(2026, 11, 15, 23)) === '2026-W46', '2026-11-15 W46');
   ok(isoWeekKey(F(2026, 11, 16, 0)) === '2026-W47', '2026-11-16 W47');
   const rd = decideRitual('2026-W45', fixNow);
-  ok(rd.run && rd.liftKey === '2026-W45' && rd.to === '2026-W46', 'ritual W45 -> W46');
-  ok(!decideRitual('2026-W46', fixNow).run, 'no ritual same week');
+  ok(rd.run && rd.liftKey === '2026-W45' && rd.to === '2026-W46', 'rollover W45 -> W46');
+  ok(!decideRitual('2026-W46', fixNow).run, 'no morning same week');
   const rd2 = decideRitual('2026-W42', fixNow);
   ok(rd2.run && rd2.liftKey === '2026-W45' && rd2.missed === 4, 'only most recent week lifts');
-  ok(!decideRitual(null, fixNow).run, 'first launch has no ritual');
+  ok(!decideRitual(null, fixNow).run, 'first launch has no morning');
 
   /* archive is idempotent */
   const st2 = { version: 1, tasks: [mk({ deadline: F(2026, 11, 2, 12) })], weeks: {}, lastSeenWeek: '2026-W45', prefs: { reducedMotion: 'system' } };
@@ -229,5 +230,44 @@ export function selfTest() {
   ok(summaryLines({ done: 0, missed: 2, carried: 3, steps: 0 }, '2026-W45').join('|') === 'week 45|nothing finished · 2 missed · 3 carry over', 'morning: nothing finished');
   ok(summaryLines({ done: 7, missed: 0, carried: 0, steps: 1 }, '2026-W45', 'moving day').join('|') === 'week 45 · moving day|7 done|1 step', 'morning: name and one step');
   ok(summaryLines({ done: 7, missed: 0, carried: 0, steps: 4 }, '2026-W45', '', 3).join('|') === 'week 45|3 weeks away', 'morning: away');
+
+  /* morning M2: the timeline, the controls, reduced motion, name or task, week entries */
+  const ms0 = morningState(0, [], false);
+  ok(ms0.phase === 'night' && ms0.dayK === 0 && ms0.labelsK === 1 && ms0.bgStarsK === 1 && ms0.sunY === 0 && textK(ms0, 0) === 0, 'morning: starts as the whole night');
+  const ms1 = morningState(1000, [], false);
+  ok(ms1.phase === 'night' && ms1.labelsK === 0 && Math.abs(ms1.doneBoost - 1.15) < 1e-9, 'morning: labels out, done stars +15% by 1000');
+  const ms3 = morningState(3000, [], false);
+  ok(ms3.phase === 'rise' && ms3.specialsK === 0 && ms3.missedK === 0 && Math.abs(ms3.bgStarsK - .5) < 1e-9 && ms3.sunY === 0 && ms3.doneK === 1, 'morning: mid sunrise');
+  const ms75 = morningState(7500, [], false), bl = bloom(ms75, 6, 7);
+  ok(ms75.phase === 'hold' && ms75.dayK === 1 && ms75.sunY === 1 && ms75.landColorK === 1 && ms75.budK === 1 && ms75.doneK === 0 && ms75.gapK === 1 && textK(ms75, 0) === 0 && bl.stem === 1 && bl.head === 1, 'morning: the hold, every flower open');
+  const b57 = bloom(morningState(5700, [], false), 0, 7);
+  ok(Math.abs(b57.stem - .5) < 1e-9 && b57.head === 0 && bloom(morningState(9000, [], false), 29, 30).head === 1, 'morning: stems grow first; 30 flowers are open by the hold');
+  ok(textK(morningState(HOLD_END, [], false), 5) === 1 && textK(morningState(7700, [], false), 1) === 0, 'morning: text rows 200 ms apart');
+  const adv = [{ op: 'advance', ms: 2000 }];
+  ok(morningState(1999, adv, false).r === 1999 && morningState(2400, adv, false).phase === 'hold' && morningState(2400, adv, false).dayK === 1 && Math.abs(riseAt(2200, 2000) - 4750) < 1e-9, 'morning: advance fast-forwards the sunrise in 400 ms');
+  ok(JSON.stringify(morningState(9000, [{ op: 'advance', ms: 8000 }], false)) === JSON.stringify(morningState(9000, [], false)) && JSON.stringify(morningState(5000, [{ op: 'cut', ms: 3000 }], false)) === JSON.stringify(morningState(5000, [], false)), 'morning: advance in the hold and cut before a leave do nothing');
+  const lv = [{ op: 'leave', ms: 9000 }];
+  ok(morningState(9000, lv, false).phase === 'set' && textK(morningState(9000, lv, false), 0) === 1 && textK(morningState(9600, lv, false), 0) === 0, 'morning: text out 600 ms after the leave');
+  ok(Math.abs(morningState(13500, lv, false).sunY - .5) < 1e-9 && morningState(15000, lv, false).dayK === 0 && morningState(17500, lv, false).newStarsK === 1 && morningState(18500, lv, false).weekLabelK === 1, 'morning: sunset, new night, week label');
+  ok(morningState(19499, lv, false).phase === 'set' && morningState(19500, lv, false).phase === 'end', 'morning: ends 10500 ms after the leave');
+  ok(Math.abs(morningState(9900, [{ op: 'leave', ms: 9000, named: true }], false).nameK - .5) < 1e-9 && morningState(9900, lv, false).nameK === 0, 'morning: a typed name stays until 1200');
+  const cl = morningState(11000, lv, false);
+  ok(bloom(cl, 6, 7).head === 0 && bloom(cl, 0, 7).head === 1 && bloom(cl, 6, 7).stem === 1, 'morning: heads close in reverse order, stems stay');
+  const early = morningState(3000, [{ op: 'leave', ms: 3000 }], false);
+  ok(early.phase === 'set' && early.sunY === 0 && bloom(early, 0, 7).head === 0 && early.dayK < .2, 'morning: a leave during the sunrise starts the sunset from there');
+  const cut = [{ op: 'leave', ms: 9000 }, { op: 'cut', ms: 10000 }];
+  ok(morningState(10300, cut, false).phase === 'set' && morningState(10300, cut, false).weekLabelK === 0 && morningState(10600, cut, false).phase === 'end', 'morning: a cut ends the sunset 600 ms later');
+  const rd4 = morningState(400, [], true);
+  ok(rd4.phase === 'rise' && Math.abs(rd4.dayK - .5) < 1e-9 && rd4.bgStarsK === 1 && rd4.sunY === 1 && Math.abs(textK(rd4, 0) - .5) < 1e-9 && Math.abs(textK(rd4, 5) - .5) < 1e-9 && morningState(800, [], true).phase === 'hold', 'morning: reduced motion rises as one 800 ms crossfade');
+  const rl = [{ op: 'leave', ms: 1000 }];
+  ok(Math.abs(morningState(1400, rl, true).dayK - .5) < 1e-9 && morningState(1400, rl, true).newStarsK === 1 && morningState(1950, rl, true).weekLabelK === 1 && morningState(3300, rl, true).phase === 'end', 'morning: reduced motion sets as a crossfade, then week N');
+  ok(JSON.stringify(morningState(12345, lv, false)) === JSON.stringify(morningState(12345, lv, false)) && morningControls([{ op: 'leave', ms: 5 }, { op: 'leave', ms: 9 }]).leave === 5, 'morning: pure; the first leave counts');
+  const nowE = new Date(2026, 10, 16, 9, 0).getTime();          // Mon 16 Nov 2026 09:00
+  ok(morningEnter('', nowE).kind === 'none' && morningEnter('   ', nowE).kind === 'none' && morningEnter('/motion off', nowE).kind === 'cmd', 'morning enter: empty and commands');
+  ok(morningEnter('essay, fri', nowE).kind === 'task' && morningEnter('  essay, fri  ', nowE).kind === 'task', 'morning enter: a deadline makes a task');
+  ok(morningEnter('moving day', nowE).name === 'moving day' && morningEnter('slow, quiet', nowE).name === 'slow, quiet' && morningEnter('x'.repeat(40), nowE).name.length === 32, 'morning enter: anything else names the week');
+  const wE = { seed: 5, archivedAt: 1 }, S1 = { done: 1, missed: 0, carried: 2, steps: 3 };
+  ok(JSON.stringify(withSummary(wE, S1)) === JSON.stringify({ seed: 5, archivedAt: 1, summary: S1 }) && !wE.summary && withSummary({ seed: 5, summary: S1 }, { done: 9, missed: 9, carried: 9, steps: 9 }).summary.done === 1 && withSummary(undefined, S1).summary.carried === 2, 'week entry: the summary is written once');
+  ok(withName({ seed: 5, name: 'a' }, '  b  ').name === 'b' && !('name' in withName({ seed: 5, name: 'a' }, '   ')) && cleanName(' ' + 'y'.repeat(40)).length === 32, 'week entry: name');
   return { pass, fail, total: pass + fail, failed };
 }

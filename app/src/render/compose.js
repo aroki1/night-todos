@@ -1,9 +1,9 @@
 /* render/compose.js — prepare() reads the model, compose() writes the whole frame. */
 import { clamp01, seg, ease, mixTo, SC, fbm, H } from '../math.js';
-import { C, SIZE, TIME, FLAGS } from '../tokens.js';
+import { C, SIZE, TIME, FLAGS, MORNING } from '../tokens.js';
 import { GW, SH, N, BR, BG, BB, OR, OG, OB, add, over, splat, halo, ring, dimRect } from '../framebuffer.js';
 import { T, clockTick, wall, fmtLeft } from '../sky/clock.js';
-import { sky, composeBase } from '../sky/sky.js';
+import { sky, composeBase, starFade } from '../sky/sky.js';
 import { clouds, cloudsTick, cloudsForce, isCloudStale, cloudTime } from '../sky/clouds.js';
 import { moonUpdate, drawMoon } from '../sky/moon.js';
 import { drawAurora, auroraUpdate, drawComet, drawSats, drawMeteor } from '../sky/events.js';
@@ -15,8 +15,7 @@ import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
 import { SPR } from '../sky/components.js';
 import { makeSky } from '../sky/sky.js';
-import { ritualActive, ritualTick, drawRitual } from './ritual.js';
-import { morningScene, drawMorning } from './morning.js';
+import { morningNow, morningMoving, morningGap, drawMorning, blendMorning, drawMorningNight, morningNight, morningLayers, groupBegin, groupEnd } from './morning.js';
 import { stepsUpdate } from '../model/steps.js';
 import * as pf from '../stageprof.js';
 import { stepsBack, stepsFront, stepsBullets, stepsPanel } from './steps.js';
@@ -30,11 +29,10 @@ export let frozenForce = false;
 export let xf = null;
 export function setFrozen(v) { frozen = !!v; }
 export function setFrozenForce(v) { frozenForce = !!v; }
-export function isAnimating() { return animating || !!xf || ritualActive(); }
+export function isAnimating() { return animating || !!xf || morningMoving(); }
 
 export function prepare() {
   clockTick(false);
-  ritualTick();
   replay(T);
   if (pf.on) pf.mark('prepare.replay');
   animating = !!xf; actN = 0; dimN = 0;
@@ -270,11 +268,17 @@ export function drawSprite(si) {
 import { igA, igK } from '../choreo/finish.js';
 import { undoShr } from '../choreo/undo.js';
 
+const LK = [];
 export function compose() {
-  if (morningScene()) { drawMorning(); return; }
-  if (frozen || isCloudStale() || T < cloudTime()) clouds(); else cloudsTick();
+  const st = morningNow();
+  if (st) morningGap(st);
+  if (st && st.dayK >= MORNING.rise.nightOff) { drawMorning(st); return; }   // the day (or the dusk) covers the night: skip it
+  const mk = st ? morningNight(st) : null;                   // the morning's fade of each group of the night; null = the plain night
+  if (frozen || isCloudStale() || T < cloudTime()) clouds(); else if (!st) cloudsTick();      // the morning holds the clouds still (the sunrise: they are under the dawn; the sunset: the night comes back as it was): they cost the most
   if (pf.on) pf.mark('clouds');
+  if (mk) starFade.t = mk.bg;
   composeBase(acts, actN, dims, dimN);
+  starFade.t = 1;
   if (xf) {
     const k = ease.inOut(clamp01((T - xf.t0) / (xf.dur || .9)));
     if (k >= 1) xf = null;
@@ -283,29 +287,40 @@ export function compose() {
     }
   }
   if (pf.on) pf.mark('xfade');
-  drawPast();
+  if (mk) drawPast(mk.bg, mk.lastKey, mk.last); else drawPast();
   if (pf.on) pf.mark('past');
-  moonUpdate(); auroraUpdate(frozenForce); drawAurora();
+  moonUpdate(); auroraUpdate(frozenForce);
+  const gs = mk ? groupBegin(mk.spec) : 1;
+  if (gs) drawAurora();
   if (pf.on) pf.mark('aurora');
-  drawMoon();
+  if (gs) drawMoon();
   if (pf.on) pf.mark('moon');
-  drawComet(); drawSats(); drawMeteor();
+  if (gs) { drawComet(); drawSats(); drawMeteor(); }
+  if (mk) groupEnd(gs, mk.spec);
   if (pf.on) pf.mark('events');
-  drawEdges();
-  if (pf.on) pf.mark('edges');
-  for (let si = 0; si < NS; si++) drawHalos(si);
-  if (pf.on) pf.mark('halos');
-  for (let si = 0; si < NS; si++) stepsBack(si, bump);
-  if (pf.on) pf.mark('steps.back');
-  for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis); }
-  if (pf.on) pf.mark('dimRect');
-  drawRitual();
-  if (pf.on) pf.mark('ritual');
-  for (let si = 0; si < NS; si++) { drawSprite(si); if (pf.on) pf.mark('sprites'); stepsFront(si); if (pf.on) pf.mark('steps.front'); }
-  stepsPanel();                                                          // the open step list sits in front of the sky: its rectangle is opaque
-  if (pf.on) pf.mark('steps.panel');
-  stepsBullets();
-  if (pf.on) pf.mark('steps.bullets');
+  drawMorningNight();
+  if (pf.on) pf.mark('morningNight');
+  const ga = mk ? groupBegin(mk.alive) : 1;                  // this week's alive stars: edges, halos, steps, labels' dim, sprites
+  if (ga) {
+    drawEdges();
+    if (pf.on) pf.mark('edges');
+    for (let si = 0; si < NS; si++) drawHalos(si);
+    if (pf.on) pf.mark('halos');
+    for (let si = 0; si < NS; si++) stepsBack(si, bump);
+    if (pf.on) pf.mark('steps.back');
+    const lk = mk ? mk.labels : 1;
+    for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis * lk); }      // the plate fades with its label (M2c)
+    if (pf.on) pf.mark('dimRect');
+    for (let si = 0; si < NS; si++) { drawSprite(si); if (pf.on) pf.mark('sprites'); stepsFront(si); if (pf.on) pf.mark('steps.front'); }
+    if (lk < 1) for (let si = 0; si < NS; si++) { LK[si] = lab[si].listK; lab[si].listK *= lk; }       // the open list's opaque panel fades with its label too
+    stepsPanel();                                                          // the open step list sits in front of the sky: its rectangle is opaque
+    if (lk < 1) for (let si = 0; si < NS; si++) lab[si].listK = LK[si];       // (restored: the label text is drawn after this by the faded pass)
+    if (pf.on) pf.mark('steps.panel');
+    stepsBullets();
+    if (pf.on) pf.mark('steps.bullets');
+  }
+  if (mk) groupEnd(ga, mk.alive);
+  if (st && morningLayers(st)) blendMorning(st);
 }
 
 /* crossfade to a new sky (the old base is snapshotted, then the new week fades in) */

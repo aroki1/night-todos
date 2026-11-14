@@ -55,11 +55,34 @@ export const MORNING = {
   valley: { trunk: hex('#4a3626'), reed: hex('#7a8a3a'), cattail: hex('#6b4a2a'), glint: hex('#fff2c8'), mist: hex('#fff0d0') },
   /* backlight: rim gold, long shadows, rolling ground */
   light: { rim: hex('#ffd36e'), rimGrass: .62, rimBase: .1, rimSpread: .36, roll: .4, rollWarm: .16, shadowA: .55, shadowLen: .95, shadowDx: .32 },
+  /* sunrise and sunset drawing (M2b, M2c). glow: the horizon warming under the night (share of the horizon height where it starts, peak mix, profile exponent).
+     sil: silhouette colour, modulated by the layer's own luminance (silBase + silGain * lum). landTone: exponent of landColorK (colour comes late and goes early).
+     nightOff: from this dayK on the night is not composed at all (1: only when every sky grain has switched). */
+  rise: {
+    glow: { from: .6, peak: .55, pow: 1.4 },
+    sil: hex('#0b0e1a'), silBase: .5, silGain: 1.1,
+    landTone: 1.8, nightOff: 1,
+    starSoft: .3, starMax: .7,
+    boostMax: .15, boostHalo: .6, pastBoost: .5
+  },
+  /* M2c: every transition is per grain. A grain switches when the phase progress passes its order o = mix(direction, noise, noiseMix), over rampMs of its own.
+     silNoise: the noise share for the silhouette (appears and dissolves almost at random, with a slight bottom-up / top-down bias).
+     lightDx, lightDy: weights of the distance from the sun's x and from the horizon in the order of the light on the land. */
+  grain: { noiseMix: .35, silNoise: .8, rampMs: 150, lightDx: .45, lightDy: .55, blob: 9, blobShare: .6 },
+  /* the sunset sky: gold, rose, violet ([top, mid, horizon] each); the sun's colours at the end of the day */
+  dusk: {
+    stops: [
+      [hex('#a9a9bd'), hex('#e3b684'), hex('#f2c26b')],
+      [hex('#8f8fb8'), hex('#cf8f9a'), hex('#e58f7e')],
+      [hex('#4c4a78'), hex('#7d6a9c'), hex('#b0789a')]
+    ],
+    sun: { core: hex('#ffd9a0'), limb: hex('#ff9a58'), halo: hex('#ff9a6a') }
+  },
   horizon: .64, horizonPhone: .68,
   skyMid: .45,                                   // where the mid sky colour sits, as a share of the horizon height
   minGap: 12,                                     // grains between flower stems
   gap: { night: [3 / 255, 4 / 255, 7 / 255], paper: hex('#d8ccb4'), mosaicK: .72 },
-  text: { ink: '#14120f', dim: '#2e2a22', x: .06, y: .10, yPhone: .08, lineGrains: 6 },
+  text: { ink: '#14120f', dim: '#2e2a22', x: .06, y: .10, yPhone: .08, lineGrains: 6, name: 'name this week' },
   quote: { text: 'a placeholder line until the quotes arrive', by: '' }
 };
 
@@ -85,9 +108,23 @@ export const TIME = {
   createMotes: .6, createSettle: .9, createLabelStart: .7, createLabelStep: .018,
   expireLabelOut: [.9, 1.0], expireLabelIn: [1.0, 1.1],
   undoWindow: 5,
-  crossfade: .9, crossfadeRitual: 1.5,
-  ritual: { boost: 600, lift0: 600, lift1: 3000, sky0: 1800, sky1: 3300, barIn: 2600, barOut: 3800, end: 4200, reduced: 600 },
-  morning: { idleMs: 1500, shownMs: 2000, driftMs: 2000 },   // presence: no input for idleMs, or the page shown less than shownMs ago; clock resync when wall time drifts more than driftMs
+  crossfade: .9, crossfadeMorning: 1.5,
+  /* the weekly morning (docs/specs/SPEC-morning.md section 5). presence: no input for idleMs, or the page shown less than shownMs ago;
+     clock resync when wall time drifts more than driftMs. Then the timeline in ms: [from, to] ranges; A..C count from the start, D from the leave. */
+  morning: {
+    idleMs: 1500, shownMs: 2000, driftMs: 2000,
+    night: 1500, hold: 7500,                                   // A ends, C starts
+    labels: [0, 400], boost: [400, 1000],
+    bgStars: [1500, 4500], specials: [1500, 2500], missed: [2000, 3000], alive: [3500, 4500], done: [4500, 5500],
+    glow: [1500, 4500], day: [2500, 6500], gap: [3000, 6500], sun: [3800, 6500], land: [2400, 4200], landColor: [5000, 7000],
+    bloom0: 5500, bloomStep: 120, stem: 400, head: 500, buds: [6500, 7000],
+    textStep: 200, textIn: 400, advance: 400,
+    oldOut: [0, 1500], textOut: [0, 600], nameOut: [600, 1200], sunSet: [0, 9000], close: [1500, 4500], closeHead: 500,
+    dusk: [2500, 6000], newNight: [4500, 6000], landDark: [3000, 6500], landSink: [6500, 8000], gapBack: [4000, 7000],
+    newStars: [5000, 8500], carried: [6500, 8000], pastBoost: [7500, 9000], week: [8500, 8800, 10200, 10500], end: 10500,
+    createAt: 6400, cut: 600,
+    reducedRise: 800, reducedSet: 800, reducedWeek: 1500
+  },
   clockTick: .25, cloudChunk: .0625, auroraTick: .25,
   barOut: .08, previewDelay: [.15, .27]
 };

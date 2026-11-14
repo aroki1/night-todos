@@ -4,7 +4,7 @@ import { stars, NS } from '../model/store.js';
 import { doFinish, doUndo, doStepNext, doStepToggle, doStepDelete } from '../model/timeline.js';
 import { focus, selIdx, mouseHover, setSelIdx, setMouseHover, setForceFocus, lab } from '../model/placement.js';
 import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget } from './bar.js';
-import { skipRitual } from '../render/ritual.js';
+import { morningPhase, morningCtl } from '../render/morning.js';
 import { wake } from './bar.js';
 import { stepsLive, stepRows, sui } from '../model/steps.js';
 
@@ -15,10 +15,25 @@ export function finishFocused() {
   const i = focus;
   if (i >= 0 && doFinish(i, T, true)) { setSelIdx(-1); wake(); }
 }
+/* the morning owns the keyboard. A-B: Space or Enter hurries the sunrise, Esc leaves. C: Esc leaves, Enter opens the bar,
+   any other printable key opens the bar and lands in it (no preventDefault). D: Esc cuts the sunset short */
+function morningKey(e, mp) {
+  const k = e.key, mod = e.ctrlKey || e.metaKey || e.altKey;
+  if (mp === 'night' || mp === 'rise') {
+    if (k === ' ' || k === 'Enter') { e.preventDefault(); morningCtl.advance(); }
+    else if (k === 'Escape') { e.preventDefault(); morningCtl.leave(''); }
+  } else if (mp === 'hold') {
+    if (k === 'Escape') { e.preventDefault(); morningCtl.leave(''); }
+    else if (k === 'Enter') { e.preventDefault(); setBarFocus(true); setBarCaret(); }
+    else if (k.length === 1 && k !== ' ' && !mod) setBarFocus(true);
+  } else if (mp === 'set' && k === 'Escape') { e.preventDefault(); morningCtl.cut(); }
+  wake();
+}
 export function bindKeys() {
   window.addEventListener('keydown', e => {
     if (bar.focus) return;                                  // the real input handles everything
-    skipRitual();
+    const mp = morningPhase();
+    if (mp && mp !== 'end') { morningKey(e, mp); return; }       // night interactions are off during the morning
     if (e.ctrlKey || e.metaKey || e.altKey) {
       if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey) { e.preventDefault(); tryUndo(doUndo); }
       return;
