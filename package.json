@@ -12,6 +12,7 @@
     "serve": "node scripts/serve.mjs app 5173",
     "shell": "node scripts/gen-shell.mjs",
     "check": "node scripts/gen-shell.mjs --check",
+    "test": "node scripts/test.mjs",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build"

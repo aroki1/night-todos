@@ -86,10 +86,11 @@ export const SIZE = {
 };
 
 /* scene flags from the URL (dev-only) */
-export const Q = new URLSearchParams(location.search);
+const LOC = typeof location !== 'undefined' ? location : { search: '', hostname: '' };  // Node (npm test): not dev
+export const Q = new URLSearchParams(LOC.search);
 export const FLAGS = {
   prof: Q.get('prof') === '1',               // dev: per-stage frame timer (stageprof.js)
-  dev: Q.get('dev') !== '0' && (Q.get('dev') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'),
+  dev: Q.get('dev') !== '0' && (Q.get('dev') === '1' || LOC.hostname === 'localhost' || LOC.hostname === '127.0.0.1'),
   demo: Q.get('demo') === '1',
   gl: Q.get('gl') !== '0',                   // ?gl=0 forces the 2D canvas path (dev/tests)
   parity: Q.get('v10parity') === '1',
@@ -117,7 +118,7 @@ export function getReducedPref() { return reducedPref; }
 export function isReduced() {
   if (reducedPref === 'on') return true;
   if (reducedPref === 'off') return false;
-  return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  return !!(typeof window !== 'undefined' && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
 /* grain-drawn return arrow (no font glyph) */
