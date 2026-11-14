@@ -34,8 +34,6 @@ export const skyResets = [];
 export function onSkyReset(fn) { skyResets.push(fn); }
 
 export const geometryListeners = [];
-let geometryVersion = 0;
-export const getGeometryVersion = () => geometryVersion;
 
 export function initCanvas(canvas) {
   cv = canvas;
@@ -112,7 +110,6 @@ export function configure(gw, sh, barRows, ratio) {
       gl.uniform4f(guSize, GW, SH, P, D); gl.uniform1f(guH, gch); img = u32 = null;
     } else allocImg();
   }
-  geometryVersion++;
   for (const fn of geometryListeners) fn();
 }
 

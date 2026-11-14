@@ -3,8 +3,6 @@
 import { hex } from './math.js';
 
 export const FONT = '"IBM Plex Mono", ui-monospace, Consolas, monospace';
-export const FONT_URL = '../fonts/IBMPlexMono-Regular.woff2';
-export const FONT_URL_500 = '../fonts/IBMPlexMono-Medium.woff2';
 
 /* text colour (DOM-ish chrome) */
 export const TXT = {
@@ -43,7 +41,7 @@ export const LAYOUT = {
   v10: { GW: 404, SH: 196, ROWS: 216 },        // the approved baseline geometry
   barRowsDesktop: 20,
   barRowsTouch: 24,
-  canvasTop: 6,                                // parity mode: v10's 6px top margin
+  canvasTop: 6,
   maxGrainWidth: 0,                            // 0 = fill the viewport
   minGrainsW: 60, minGrainsH: 80
 };
@@ -93,7 +91,6 @@ export const FLAGS = {
   dev: Q.get('dev') !== '0' && (Q.get('dev') === '1' || LOC.hostname === 'localhost' || LOC.hostname === '127.0.0.1'),
   demo: Q.get('demo') === '1',
   gl: Q.get('gl') !== '0',                   // ?gl=0 forces the 2D canvas path (dev/tests)
-  parity: Q.get('v10parity') === '1',
   debug: Q.get('debug') === '1',
   seed: Q.has('seed') ? +Q.get('seed') : null,
   clock: Q.getAll('clock').pop(),
@@ -125,7 +122,6 @@ export function isReduced() {
 export const ARROW = ['....#', '....#', '.#..#', '#####', '.#...'];
 
 export const BGPIX = (255 << 24) | (7 << 16) | (4 << 8) | 3;   // #030407, also the gap between dots
-export const BG_HEX = '#030407';
 
 /* steps inside a task: an orbit of dust around the star, one companion per slot (up to 8).
    Brightness ceiling: below the parent core and glow, at the constellation's level. */

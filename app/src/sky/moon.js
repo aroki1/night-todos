@@ -25,7 +25,7 @@ export function moonOK(x, y) {
       if (Math.hypot(dx, dy) < 5 + SIZE.moonClearStars) return false;
     }
   }
-  if (!FLAGS.parity) for (let e = 0; e < edgeList.length; e += 6) {
+  for (let e = 0; e < edgeList.length; e += 6) {
     if (distToSeg(x, y, edgeList[e], edgeList[e + 1], edgeList[e + 2], edgeList[e + 3], edgeList[e + 4], edgeList[e + 5]) < 5 + SIZE.moonClearEdges) return false;
   }
   return true;
@@ -53,8 +53,8 @@ onSkyReset(resetMoon);
 export function moonUpdate() {
   const M = moonSt, age = moonAge(wall(T));
   M.age = age; M.k = (1 - Math.cos(2 * Math.PI * age / SYNODIC)) / 2;
-  M.op = FLAGS.parity ? 1 : moonWindowOpacity(T);
-  M.show = M.k >= .03 && (FLAGS.parity || M.op > 0);
+  M.op = moonWindowOpacity(T);
+  M.show = M.k >= .03 && M.op > 0;
   if (!M.init || !moonOK(M.x, M.y)) {
     const np = moonPick();
     if (!M.init) { M.x = np.x; M.y = np.y; M.init = true; }

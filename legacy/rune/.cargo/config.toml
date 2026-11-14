@@ -1,3 +1,0 @@
-# The project folder path is very long on this machine; keep build output on a short path.
-[build]
-target-dir = "C:/nstarget"

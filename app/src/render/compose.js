@@ -150,7 +150,7 @@ export function drawHalos(si) {
   const s = stars[si]; if (!pres(s)) return;
   if (s.gh) { if (s.ghA > .01) { const rr = s.big ? 7 : 5; halo(s.gx, s.gy, C.warm, .03 * s.ghA, rr, rr * 3); } return; }
   const ex = s.miss && s.mT >= 0 && s.mT < 1700;
-  if (s.miss && !ex) { halo(s.gx, s.gy, C.ash, FLAGS.parity ? .04 : .06, 2, 5); return; }
+  if (s.miss && !ex) { halo(s.gx, s.gy, C.ash, .06, 2, 5); return; }
   const fs = FS[si], us = US[si], b0 = s.big, cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9;
   let cold = 0, mul = 1, hv = 1;
   if (s.done) { cold = fs ? fs.haloCold : 1; mul = fs ? fs.haloMul : 1; } else if (us) cold = us.cold; else hv = 1 + .15 * hk[si];
@@ -164,7 +164,7 @@ export function drawHalos(si) {
     else { const rr = (b0 ? 7 : 5) * (.6 + .4 * s.life); halo(s.gx, s.gy, C.warm, (.08 + .12 * s.life) * w, rr, rr * 3); halo(s.gx, s.gy, C.warmC, .38 * w, 1.4, 4); }
   }
   if (cold > 0) { halo(s.gx, s.gy, C.cold, .26 * cold, b0 ? 7.5 : 5.5, b0 ? 22 : 16); halo(s.gx, s.gy, C.core, .45 * cold, 1.5, 4); }
-  if (ex) halo(s.gx, s.gy, C.ash, (FLAGS.parity ? .04 : .06) * ease.inOut(seg(s.mT, 900, 1600)), 2, 5);
+  if (ex) halo(s.gx, s.gy, C.ash, .06 * ease.inOut(seg(s.mT, 900, 1600)), 2, 5);
   if (fs && !fs.reduced) { if (fs.ringOn) ring(s.gx, s.gy, fs.ringR, fs.ringB, C.done); if (fs.flashPeak > 0) halo(s.gx, s.gy, C.core, fs.flashPeak, fs.flashSig, fs.flashRad); }
 }
 /* choreography light: creation motes and the expire exhale (render layer, step 9) */
@@ -216,7 +216,7 @@ export function drawSprite(si) {
   if (s.gh) { drawGhost(s); return; }
   if (s.miss && s.mT >= 0 && s.mT < 1700) { drawExhale(s, s.mT); return; }
   if (s.miss) {
-    const nb = FLAGS.parity ? .35 : .5;
+    const nb = .5;
     over(s.gx, s.gy, C.ash, 1);
     over(s.gx - 1, s.gy, C.ash, nb); over(s.gx + 1, s.gy, C.ash, nb);
     over(s.gx, s.gy - 1, C.ash, nb); over(s.gx, s.gy + 1, C.ash, nb);

@@ -50,4 +50,3 @@ export function edgeState(fin, ms) {
   o.pulseK = clamp01((ms - ar - 1500) / 1000);
   return o;
 }
-export const FINISH = { chargeMinMs: TIME.chargeMin * 1000, drawMinMs: TIME.edgeDrawMin * 1000 };

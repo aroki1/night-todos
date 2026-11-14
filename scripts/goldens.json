@@ -3,18 +3,18 @@
   "hashes": {
     "steps@d125": "999233d14012b234d840ab4258410ef6123173a9da2d60c7022643642314dd4a",
     "finish@d125": "0ab89791ec6774cfe8cfcd534db4fceedef2c5e8d5b6707cf0e62b0ba6d1a8f0",
-    "labels@d125": "61d143a8f34c6b4a53f413a4a0d771f87ea1e4e857b4ad2d677a695ffc020161",
+    "labels@d125": "afb89fdc1248d387c846f9d557588e001cca0a231e067a9ba3302cf8a1d60193",
     "ritual@d125": "2acaee134e90815dafb743db3d7716b3740cb601ac7f7f3c96a2e4b77f40fb04",
     "ambient@d125": "cdcd42f7f7bce69f04595b5f41f292ab893825eaa77d90894c4dcdc68723ab82",
     "steps@ph": "14f6648925e87bf2085dccd43d6b3bde3681504b1c7ce465d247c6126f935b29",
     "finish@ph": "8ddf06649526a6458b17f3c281550ea9573a3fd850c6b737a0a27e59c1a8d6d7",
-    "labels@ph": "b537aa0e060588572c3157073825bbbdde791111c009c35aa0761d6a63257e97",
+    "labels@ph": "17fecaa108045db5cae7f0931def2b9afda2a5ac95a43fd26b285795b457745e",
     "ritual@ph": "2bd9c9c322414a4b2d0e53e71bb24ab162e415ff5a04f9a7af3f7768b26aec8a",
     "ambient@ph": "9a56dc64d2af522b6c94c0fddca9a81e516b70a99b5cd6174e9899e48c38a804"
   },
   "perf": {
-    "measuredMedianMs": 5.4,
-    "budgetMs": 8.1,
+    "measuredMedianMs": 5,
+    "budgetMs": 7.5,
     "frames": 300,
     "setup": "ambient (no scene), 1917x933 dpr 2, GPU"
   }

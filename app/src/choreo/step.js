@@ -17,7 +17,6 @@ export const STAGE = { antic: 120, f0: 120, fPeak: 190, f1: 450, dim: .3, flash:
 export const UNDO_MS = 500, REDUCED_MS = 250;
 /* pulse duration for a path of `dist` grains: 11 ms per grain, clamped 180..400 */
 export const pulseMs = dist => Math.max(180, Math.min(400, dist * 11));
-export const endMs = dist => STAGE.p0 + pulseMs(dist) + STAGE.hold;
 
 /* the orbit folding into the core when a task is finished with its steps (k: 1 = full orbit, 0 = gone) */
 export const collapseK = (ms, reduced) => 1 - (reduced ? seg(ms, 0, REDUCED_MS) : ease.inOut(seg(ms, 0, STEPS.collapse)));

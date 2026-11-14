@@ -26,7 +26,6 @@ const INPUT_ACTIVE_MS = 300;   // after a pointer move or key press the loop ren
 
 function computeGeometry() {
   const vw = window.innerWidth, vh = window.innerHeight, ratio = window.devicePixelRatio || 1;
-  if (FLAGS.parity) return { gw: 404, sh: 196, rows: 196 + 20, ratio };
   const touch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || vw < 700;
   const barRows = touch ? LAYOUT.barRowsTouch : LAYOUT.barRowsDesktop;
   // One grain is P device px = P/ratio CSS px (P is rounded to whole device px, so it is not always 3 CSS px,
@@ -39,7 +38,6 @@ function computeGeometry() {
 function applyGeometry() {
   const g = computeGeometry();
   configure(g.gw, g.sh, g.rows - g.sh, g.ratio);
-  document.body.classList.toggle('parity', FLAGS.parity);
   clearWidthCache();
   cloudReset();
   syncStarPositions();
@@ -258,8 +256,8 @@ async function boot() {
   setAnnouncer(announce);
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('tabindex', '0');
-  /* production: draw the sky at once and add canvas text when the fonts arrive. deterministic paths (freeze, scenes, parity, bench, script, dev) await the fonts first, as before */
-  const fast = !FLAGS.dev && !FLAGS.freeze && !FLAGS.scene && !FLAGS.parity && !FLAGS.bench && !FLAGS.script;
+  /* production: draw the sky at once and add canvas text when the fonts arrive. deterministic paths (freeze, scenes, bench, script, dev) await the fonts first, as before */
+  const fast = !FLAGS.dev && !FLAGS.freeze && !FLAGS.scene && !FLAGS.bench && !FLAGS.script;
   if (fast) textReady = false;
   else { await fontsReady; clearWidthCache(); }
 
@@ -271,7 +269,6 @@ async function boot() {
   liveWeek = isoWeekKey(wall(0)); setInterval(checkRollover, 30000);
 
   window.addEventListener('resize', () => {
-    if (FLAGS.parity && Math.abs((window.devicePixelRatio || 1) - dpr) < .001) return;
     clearTimeout(window.__nsResize);
     window.__nsResize = setTimeout(() => {
       applyGeometry();

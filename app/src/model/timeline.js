@@ -138,7 +138,6 @@ export function applyImport(raw, atT) {
   externalUndo = { at: atT, type: 'import', n, snapshot };
   return n;
 }
-export function undoDescriptor() { return externalUndo || undoTarget; }
 
 /* ---------- steps: finish / reopen / add / delete are events; the data change is committed here, the choreography is derived in replay ---------- */
 const stepLive = s => !!s && s.on && !s.done && !s.miss && !s.gh && !!s.steps;

@@ -11,7 +11,7 @@ A todo list where every task is a star. Finish it and it joins this week's const
 ## How it works
 
 - Each task is a star. Its arms shrink as the deadline nears.
-- When it gets urgent (under a quarter of its time left), it turns amber.
+- When it gets urgent (under a quarter of its time left, under an hour left, or behind the pace of its steps), it turns amber.
 - Finish it and it flares and turns cold blue-white.
 - Finished stars link into the week's constellation.
 - Every week has its own sky, seeded by the week number.
@@ -50,12 +50,12 @@ npm run dev            # static server on http://127.0.0.1:5173
 npm run desktop:dev    # Tauri window
 ```
 
-Open `http://127.0.0.1:5173/?dev=1` for test hooks (`window.ns`). Run `ns.selfTest()` in the console. Useful flags: `demo=1`, `seed=7`, `clock=2026-11-13T21:00`, `t=12`, `freeze=1`, `weeks=6`, `ritual=1`, `v10parity=1`. `node scripts/parity.mjs` diffs against `prototype/v10.html`; `node scripts/cdp.mjs <url> <out.png>` takes headless Edge screenshots.
+Open `http://127.0.0.1:5173/?dev=1` for test hooks (`window.ns`). Useful flags: `demo=1`, `seed=7`, `clock=2026-11-13T21:00`, `t=12`, `freeze=1`, `weeks=6`, `ritual=1`. Tests: `npm test` runs the selftests in Node; `npm run verify` adds import-direction, shell, golden-screenshot and perf checks (one headless Edge run). `node scripts/cdp.mjs <url> <out.png>` takes a headless Edge screenshot. See [CLAUDE.md](CLAUDE.md) for the rules.
 
 ## Deploy
 
 - **GitHub Pages:** push to `main`, then in the repo settings choose Pages, Source: GitHub Actions. `.github/workflows/pages.yml` publishes `app/`.
-- **Any static host:** upload the `app/` folder. All paths are relative, so a subpath works. Bump `VERSION` in `app/sw.js` for each release.
+- **Any static host:** upload the `app/` folder. All paths are relative, so a subpath works. `VERSION` and the shell list in `app/sw.js` are generated: run `npm run shell` after editing anything under `app/`.
 - **Desktop:** `npm run desktop:build`.
 
 ## Project structure
@@ -63,10 +63,8 @@ Open `http://127.0.0.1:5173/?dev=1` for test hooks (`window.ns`). Run `ns.selfTe
 ```
 app/        the product: static ES modules, PWA (index.html, sw.js, src/, fonts/, icons/)
 desktop/    Tauri 2 shell serving app/
-prototype/  v8-v10 prototypes and QA shots (history)
-legacy/     the original Rust/Rune app
 docs/       DESIGN.md, specs, dev notes, media
-scripts/    serve.mjs, cdp.mjs, parity.mjs
+scripts/    serve.mjs, cdp.mjs, gen-shell.mjs, test.mjs, verify.mjs
 ```
 
 ## Design
@@ -75,7 +73,7 @@ See [docs/DESIGN.md](docs/DESIGN.md).
 
 ## History
 
-Night Sky began as a Rust desktop app and moved through three browser prototypes (v8 to v10). It now ships as web plus Tauri: one build runs everywhere, including iPhone browsers, without needing WebGPU. The original app lives in `legacy/rune/`.
+Night Sky began as a Rust desktop app and moved through three browser prototypes (v8 to v10); git history keeps them. It now ships as web plus Tauri: one build runs everywhere, including iPhone browsers, without needing WebGPU.
 
 ## Licence
 

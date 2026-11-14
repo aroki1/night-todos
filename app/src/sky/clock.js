@@ -5,7 +5,6 @@ import { GW, SH, LM, SR, SG, SB, SBR, SBG, SBB, AGR, AGG, AGB, PROF, onSkyReset 
 
 export let T = 0;                                        // sky time, seconds
 export function setT(v) { T = v; }
-export function advanceT(dt) { T += dt; }
 
 export const CLOCK0 = FLAGS.clock ? new Date(FLAGS.clock).getTime() : Date.now();
 export let clockBase = CLOCK0;

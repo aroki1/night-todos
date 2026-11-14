@@ -1,5 +1,5 @@
 /* scripts/verify.mjs — `npm run verify`: one command that says whether a change is safe.
-   Tier 1 (Node, seconds): selftests, import direction (ARCHITECTURE-NOTES §2), SW shell check, module-map stub.
+   Tier 1 (Node, seconds): selftests, import direction (layer table below), SW shell check, module map (CLAUDE.md vs files on disk).
    Tier 2 (ONE headless Edge via scripts/cdp.mjs): golden screenshot hashes + perf budget, both in scripts/goldens.json.
    `npm run verify -- --update-goldens` rewrites the hashes and the budget on purpose.
    Silent on success except one summary line; on failure prints only what failed (+ paths of the failing shots). */
@@ -29,7 +29,7 @@ function runNode(script, args = []) {
   return { ok: r.status === 0, out: (r.stdout || '') + (r.stderr || '') };
 }
 
-/* layer of a file under app/src, per ARCHITECTURE-NOTES §2 (a module may only import from its own layer or above) */
+/* layer of a file under app/src, (a module may only import from its own layer or below; lower number = lower layer) */
 function layer(rel) {
   if (rel === 'tokens.js' || rel === 'math.js' || rel === 'stageprof.js') return 0;
   if (rel === 'framebuffer.js' || rel === 'sky/clock.js') return 1;
@@ -43,7 +43,7 @@ function layer(rel) {
   return null;
 }
 function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []); }
-/* existing edges that break the §2 row order today (found by this check on 2026-11-14). New violations fail; fix or remove an entry when you touch the edge. */
+/* existing edges that break the layer order today (found by this check on 2026-11-14). New violations fail; fix or remove an entry when you touch the edge. */
 const KNOWN = new Set(['model/placement.js>model/timeline.js', 'model/placement.js>choreo/finish.js', 'model/placement.js>choreo/undo.js', 'model/steps.js>choreo/step.js', 'sky/sky.js>choreo/finish.js']);
 function importCheck() {
   const bad = [];
@@ -68,7 +68,19 @@ function importCheck() {
   return bad;
 }
 
-function moduleMapCheck() { return []; }   // Run 3 fills this in (CLAUDE.md module map vs files on disk); no-op until then
+/* every app/src/**.js and scripts/*.mjs must appear as a backticked path in CLAUDE.md, and every such path in CLAUDE.md must exist */
+function moduleMapCheck() {
+  const md = fs.readFileSync(path.join(ROOT, 'CLAUDE.md'), 'utf8');
+  const named = new Set([...md.matchAll(/`((?:app\/src\/[\w\/.-]+\.js)|(?:scripts\/[\w.-]+\.(?:mjs|json)))`/g)].map(m => m[1]));
+  const onDisk = new Set([
+    ...walk(SRC).map(f => 'app/src/' + path.relative(SRC, f).replace(/\\/g, '/')),
+    ...fs.readdirSync(path.join(ROOT, 'scripts')).filter(n => /\.(mjs|json)$/.test(n)).map(n => 'scripts/' + n)
+  ]);
+  const out = [];
+  for (const f of onDisk) if (!named.has(f)) out.push('module-map: ' + f + ' is not in the CLAUDE.md module map');
+  for (const f of named) if (!onDisk.has(f)) out.push('module-map: CLAUDE.md names ' + f + ' but it does not exist');
+  return out;
+}
 
 const test = runNode('test.mjs');
 if (!test.ok) fail(['npm test failed:', test.out.trim()]);
@@ -87,7 +99,7 @@ const SIZES = { d125: { size: '1917x933', dpr: 1.25 }, ph: { size: '375x812', dp
 const SCENES = {
   steps: 'scene=steps',
   finish: 'scene=finish',
-  labels: 'scene=labels',
+  labels: 'scene=labels&demo=1&hover=hm%20one-pager',   // demo=1 + hover: star labels and the hover frame are drawn, so TXT/label tokens are covered
   ritual: 'ritual=1&t=12&at=1500',
   ambient: 'freeze=1&t=12'
 };

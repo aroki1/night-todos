@@ -21,7 +21,7 @@ function satPass(n) {
 export function satNow(out) {
   out.length = 0;
   // a satellite is dimmer than the moon or the comet; don't stack specials (taste rule)
-  if (!FLAGS.parity && (moonSt.show || (sky.comet && cometHead(cometTmp)))) return out;
+  if ((moonSt.show || (sky.comet && cometHead(cometTmp)))) return out;
   const n0 = Math.floor(T / SAT_PER);
   for (let n = n0; n >= Math.max(0, n0 - 3); n--) {
     const p = satPass(n), u = T - p.t0;
@@ -29,7 +29,7 @@ export function satNow(out) {
     const f = u / p.dur, b = .3 + (p.flare ? .5 * Math.exp(-Math.pow((u - p.um) / .75, 2)) : 0);
     out.push({ x: p.x0 + (p.x1 - p.x0) * f, y: p.y0 + (p.y1 - p.y0) * f, b, flare: p.flare });
   }
-  if (!FLAGS.parity && DEMO > 1 && out.length > 1) out.length = 1;       // demo: at most one satellite at a time
+  if (DEMO > 1 && out.length > 1) out.length = 1;       // demo: at most one satellite at a time
   return out;
 }
 const satTmp = [], cometTmp = { x: 0, y: 0 };
@@ -121,7 +121,7 @@ export function drawComet() {
   const hx = cmTmp.x, hy = cmTmp.y;
   if (hx < -45 || hx > GW + 45) return;
   const dx = hx - c.sunX, dy = hy - c.sunY, l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l, px = -uy, py = ux, len = c.len;
-  const dustB = FLAGS.parity ? .26 : .32, dustP = FLAGS.parity ? 1.5 : 1.3;
+  const dustB = .32, dustP = 1.3;
   for (let s = 1; s < len; s += 1) {                       // dust tail: slightly curved
     const f = s / len, cv2 = c.curve * f * f * 5;
     splat(hx + ux * s + px * cv2, hy + uy * s + py * cv2, C.cometH, dustB * Math.pow(1 - f, dustP));
@@ -131,7 +131,7 @@ export function drawComet() {
     const f = s / il; splat(hx + ix * s, hy + iy * s, C.ion, .13 * Math.pow(1 - f, 1.5));
   }
   halo(hx, hy, C.cometH, .22, 1.6, 5);
-  splat(hx, hy, C.cometH, FLAGS.parity ? .4 : .55);
+  splat(hx, hy, C.cometH, .55);
 }
 
 /* what is visible right now (used by the sampler and the moon window test) */

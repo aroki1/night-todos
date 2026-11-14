@@ -77,14 +77,8 @@ export function labelInfo(si) {
       c1 = mixTo([0, 0, 0], cInk, K.dim, seg(ms, 300, 1300));
       const left = s.exLeft || '<1m', sw = expireSwap(ms);       // sequential: 100 ms out, then 100 ms in
       c2 = urgent ? K.warn : K.dim;
-      if (FLAGS.parity) {
-        const k = seg(ms, 900, 1050);                            // v10's crossfade, for the parity check only
-        t2 = k < 1 ? left : ''; a2 = vis * (1 - k); place2 = left;
-        t3 = k > 0 ? 'missed' : ''; a3 = vis * k;
-      } else {
-        t2 = sw.leftGone ? '' : left; a2 = vis * sw.leftA; place2 = left;
-        t3 = sw.missedOn ? 'missed' : ''; a3 = vis * sw.missedA;
-      }
+      t2 = sw.leftGone ? '' : left; a2 = vis * sw.leftA; place2 = left;
+      t3 = sw.missedOn ? 'missed' : ''; a3 = vis * sw.missedA;
     } else { t2 = s.stamp; place2 = s.stamp; }
   } else if (s.done) {
     const fin = s.fin, fs = FS[si], ms = fin ? (T - fin.t0) * 1000 : 1e9;

@@ -102,6 +102,15 @@ A task may have up to 20 steps, `task.steps = [{ id, text, doneAt }]`. Tasks sav
 - Ready (all steps done, task not finished): the whole orbit is cold, one glint travels it per 4 s.
 - With no steps a task looks and behaves exactly as before.
 
-## 9. Don'ts
+## 9. Decisions carried from the archived specs
+
+Full history in `docs/specs/archive/`; one-line decisions in `docs/dev/DECISIONS.md`.
+
+- The product is `app/` only: one grain framebuffer, text the only off-grain layer, no framework, no build step.
+- Weeks are ISO weeks; finished stars archive into past-week constellations and the Monday ritual decides what carries over (`model/week.js`).
+- Data is local-first: tasks, weeks and prefs persist through `platform.js` (localStorage on the web, Tauri storage on desktop); the session event log is memory only.
+- Performance: the live frame is paced (idle 15 fps), clouds are keyframed and upsampled in slices, and the GPU only presents the grain (the frame stays a pure function of T).
+
+## 10. Don'ts
 
 Smooth shapes over the sky; new colours; blinking; particles flying across the screen; more than one special event at once; header or stats chrome; labels on past weeks; reading the clock outside `sky/clock.js`.
