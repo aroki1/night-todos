@@ -10,6 +10,7 @@ import { slotCount, slotFill, stepFinishState } from '../choreo/step.js';
 
 export const hasSteps = s => !!(s.steps && s.steps.length);
 export const stepsLive = s => hasSteps(s) && s.on && !s.done && !s.miss && !s.gh;
+export const stepsHint = s => !hasSteps(s) && s.on && !s.done && !s.miss && !s.gh;   // a selected star like this shows the dim "+ step" row
 export const doneCount = s => { let d = 0; for (const t of s.steps) if (t.doneAt) d++; return d; };
 export const nextIdx = s => s.steps.findIndex(t => !t.doneAt);
 const key = s => s.id || s.n;

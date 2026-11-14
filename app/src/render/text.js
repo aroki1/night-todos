@@ -40,6 +40,10 @@ export function drawLabels() {
     ctx.font = '400 12px ' + FONT;
     if (L.t2) { ctx.globalAlpha = L.a2; ctx.fillStyle = css(L.c2); ctx.fillText(L.t2, L.dx * 3, (L.dy + 9) * 3 + 1); }
     if (L.t3) { ctx.globalAlpha = L.a3; ctx.fillStyle = css(K.dim); ctx.fillText(L.t3, L.dx * 3, (L.dy + 9) * 3 + 1); }
+    if (L.hint && L.hintK > .01) {
+      ctx.globalAlpha = L.hintK * STEPS.rowHintAlpha; ctx.fillStyle = TXT.dim;
+      ctx.fillText(L.hint, (L.dx + STEPS.indent) * 3, (L.dy + 12 + rowPitch() * .5) * 3 + 1);
+    }
     if (L.list && L.listK > .01) {
       const p = rowPitch(), sy = sui.sy[si], pt = L.dy + 12;                 // the step list: same typography, cold / ink / ink2 / dim
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath();       // rows scroll smoothly and are clipped to the panel

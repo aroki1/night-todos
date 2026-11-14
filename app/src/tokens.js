@@ -132,7 +132,9 @@ export const STEPS = {
   hover: 1.6,                                      // hover / selection multiplier on all step light
   rowStep: 6, rowStepTouch: 11,                    // list row pitch in grains (11 grains is at least 32 CSS px at dpr 2)
   maxOpenRows: 5, maxDoneRows: 5, indent: 4,
-  panelFrac: .4, panelRows: 6, hintPad: 5,         // list panel: max height as a share of the sky; on desktop also at most 6 rows (done header + 5 open); gutter for the scroll hints
+  rowHint: '+ step', rowHintAlpha: .7,             // the dim row under a selected star that has no steps yet
+  barHint: 'title, deadline / step / step', barHintEvery: 3,   // the empty bar shows the step syntax when the task count is 2 mod 3
+  panelFrac: .4, panelRows: 6, hintPad: 5,        // list panel: max height as a share of the sky; on desktop also at most 6 rows (done header + 5 open); gutter for the scroll hints
   dragPx: 8, scrollEase: 16,                       // a touch move of more than 8 css px is a scroll, not a tap; wheel scroll eases at 1/16 s
   collapse: 400, longPress: 500,                   // ms: the orbit folding into the core on finish; long-press to delete a row
   rx: 11, rxBig: 13, ratio: .42, tilt: -16,        // degrees

@@ -185,6 +185,7 @@ export function barPlaceholder() {
   const st = stepTarget();
   if (st >= 0) { const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n); }
   const any = DEMO_ON ? true : store.tasks.length > 0;
+  if (!DEMO_ON && store.tasks.length % STEPS.barHintEvery === STEPS.barHintEvery - 1) return STEPS.barHint;
   return any ? 'title, deadline' : 'add your first star — title, deadline';
 }
 

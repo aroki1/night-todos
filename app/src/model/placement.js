@@ -8,7 +8,7 @@ import { FS, US } from './timeline.js';
 import { edgeState } from '../choreo/finish.js';
 import { undoEdge } from '../choreo/undo.js';
 import { T, wall } from '../sky/clock.js';
-import { stepsLive, stepsLine2, stepRows, stepExtent, rowPitch, doneCount, panelMax, clampScroll, sui } from './steps.js';
+import { stepsLive, stepsHint, stepsLine2, stepRows, stepExtent, rowPitch, doneCount, panelMax, clampScroll, sui } from './steps.js';
 
 /* the expire label swap is a pure timeline; kept here so model never imports choreo */
 function expireSwap(ms) {
@@ -36,7 +36,7 @@ export function updateHover(dt) {
     hk[i] = ease.out(hp[i]);
     const ft = (focus === i && !stars[i].done && !stars[i].miss) ? 1 : 0;
     frK[i] = ft > frK[i] ? Math.min(1, frK[i] + dt / .15) : Math.max(0, frK[i] - dt / .2);
-    const lt = selIdx === i && stepsLive(stars[i]) ? 1 : 0;                       // the step list under the label
+    const lt = selIdx === i && (stepsLive(stars[i]) || stepsHint(stars[i])) ? 1 : 0;                      // the step list under the label
     lk[i] = lt > lk[i] ? Math.min(1, lk[i] + dt / .15) : Math.max(0, lk[i] - dt / .15);
     const d = sui.st[i] - sui.sy[i];                                              // smooth scroll of the list: eases towards its target
     if (d !== 0) sui.sy[i] = Math.abs(d) < .02 ? sui.st[i] : sui.sy[i] + d * (1 - Math.exp(-dt * STEPS.scrollEase));
@@ -131,6 +131,13 @@ export function labelInfo(si) {
     if (lk[si] > .5) L.wDisp = Math.max(L.wDisp, w);
     L.rows2h += Math.round(ph * lk[si]);
   } else { sui.st[si] = 0; sui.sy[si] = 0; L.scrollMax = 0; L.scrolling = false; L.listH = 0; }
+  L.hint = null; L.hintK = 0;
+  if (stepsHint(s) && (lk[si] > .01 || selIdx === si)) {                          // no steps yet: one dim "+ step" row under the label
+    const p = rowPitch(); L.hint = STEPS.rowHint; L.hintK = lk[si];
+    if (selIdx === si) { L.wPlace = Math.max(L.wPlace, SIZE_INDENT + wg(L.hint, 400)); L.rowsPlace += Math.ceil(p / 6); }
+    if (lk[si] > .5) L.wDisp = Math.max(L.wDisp, SIZE_INDENT + wg(L.hint, 400));
+    L.rows2h += Math.round(p * lk[si]);
+  }
 }
 
 const ovl = (a0, b0, a1, b1, c0, d0, c1, d1) => {
