@@ -1,7 +1,7 @@
 /* scripts/verify.mjs — `npm run verify`: one command that says whether a change is safe.
    Tier 1 (Node, seconds): selftests, import direction (layer table below), SW shell check, module map (CLAUDE.md vs files on disk).
    Tier 2 (ONE headless Edge via scripts/cdp.mjs): golden screenshot hashes + perf budget, both in scripts/goldens.json.
-   `npm run verify -- --update-goldens` rewrites the hashes and the budget on purpose.
+   `npm run verify -- --update-goldens` rewrites the hashes only; `--update-perf` also re-measures the budget.
    Silent on success except one summary line; on failure prints only what failed (+ paths of the failing shots). */
 import { spawnSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'app', 'src');
 const GOLDENS = path.join(ROOT, 'scripts', 'goldens.json');
-const UPDATE = process.argv.includes('--update-goldens');
+const UPDATE = process.argv.includes('--update-goldens');   // rewrites the hashes only; the perf budget is kept
+const UPDATE_PERF = process.argv.includes('--update-perf');   // re-measures the perf budget (also writes hashes)
 const T0 = Date.now();
 const PORT = 5173;
 
@@ -101,7 +102,10 @@ const SCENES = {
   finish: 'scene=finish',
   labels: 'scene=labels&demo=1&hover=hm%20one-pager',   // demo=1 + hover: star labels and the hover frame are drawn, so TXT/label tokens are covered
   ritual: 'ritual=1&t=12&at=1500',
-  ambient: 'freeze=1&t=12'
+  ambient: 'freeze=1&t=12',
+  /* no demo, 2 tasks without steps (count 2 mod 3). hints: selected star shows the dim "+ step" row */
+  hints: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.select('task 1 · essay')" },
+  barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true)" }   // nothing selected: the bar placeholder is the step syntax
 };
 const PERF = { size: '1917x933', dpr: 2, frames: 300 };
 
@@ -118,10 +122,11 @@ process.on('exit', stopServer);
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ns-verify-'));
 const jobs = [], keys = [];
-for (const [sz, o] of Object.entries(SIZES)) for (const [name, q] of Object.entries(SCENES)) {
+for (const [sz, o] of Object.entries(SIZES)) for (const [name, sc] of Object.entries(SCENES)) {
+  const q = typeof sc === 'string' ? sc : sc.q;
   const key = name + '@' + sz;
   keys.push(key);
-  jobs.push({ url: `http://localhost:${PORT}/?${BASE}&${q}`, out: path.join(tmp, key + '.png').replace(/\\/g, '/'), size: o.size, dpr: o.dpr, wait: 1000 });
+  jobs.push({ url: `http://localhost:${PORT}/?${BASE}&${q}`, out: path.join(tmp, key + '.png').replace(/\\/g, '/'), size: o.size, dpr: o.dpr, wait: 1000, ...(sc.eval ? { eval: sc.eval } : {}) });
 }
 jobs.push({
   url: `http://localhost:${PORT}/?${BASE}&prof=1`, size: PERF.size, dpr: PERF.dpr, wait: 1000,
@@ -152,11 +157,12 @@ const hashes = {};
 for (const k of keys) hashes[k] = crypto.createHash('sha256').update(fs.readFileSync(path.join(tmp, k + '.png'))).digest('hex');
 const g = fs.existsSync(GOLDENS) ? JSON.parse(fs.readFileSync(GOLDENS, 'utf8')) : null;
 
-if (UPDATE || !g) {
-  const budget = Math.round(med * 1.5 * 100) / 100;
+if (UPDATE || UPDATE_PERF || !g) {
+  const keep = g && !UPDATE_PERF;
+  const budget = keep ? g.perf.budgetMs : Math.round(med * 1.5 * 100) / 100;
   fs.writeFileSync(GOLDENS, JSON.stringify({
-    note: 'Written by `npm run verify -- --update-goldens`. SHA-256 of PNG screenshots (dev scenes, clock pinned, GPU on) and the perf budget in ms (1.5x the measured median CPU frame of ns.profRun at d2).',
-    hashes, perf: { measuredMedianMs: Math.round(med * 100) / 100, budgetMs: budget, frames: PERF.frames, setup: 'ambient (no scene), 1917x933 dpr 2, GPU' }
+    note: 'Written by `npm run verify -- --update-goldens` (hashes) and `--update-perf` (budget). SHA-256 of PNG screenshots (dev scenes, clock pinned, GPU on) and the perf budget in ms (1.5x the measured median CPU frame of ns.profRun at d2).',
+    hashes, perf: { measuredMedianMs: keep ? g.perf.measuredMedianMs : Math.round(med * 100) / 100, budgetMs: budget, frames: PERF.frames, setup: 'ambient (no scene), 1917x933 dpr 2, GPU' }
   }, null, 2) + '\n');
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`verify: goldens updated (${keys.length} hashes, perf median ${med.toFixed(2)} ms, budget ${budget} ms)`);
