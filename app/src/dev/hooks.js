@@ -19,6 +19,9 @@ import { skySwap } from '../render/compose.js';
 import { isReduced } from '../tokens.js';
 import { doneCount, nextIdx, sui } from '../model/steps.js';
 import { stepsBack, stepsFront } from '../render/steps.js';
+import * as pf from '../stageprof.js';
+import { FLAGS } from '../tokens.js';
+import { P as PX, ROWS } from '../framebuffer.js';
 
 let api = null;
 const findStar = n => { const k = stars.findIndex(s => s.n === n); return k >= 0 ? k : stars.findIndex(s => s.n.indexOf(n) >= 0); };
@@ -26,6 +29,7 @@ const findStar = n => { const k = stars.findIndex(s => s.n === n); return k >= 0
 export function installHooks(a) {
   api = a;
   setMoonShow(() => moonSt.show);
+  if (FLAGS.prof) pf.enable(() => performance.now());      // ?dev=1&prof=1: per-stage frame timer (stageprof.js); the clock is passed in so only dev code reads performance.now
   window.ns = {
     setSeed(n) { makeSky(n); },
     week(n) {
@@ -127,6 +131,27 @@ export function installHooks(a) {
       api.freeze(null, false);
       fr.sort((x, y) => x - y);
       return { avg: sum / n, median: fr[n >> 1], p95: fr[Math.floor(n * .95)], max: mx };
+    },
+    /* dev, needs ?prof=1: drive `frames` active-rate frames (T advances 1/60 s per rAF) after `warm` warm-up frames and return per-stage median / p95 in ms.
+       o.finish = task title: finish it at the current T and loop T over the choreography window (120..1300 ms) so every sampled frame is mid-flight. */
+    async profRun(o = {}) {
+      if (!pf.on) return { err: 'start with ?dev=1&prof=1' };
+      const n = o.frames || 300, warm = o.warm ?? 60, t0 = T, cyc = o.finish ? 71 : 0, ints = []; let prev = 0;
+      api.stop();
+      if (o.finish) ns.finish(o.finish, t0, false);
+      for (let i = 0; i < n + warm; i++) {
+        const ts = await new Promise(requestAnimationFrame);
+        setT(cyc ? t0 + .12 + (i % cyc) / 60 : t0 + i / 60);
+        if (i === warm) { pf.reset(); prev = ts; } else if (i > warm) ints.push(ts - prev), prev = ts;
+        api.frame();
+      }
+      ints.sort((a, b) => a - b);
+      const s = pf.summary(), cv = api.canvas(), gl = document.createElement('canvas').getContext('webgl'), ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      s.rafInterval = { med: ints[ints.length >> 1], p95: ints[Math.floor(ints.length * .95)] };
+      s.markMs = pf.markCost();
+      s.info = { cw: cv.width, ch: cv.height, GW, SH, ROWS, P: PX, dpr: window.devicePixelRatio, stars: stars.length, layers: sky.layers.map(l => l.S.length), cpuCores: navigator.hardwareConcurrency,
+        gl: gl ? (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'webgl, no debug info') : 'no webgl' };
+      return s;
     },
     now() { return T; },
     selfTest() { return selfTest(); },

@@ -17,6 +17,7 @@ import { SPR } from '../sky/components.js';
 import { makeSky } from '../sky/sky.js';
 import { ritualActive, ritualTick, drawRitual } from './ritual.js';
 import { stepsUpdate } from '../model/steps.js';
+import * as pf from '../stageprof.js';
 import { stepsBack, stepsFront, stepsBullets, stepsPanel } from './steps.js';
 
 export const bump = new Float32Array(SIZE.maxStars);
@@ -34,6 +35,7 @@ export function prepare() {
   clockTick(false);
   ritualTick();
   replay(T);
+  if (pf.on) pf.mark('prepare.replay');
   animating = !!xf; actN = 0; dimN = 0;
   let nTot = 0, lt = -1e9;
   for (let si = 0; si < NS; si++) {
@@ -71,11 +73,14 @@ export function prepare() {
     }
     if (hk[si] > 0 && hk[si] < 1) animating = true;
   }
+  if (pf.on) pf.mark('prepare.stars');
   setPipTotals(nTot, lt);
   if (undoTarget && T - undoTarget.at < 5.4) animating = true;
   if (stepsUpdate(T)) animating = true;                                  // step flags (behind / ready) and the step choreography window
   computeFocus();
+  if (pf.on) pf.mark('prepare.focus');
   placeLabels();
+  if (pf.on) pf.mark('prepare.place');
   for (let si = 0; si < NS; si++) if ((lab[si].gliding || lab[si].scrolling) && lab[si].shown) animating = true;
 }
 
@@ -266,6 +271,7 @@ import { undoShr } from '../choreo/undo.js';
 
 export function compose() {
   if (frozen || isCloudStale() || T < cloudTime()) clouds(); else cloudsTick();
+  if (pf.on) pf.mark('clouds');
   composeBase(acts, actN, dims, dimN);
   if (xf) {
     const k = ease.inOut(clamp01((T - xf.t0) / (xf.dur || .9)));
@@ -274,16 +280,30 @@ export function compose() {
       BR[q] = OR[q] * (1 - k) + BR[q] * k; BG[q] = OG[q] * (1 - k) + BG[q] * k; BB[q] = OB[q] * (1 - k) + BB[q] * k;
     }
   }
+  if (pf.on) pf.mark('xfade');
   drawPast();
-  moonUpdate(); auroraUpdate(frozenForce); drawAurora(); drawMoon(); drawComet(); drawSats(); drawMeteor();
+  if (pf.on) pf.mark('past');
+  moonUpdate(); auroraUpdate(frozenForce); drawAurora();
+  if (pf.on) pf.mark('aurora');
+  drawMoon();
+  if (pf.on) pf.mark('moon');
+  drawComet(); drawSats(); drawMeteor();
+  if (pf.on) pf.mark('events');
   drawEdges();
+  if (pf.on) pf.mark('edges');
   for (let si = 0; si < NS; si++) drawHalos(si);
+  if (pf.on) pf.mark('halos');
   for (let si = 0; si < NS; si++) stepsBack(si, bump);
+  if (pf.on) pf.mark('steps.back');
   for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis); }
+  if (pf.on) pf.mark('dimRect');
   drawRitual();
-  for (let si = 0; si < NS; si++) { drawSprite(si); stepsFront(si); }
+  if (pf.on) pf.mark('ritual');
+  for (let si = 0; si < NS; si++) { drawSprite(si); if (pf.on) pf.mark('sprites'); stepsFront(si); if (pf.on) pf.mark('steps.front'); }
   stepsPanel();                                                          // the open step list sits in front of the sky: its rectangle is opaque
+  if (pf.on) pf.mark('steps.panel');
   stepsBullets();
+  if (pf.on) pf.mark('steps.bullets');
 }
 
 /* crossfade to a new sky (the old base is snapshotted, then the new week fades in) */

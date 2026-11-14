@@ -18,6 +18,7 @@ import { computeFocus, updateHover, clearWidthCache, setForceFocus, setMouseHove
 import { updatePastHover, rebuildPast, resetPastHover, setPointerGrain } from './sky/past.js';
 import { notifyUrgent, notifyMissed, isTauri, loadStore, saveStore } from './platform.js';
 import { moonSt } from './sky/moon.js';
+import * as pf from './stageprof.js';
 
 let raf = 0, lastTs = 0, lastRenderTs = -1e9, lastInput = -1e9, textReady = true, running = false, booted = false, sceneFrozen = false;
 const missedAnnounced = new Set();
@@ -49,17 +50,25 @@ function applyGeometry() {
 
 function renderNow(force) {
   if (FLAGS.dev) window.__nsRenders = (window.__nsRenders || 0) + 1;     // dev only: render counter for perf checks
+  if (pf.on) pf.begin();
   setFrozenForce(!!force);
   barTick();
   setGhostInfo({ title: bar.title, gCommit: bar.gCommit });
+  if (pf.on) pf.mark('pre');
   prepare(); compose(); blit();
-  if (textReady) { drawLabels(); drawPastHover(); drawRitualText(); drawBar(); }   // no canvas text until the fonts are in
+  if (textReady) {                                                                   // no canvas text until the fonts are in
+    drawLabels(); if (pf.on) pf.mark('text.labels');
+    drawPastHover(); if (pf.on) pf.mark('text.pastHover');
+    drawRitualText(); if (pf.on) pf.mark('text.ritual');
+    drawBar(); if (pf.on) pf.mark('text.bar');
+  }
   setFrozenForce(false);
   updateAria();
   for (let i = 0; i < NS; i++) {
     const s = stars[i];
     if (s.miss && s.mT >= 0 && !missedAnnounced.has(i)) { missedAnnounced.add(i); announce(s.n + ' missed'); }
   }
+  if (pf.on) { pf.mark('post'); pf.end(); }
 }
 function updateAria() {
   let done = 0, total = 0;
@@ -135,6 +144,7 @@ const api = {
     startRitual({ key: liftKey, week: weekLabel(nowKey), newSeed: seedForWeek(nowKey) }, skySwap);
     return true;
   },
+  frame() { setCloudPace(0); renderNow(false); },                       // dev: one active-rate frame (what the loop does when not idle), for ns.profRun
   prepareCompose() { prepare(); compose(); },
   clickSky() { skySwap(11, T); renderNow(false); },
   clickUndo() {

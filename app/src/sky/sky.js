@@ -5,6 +5,7 @@ import { GW, SH, BR, BG, BB, CR, CG, CB, SR, SG, SB, AGR, AGG, AGB, PROF, SBR, S
 import { extendLayers } from './components.js';
 import { ringRadius } from '../choreo/finish.js';
 import { T } from './clock.js';
+import * as pf from '../stageprof.js';
 
 export let sky = null;
 
@@ -71,6 +72,7 @@ export { onSkyReset };
 /* stars and their twinkle; acts/dims are light events owned by the choreography */
 export function composeBase(acts, actN, dims, dimN) {
   BR.set(CR); BG.set(CG); BB.set(CB);
+  if (pf.on) pf.mark('base.copy');
   for (let li = 0; li < 3; li++) {
     const L = sky.layers[li], S = L.S, lm = LM[li];
     if (lm <= .003) continue;
@@ -100,6 +102,7 @@ export function composeBase(acts, actN, dims, dimN) {
         if (w > 0) splat(px, s.y, s.c, Math.min(1, w) * .22);
       }
     }
+    if (pf.on) pf.mark('base.layer' + li);
   }
 }
 /* sky response to a ring front (pure): w in 0..1 for a bg star at distance d from the ring origin */

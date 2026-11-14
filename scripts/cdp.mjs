@@ -1,6 +1,6 @@
 /* scripts/cdp.mjs — tiny CDP driver for QA screenshots and real key typing.
    node scripts/cdp.mjs <url> <out.png> [--type "text"] [--key Enter] [--wait ms] [--eval "expr"] [--size WxH] [--dpr N]
-   Several shots in ONE browser launch: --shots list.json (array of {url,out,wait,size,dpr,type,key,eval,eval1}). Always tears Edge down (Browser.close, taskkill /T, profile rm).
+   Several shots in ONE browser launch: --shots list.json (array of {url,out,wait,size,dpr,type,key,eval,eval1}). --gpu omits --disable-gpu (job.cpu = CPU throttling rate). Always tears Edge down (Browser.close, taskkill /T, profile rm).
    Prints console messages, exceptions and data-err/data-ready. */
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ const profile = path.join(os.tmpdir(), 'ns-cdp-' + port);
 fs.rmSync(profile, { recursive: true, force: true });
 
 const edge = spawn(EDGE, [
-  '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--no-default-browser-check',
+  '--headless=new', ...(args.includes('--gpu') ? [] : ['--disable-gpu']), '--hide-scrollbars', '--no-first-run', '--no-default-browser-check',
   '--remote-debugging-port=' + port, '--user-data-dir=' + profile,
   '--window-size=' + size[0] + ',' + size[1], '--force-device-scale-factor=' + dpr,
   'about:blank'
@@ -79,6 +79,7 @@ try {
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable'); await send('Network.enable');
   for (const j of jobs) {
     const sz = (j.size || size.join('x')).split('x').map(Number), d = Number(j.dpr ?? dpr);
+    await send('Emulation.setCPUThrottlingRate', { rate: Number(j.cpu ?? 1) });          // job.cpu: 4 approximates a mid-range phone
     await send('Emulation.setDeviceMetricsOverride', { width: sz[0], height: sz[1], deviceScaleFactor: d, mobile: d > 1 && sz[0] < 768 });
     if (j.offline !== undefined) await send('Network.emulateNetworkConditions', { offline: !!j.offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });   // job.offline: true/false
     await send('Page.navigate', { url: j.url });

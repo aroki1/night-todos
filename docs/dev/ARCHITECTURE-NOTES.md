@@ -127,3 +127,7 @@ Yes, build it as `scripts/parity.mjs`. It should:
 
 Treat font-weight-500 differences in the bar as explained, since the self-hosted Medium vs v10's
 synthesised bold is expected, and exclude them by region once you've confirmed them.
+
+## 6. Profiling
+
+`?dev=1&prof=1` turns on the per-stage frame timer (`src/stageprof.js`, clock passed in by `dev/hooks.js`; one boolean test per mark when off); `await ns.profRun({frames:300, finish?:"title"})` returns median/p95 per stage. Results: `docs/dev/PERF-PROFILE.md`.

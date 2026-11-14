@@ -3,6 +3,7 @@
    Geometry is live: every importer sees GW/SH/… change when the viewport changes. */
 import { TONE, H } from './math.js';
 import { BGPIX } from './tokens.js';
+import * as pf from './stageprof.js';
 
 export let dpr = 1, P = 3, D = 2;
 export let GW = 404, SH = 196, ROWS = 216, N = GW * SH;
@@ -109,5 +110,7 @@ export function blit() {
       for (let dy = 0; dy < d; dy++) { const oo = o + dy * W; for (let dx = 0; dx < d; dx++) px[oo + dx] = p; }
     }
   }
+  if (pf.on) pf.mark('blit.paint');
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.putImageData(img, 0, 0);
+  if (pf.on) pf.mark('blit.put');
 }
