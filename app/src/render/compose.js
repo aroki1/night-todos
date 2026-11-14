@@ -16,6 +16,8 @@ import { undoState, undoEdge } from '../choreo/undo.js';
 import { SPR } from '../sky/components.js';
 import { makeSky } from '../sky/sky.js';
 import { ritualActive, ritualTick, drawRitual } from './ritual.js';
+import { stepsUpdate } from '../model/steps.js';
+import { stepsBack, stepsFront, stepsBullets, stepsPanel } from './steps.js';
 
 export const bump = new Float32Array(SIZE.maxStars);
 const dims = []; let dimN = 0;
@@ -71,9 +73,10 @@ export function prepare() {
   }
   setPipTotals(nTot, lt);
   if (undoTarget && T - undoTarget.at < 5.4) animating = true;
+  if (stepsUpdate(T)) animating = true;                                  // step flags (behind / ready) and the step choreography window
   computeFocus();
   placeLabels();
-  for (let si = 0; si < NS; si++) if (lab[si].gliding && lab[si].shown) animating = true;
+  for (let si = 0; si < NS; si++) if ((lab[si].gliding || lab[si].scrolling) && lab[si].shown) animating = true;
 }
 
 function drawEdge(g, es, phase, si) {
@@ -275,9 +278,12 @@ export function compose() {
   moonUpdate(); auroraUpdate(frozenForce); drawAurora(); drawMoon(); drawComet(); drawSats(); drawMeteor();
   drawEdges();
   for (let si = 0; si < NS; si++) drawHalos(si);
+  for (let si = 0; si < NS; si++) stepsBack(si, bump);
   for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis); }
   drawRitual();
-  for (let si = 0; si < NS; si++) drawSprite(si);
+  for (let si = 0; si < NS; si++) { drawSprite(si); stepsFront(si); }
+  stepsPanel();                                                          // the open step list sits in front of the sky: its rectangle is opaque
+  stepsBullets();
 }
 
 /* crossfade to a new sky (the old base is snapshotted, then the new week fades in) */

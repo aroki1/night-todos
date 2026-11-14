@@ -1,13 +1,14 @@
 /* model/placement.js — label content, label placement with scoring + hysteresis, and the
    placement of a new star. All in grains; the screen never decides text positions. */
 import { rng, hstr, segDist, seg, ease, mixTo } from '../math.js';
-import { K, FONT, SIZE, FLAGS } from '../tokens.js';
+import { K, FONT, SIZE, FLAGS, STEPS } from '../tokens.js';
 import { ctx, GW, SH } from '../framebuffer.js';
 import { stars, NS, GHI, pres, Rb, edgeGeom as geom, isUrgent } from './store.js';
 import { FS, US } from './timeline.js';
 import { edgeState } from '../choreo/finish.js';
 import { undoEdge } from '../choreo/undo.js';
 import { T, wall } from '../sky/clock.js';
+import { stepsLive, stepsLine2, stepRows, stepExtent, rowPitch, doneCount, panelMax, clampScroll, sui } from './steps.js';
 
 /* the expire label swap is a pure timeline; kept here so model never imports choreo */
 function expireSwap(ms) {
@@ -19,7 +20,7 @@ let ghost = { title: '', gCommit: -1 };
 export function setGhostInfo(v) { ghost = v; }
 
 export const lab = []; for (let i = 0; i < SIZE.maxStars; i++) lab.push({ pick: -1, shown: false });
-export const hk = new Float32Array(SIZE.maxStars), hp = new Float32Array(SIZE.maxStars), frK = new Float32Array(SIZE.maxStars);
+export const hk = new Float32Array(SIZE.maxStars), hp = new Float32Array(SIZE.maxStars), frK = new Float32Array(SIZE.maxStars), lk = new Float32Array(SIZE.maxStars);
 export let focus = -1, mouseHover = -1, selIdx = -1, forceFocus = null, tapSelected = false;
 export function setMouseHover(v) { mouseHover = v; }
 export function setSelIdx(v) { selIdx = v; }
@@ -33,9 +34,14 @@ export function updateHover(dt) {
     hk[i] = ease.out(hp[i]);
     const ft = (focus === i && !stars[i].done && !stars[i].miss) ? 1 : 0;
     frK[i] = ft > frK[i] ? Math.min(1, frK[i] + dt / .15) : Math.max(0, frK[i] - dt / .2);
+    const lt = selIdx === i && stepsLive(stars[i]) ? 1 : 0;                       // the step list under the label
+    lk[i] = lt > lk[i] ? Math.min(1, lk[i] + dt / .15) : Math.max(0, lk[i] - dt / .15);
+    const d = sui.st[i] - sui.sy[i];                                              // smooth scroll of the list: eases towards its target
+    if (d !== 0) sui.sy[i] = Math.abs(d) < .02 ? sui.st[i] : sui.sy[i] + d * (1 - Math.exp(-dt * STEPS.scrollEase));
   }
 }
 
+const SIZE_INDENT = STEPS.indent;
 const widthCache = new Map();
 export function wg(str, wt) {
   if (!str) return 0;
@@ -85,7 +91,7 @@ export function labelInfo(si) {
       l2vis = left > 0 ? 1 : 1 - seg(ms, fin.tEnd, fin.tEnd + (fin.reduced ? .001 : 150));
     } else { t2 = s.stamp; a2 = fk; l2vis = fk; place2 = foc ? s.stamp : ''; }
   } else {
-    const us = US[si], full = foc ? s.full : s.left;
+    const us = US[si], sp = stepsLive(s), full = sp ? stepsLine2(s, foc) : (foc ? s.full : s.left);
     c2 = urgent ? K.warn : K.dim; place2 = full; t2 = full;
     if (us) {
       c1 = mixTo([0, 0, 0], cInk, K.done, us.titleK);
@@ -107,13 +113,26 @@ export function labelInfo(si) {
   if (!foc && title.length > SIZE.ellipsisAt) title = title.slice(0, SIZE.ellipsisAt - 1) + '…';
   // touch selection: same look as hover, plus a second row that says how to finish
   if (tapSelected && selIdx === si && !s.done && !s.miss && !s.gh && s.on) {
-    t2 = 'tap again to finish'; c2 = K.dim; place2 = t2; l2vis = 1; a2 = 1;
+    t2 = stepsLive(s) ? doneCount(s) + '/' + s.steps.length + ' · tap again to finish' : 'tap again to finish'; c2 = K.dim; place2 = t2; l2vis = 1; a2 = 1;
   }
   L.shown = shown; L.vis = vis; L.title = title; L.c1 = c1; L.a1 = a1; L.w1 = fk > .5 ? 500 : 400;
   L.t2 = t2; L.c2 = c2; L.a2 = a2; L.t3 = t3; L.a3 = a3;
   L.wPlace = Math.max(wg(placeTitle, 400), wg(place2, 400), fk > .5 ? wg(placeTitle, 500) : 0); L.rowsPlace = place2 ? 2 : 1;
   L.wDisp = l2vis > .01 ? Math.max(wg(title, L.w1), wg(t2), t3 ? wg(t3) : 0) : wg(title, L.w1);
   L.rows2h = Math.round(6 * l2vis);
+  L.list = null; L.listK = 0; L.nList = 0;
+  if (s.on && !s.gh && stepsLive(s) && (lk[si] > .01 || selIdx === si)) {          // the selected step list: rows under the label
+    const rows = stepRows(s); let w = 0;
+    for (const r of rows) w = Math.max(w, SIZE_INDENT + wg(r.text, 400));
+    const p = rowPitch(), content = rows.length * p, mx = panelMax(), scrolls = content > mx, ph = scrolls ? mx : content;
+    if (scrolls) w += STEPS.hintPad;                                              // a gutter at the right for the ▴ ▾ hints
+    L.list = rows; L.nList = rows.length; L.listK = lk[si]; L.listH = ph; L.scrollMax = scrolls ? content - ph : 0;
+    sui.st[si] = clampScroll(sui.st[si], L.scrollMax); sui.sy[si] = clampScroll(sui.sy[si], L.scrollMax);
+    L.scrolling = sui.st[si] !== sui.sy[si];
+    if (selIdx === si) { L.wPlace = Math.max(L.wPlace, w); L.rowsPlace += Math.ceil(ph / 6); }
+    if (lk[si] > .5) L.wDisp = Math.max(L.wDisp, w);
+    L.rows2h += Math.round(ph * lk[si]);
+  } else { sui.st[si] = 0; sui.sy[si] = 0; L.scrollMax = 0; L.scrolling = false; L.listH = 0; }
 }
 
 const ovl = (a0, b0, a1, b1, c0, d0, c1, d1) => {
@@ -126,11 +145,11 @@ function addVisEdge(f, s, es) {
   const g = geom(f, s);
   edgeList.push(f.gx, f.gy, g.ux, g.uy, g.sA, g.sA + es.lineLen);
 }
-export function candAnchor(ci, gx, gy, r, w, th, out) {
+export function candAnchor(ci, gx, gy, r, w, th, out, rl = r, rv = r) {   // r: right reach, rl: left reach, rv: vertical reach
   if (ci === 0) { out[0] = gx + r + 4; out[1] = gy - 3; }
-  else if (ci === 1) { out[0] = gx - r - 3 - w; out[1] = gy - 3; }
-  else if (ci === 2) { out[0] = gx + 2; out[1] = gy - r - 2 - th; }
-  else { out[0] = gx + 2; out[1] = gy + r + 3; }
+  else if (ci === 1) { out[0] = gx - rl - 3 - w; out[1] = gy - 3; }
+  else if (ci === 2) { out[0] = gx + 2; out[1] = gy - rv - 2 - th; }
+  else { out[0] = gx + 2; out[1] = gy + rv + 3; }
 }
 export function rectScore(x0, y0p, x1, y1, skip, placed) {
   let sc = 100 * ((x1 - x0) * (y1 - y0p) - ovl(x0, y0p, x1, y1, 0, 0, GW, SH - 2));
@@ -138,6 +157,8 @@ export function rectScore(x0, y0p, x1, y1, skip, placed) {
     if (j === skip) continue;
     const o = stars[j]; if (!pres(o)) continue;
     const rr = Rb(o); sc += 40 * ovl(x0, y0p, x1, y1, o.gx - rr - 1, o.gy - rr - 1, o.gx + rr + 2, o.gy + rr + 2);
+    const ex = stepExtent(o);                                   // a neighbour's orbit: keep a label off it, more softly than off the star
+    if (ex) sc += 12 * ovl(x0, y0p, x1, y1, o.gx - ex.extL, o.gy - ex.extV, o.gx + ex.extR, o.gy + ex.extV);
   }
   for (let p = 0; p < placed.length; p++) { const q = placed[p]; sc += 25 * ovl(x0, y0p, x1, y1, q[0], q[1], q[2], q[3]); }
   for (let e = 0; e < edgeList.length; e += 6) {
@@ -160,16 +181,17 @@ export function placeLabels() {
   }
   for (let i = 0; i < NS; i++) labelInfo(i);
   const order = []; for (let i = 0; i < NS; i++) order.push(i);
-  order.sort((a, b) => stars[a].gy - stars[b].gy || stars[a].gx - stars[b].gx || a - b);
+  order.sort((a, b) => (b === selIdx && stepsLive(stars[b]) ? 1 : 0) - (a === selIdx && stepsLive(stars[a]) ? 1 : 0) || stars[a].gy - stars[b].gy || stars[a].gx - stars[b].gx || a - b);   // a selected step list is placed first: the others make room
   const placed = [];
   for (let oi = 0; oi < NS; oi++) {
     const si = order[oi], s = stars[si], L = lab[si];
     if (!L.shown) { L.init = false; continue; }
     const r = Rb(s), w = L.wPlace, rows = L.rowsPlace, th = 6 * rows;
+    const ex = stepExtent(s), rR = ex ? Math.max(r, ex.extR) : r, rL = ex ? Math.max(r, ex.extL) : r, rV = ex ? Math.max(r, ex.extV) : r;
     let best = -1, bestScore = 1e18, prevScore = 1e18, prev = L.pick;
     const px = [0, 0, 0, 0], py = [0, 0, 0, 0];
     for (let ci = 0; ci < 4; ci++) {
-      candAnchor(ci, s.gx, s.gy, r, w, th, CA);
+      candAnchor(ci, s.gx, s.gy, rR, w, th, CA, rL, rV);
       const ax = CA[0], y0 = CA[1];
       const sc = rectScore(ax - 1, y0 - 1, ax + w + 1, y0 + th + 1, si, placed) + 3 * ci;
       px[ci] = ax; py[ci] = y0;
@@ -186,7 +208,22 @@ export function placeLabels() {
     L.dx = L.fx + (L.tx - L.fx) * gk; L.dy = L.fy + (L.ty - L.fy) * gk; L.gliding = gk < 1;
     L.bx0 = L.dx - 1; L.bx1 = L.dx + L.wDisp + 1; L.by0 = L.dy - 1; L.by1 = L.dy + 6 + L.rows2h + 1;
     L.fx0 = L.dx - 2; L.fx1 = L.dx + L.wPlace + 2;
+    if (L.list && L.listK > .3) {                                                      // row rectangles for hover and clicks
+      const p = rowPitch(), pt = L.dy + 12, pb = pt + L.listH, sy = sui.sy[si];
+      L.pt = pt; L.pb = pb;
+      L.rr = L.list.map((q, r2) => {                                                // rows scrolled out of the panel are clipped to it (or unreachable)
+        const y0 = pt + p * r2 - sy, y1 = y0 + p, c0 = Math.max(y0, pt), c1 = Math.min(y1, pb), ok = c1 > c0;
+        return { x0: L.dx - 1, y0: ok ? c0 : -1e9, x1: L.dx + SIZE_INDENT + wg(q.text, 400) + 2, y1: ok ? c1 : -1e9, sid: q.sid, k: q.k, num: q.num };
+      });
+    } else L.rr = null;
     placed.push([L.ax - 1, L.y0 - 1, L.ax + L.wPlace + 1, L.y0 + th + 1]);
+  }
+  const sl = selIdx >= 0 ? lab[selIdx] : null;                                         // a neighbour's label never sits on the open step list
+  if (sl && sl.shown && sl.list && sl.listK > .3) {
+    for (let i = 0; i < NS; i++) {
+      const L = lab[i]; if (i === selIdx || !L.shown || L.bx0 === undefined) continue;
+      if (ovl(L.bx0, L.by0, L.bx1, L.by1, sl.fx0, sl.by0, sl.fx1, sl.by1)) L.shown = false;
+    }
   }
 }
 
@@ -205,7 +242,10 @@ export function placeNew(title, ctr, big) {
   for (let k = 0; k < 64; k++) {
     const gx = 4 + Math.floor(rr() * (GW - 8)), gy = 4 + Math.floor(rr() * (SH - 12));
     let md = 1e9;
-    for (let i = 0; i < NS; i++) { const o = stars[i]; if (!o.on) continue; md = Math.min(md, Math.max(Math.abs(o.gx - gx), Math.abs(o.gy - gy))); }
+    for (let i = 0; i < NS; i++) {
+      const o = stars[i]; if (!o.on) continue; const ex = stepExtent(o);
+      md = Math.min(md, Math.max(Math.abs(o.gx - gx), Math.abs(o.gy - gy)) - (ex ? Math.max(0, ex.extR + 4 - 9) : 0));   // a step-star keeps its orbit clear
+    }
     let ed = 1e9;
     for (let e = 0; e < segs.length; e += 4) ed = Math.min(ed, segDist(gx, gy, segs[e], segs[e + 1], segs[e + 2], segs[e + 3]));
     const md2 = moonClearFn(gx, gy);

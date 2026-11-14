@@ -1,17 +1,22 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
-import { TXT, K, C, FLAGS, SIZE, setReducedPref, getReducedPref } from '../tokens.js';
+import { TXT, K, C, FLAGS, SIZE, STEPS, setReducedPref, getReducedPref } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, dpr } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtLeft } from '../sky/clock.js';
-import { parseDeadline } from '../model/parser.js';
+import { parseDeadline, splitBar } from '../model/parser.js';
 import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars } from '../model/store.js';
-import { undoTarget, externalUndo, doCreate, applyImport } from '../model/timeline.js';
-import { placeNew } from '../model/placement.js';
+import { undoTarget, externalUndo, doCreate, doStepAdd, applyImport } from '../model/timeline.js';
+import { placeNew, selIdx, setSelIdx } from '../model/placement.js';
 
 export const bar = {
   text: '', caret: 0, focus: false, last: -9, title: '', big: false, res: null, pv: '', pvWarn: false,
-  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null
+  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: []
 };
+/* step mode: a selected live star turns the bar into "step for <title>"; Enter adds a step to it */
+export function stepTarget() {
+  const s = selIdx >= 0 ? stars[selIdx] : null;
+  return s && s.on && !s.done && !s.miss && !s.gh ? selIdx : -1;
+}
 export let undoHit = null, skyBtn = null, msAvg = 0;
 export let wake = () => {};
 export function setWake(fn) { wake = fn; }
@@ -19,17 +24,17 @@ let input = null, composing = false;
 
 export function initBar(inputEl) {
   input = inputEl;
-  input.setAttribute('maxlength', String(SIZE.maxTitle));
+  input.setAttribute('maxlength', String(SIZE.maxBar));
   input.value = '';
   input.addEventListener('input', () => {
     if (composing) return;
-    bar.text = input.value.slice(0, SIZE.maxTitle);
+    bar.text = input.value.slice(0, SIZE.maxBar);
     bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.caretMax(), input.selectionStart);
     bar.last = T; wake();
   });
   input.addEventListener('keydown', onInputKey);
   input.addEventListener('compositionstart', () => { composing = true; });
-  input.addEventListener('compositionend', () => { composing = false; bar.text = input.value.slice(0, SIZE.maxTitle); bar.caret = bar.text.length; bar.last = T; wake(); });
+  input.addEventListener('compositionend', () => { composing = false; bar.text = input.value.slice(0, SIZE.maxBar); bar.caret = bar.text.length; bar.last = T; wake(); });
   input.addEventListener('select', () => { bar.caret = input.selectionStart || 0; });
   input.addEventListener('click', () => { bar.caret = input.selectionStart || 0; });
 }
@@ -51,7 +56,11 @@ export function setBarFocus(v) {
 export function setBarCaret() { if (input) { try { input.setSelectionRange(bar.caret, bar.caret); } catch (_) { } } }
 
 function onInputKey(e) {
-  if (e.key === 'Escape') { e.preventDefault(); setBarFocus(false); wake(); return; }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (stepTarget() >= 0) { bar.text = ''; bar.caret = 0; input.value = ''; setSelIdx(-1); }     // step mode: Esc deselects, the bar returns to normal
+    setBarFocus(false); wake(); return;
+  }
   if (e.key === 'Enter') { e.preventDefault(); submitBar(); return; }
   if (e.key === 'Tab') { e.preventDefault(); return; }
   bar.blink = T;
@@ -60,16 +69,14 @@ function onInputKey(e) {
 }
 
 export function barParse() {
-  let t = bar.text, big = false;
-  if (/\s!$/.test(t)) { t = t.replace(/\s*!$/, ''); big = true; }
-  const ci = t.lastIndexOf(',');                                   // title = before the LAST comma
-  let title = ci < 0 ? t.trim() : t.slice(0, ci).trim();
-  const dls = ci < 0 ? null : t.slice(ci + 1);
-  if (/\s!$/.test(title)) { title = title.replace(/\s*!$/, ''); big = true; }
-  bar.title = title; bar.big = big;
+  const p = splitBar(bar.text);
+  const title = p.title.slice(0, SIZE.maxTitle), dls = p.dls;
+  bar.title = title; bar.big = p.big;
+  bar.steps = p.steps.slice(0, STEPS.maxSteps).map(x => x.slice(0, STEPS.maxText));
   bar.res = dls !== null && dls.trim() !== '' ? parseDeadline(dls, new Date(wall(T))) : null;
   const r = bar.res; bar.pvWarn = !!(r && r.err);
-  bar.pv = !r ? '' : r.ok ? '→ ' + fmtDate(r.date.getTime()) + ' · ' + fmtLeft(r.date.getTime() - wall(T)) : r.err === 'past' ? "that's already gone" : "can't read that";
+  const ns = bar.steps.length;
+  bar.pv = !r ? '' : r.ok ? '→ ' + fmtDate(r.date.getTime()) + ' · ' + fmtLeft(r.date.getTime() - wall(T)) + (ns ? ' · ' + ns + (ns === 1 ? ' step' : ' steps') : '') : r.err === 'past' ? "that's already gone" : "can't read that";
 }
 export function ghostAlphaNow() {
   if (bar.gCommit >= 0) return 1 - seg((T - bar.gCommit) * 1000, 550, 900);
@@ -138,10 +145,17 @@ function pickImport() {
 export function submitBar() {
   barParse();
   if (bar.text.trim().startsWith('/')) return runCommand(bar.text.trim());
+  const sel = stepTarget();
+  if (sel >= 0) {                                                  // step mode: the whole text is one step; a full list quietly refuses
+    const tx = bar.text.trim(); if (!tx) return false;
+    if (!doStepAdd(sel, tx, T)) return false;
+    bar.out = { text: bar.text, t0: T }; bar.text = ''; bar.caret = 0; if (input) input.value = '';
+    bar.last = T; wake(); return true;
+  }
   const r = bar.res;
   if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
   const pos = bar.gpos || placeNew(bar.title, bar.ctr, bar.big);
-  doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T);
+  doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps);
   bar.ctr++; bar.out = { text: bar.text, t0: T }; bar.gpos = pos; bar.gCommit = T; bar.gOn = true;
   bar.text = ''; bar.caret = 0; if (input) input.value = '';
   setBarFocus(false); wake(); return true;
@@ -161,7 +175,15 @@ function pipColor(k, arr) {
   const e = (T - arr[k]) * 1000;
   return e < 80 ? mixTo([0, 0, 0], K.pipOff, C.core, e / 80) : e < 280 ? mixTo([0, 0, 0], C.core, C.done, (e - 80) / 200) : C.done;
 }
+/* the text cut with an ellipsis so it is at most maxW wide in the current font (units of the bar) */
+export function fitText(t, maxW) {
+  if (ctx.measureText(t).width <= maxW) return t;
+  let n = t.length; while (n > 1 && ctx.measureText(t.slice(0, n).trimEnd() + '…').width > maxW) n--;
+  return t.slice(0, n).trimEnd() + '…';
+}
 export function barPlaceholder() {
+  const st = stepTarget();
+  if (st >= 0) { const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n); }
   const any = DEMO_ON ? true : store.tasks.length > 0;
   return any ? 'title, deadline' : 'add your first star — title, deadline';
 }
@@ -176,6 +198,13 @@ export function drawBar() {
   ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); ctx.textBaseline = 'middle';
   ctx.font = '500 12px ' + '"IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.fillStyle = TXT.ink2; ctx.fillText('›', 18, by);
+  // counter: pips fill at the arrival of each connection (measured first: the placeholder must stop before it)
+  const arr = [];
+  for (let i = 0; i < NS; i++) { const s = stars[i]; if (s.done && s.on) arr.push(s.fin ? s.fin.t0 + s.fin.arriveMs / 1000 : -1e9); }
+  arr.sort((a, b) => a - b);
+  let cnt = 0; for (let i = 0; i < arr.length; i++) if (arr[i] <= T) cnt++;
+  const cs = cnt + ' / ' + pipTotalNow; ctx.font = '500 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+  const cw = ctx.measureText(cs).width;
   const typing = bar.focus || bar.text !== '';
   const ext = externalUndo, u = ext || undoTarget;
   let ua = u ? (T - u.at < 5 ? 1 : 1 - seg(T - u.at, 5, 5.3)) : 0;
@@ -195,7 +224,11 @@ export function drawBar() {
   }
   if (bar.text === '') {
     const pa = (1 - ua) * (bar.out ? seg(T - bar.out.t0, .4, .55) : 1);
-    if (pa > 0) { ctx.globalAlpha = pa; ctx.fillStyle = TXT.dim; ctx.fillText(barPlaceholder(), 51, by); ctx.globalAlpha = 1; }
+    if (pa > 0) {
+      ctx.globalAlpha = pa; ctx.fillStyle = TXT.dim;
+      const pipsX = (Math.floor((UW - 30 - cw) / 3) - pipTotalNow * 3) * 3, rightX = Math.min(pipsX, FLAGS.dev ? Math.floor((UW - 48 - cw - pipTotalNow * 9 - 54) / 3) * 3 - 6 : 1e9);
+      ctx.fillText(fitText(barPlaceholder(), rightX - 15 - 51), 51, by); ctx.globalAlpha = 1;       // never into the pips, the counter or the sky button
+    }
   }
   if (bar.pv && bar.text !== '') {                                   // live preview after a pause
     const pa = seg(T - bar.last, .15, .27);
@@ -204,6 +237,7 @@ export function drawBar() {
   if (ua > 0 && u) {
     let t, label;
     if (ext) { t = ext.n + ' stars'; label = 'imported · '; }
+    else if (u.type === 'step') { t = u.ev.text; if (t.length > 28) t = t.slice(0, 27) + '…'; label = { fin: 'step done · ', reopen: 'step reopened · ', add: 'step added · ', del: 'step removed · ' }[u.ev.kind]; }
     else { t = stars[u.si].n; if (t.length > 28) t = t.slice(0, 27) + '…'; label = u.type === 'add' ? 'added · ' : 'finished · '; }
     ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace'; ctx.globalAlpha = ua;
     const parts = [[label, TXT.dim], [t, TXT.ink2], ['    ', TXT.dim], ['undo', TXT.ink2], ['  ', TXT.dim], ['z', TXT.dim]];
@@ -220,13 +254,7 @@ export function drawBar() {
     ctx.globalAlpha = 1;
     ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
   }
-  // counter: pips fill at the arrival of each connection
-  const arr = [];
-  for (let i = 0; i < NS; i++) { const s = stars[i]; if (s.done && s.on) arr.push(s.fin ? s.fin.t0 + s.fin.arriveMs / 1000 : -1e9); }
-  arr.sort((a, b) => a - b);
-  let cnt = 0; for (let i = 0; i < arr.length; i++) if (arr[i] <= T) cnt++;
-  const cs = cnt + ' / ' + pipTotalNow; ctx.font = '500 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
-  const cw = ctx.measureText(cs).width; ctx.fillStyle = TXT.ink2;
+  ctx.font = '500 12px "IBM Plex Mono", ui-monospace, Consolas, monospace'; ctx.fillStyle = TXT.ink2;
   ctx.fillText(cs, Math.floor((UW - 18 - cw) / 3) * 3, by);
   let vac = -1, vk = 0;
   for (let i = 0; i < NS; i++) { const s = stars[i]; if (!s.done && s.und && US_now(i) && s.und.pipWasOn) { vac = cnt; vk = US_now(i).pipK; } }

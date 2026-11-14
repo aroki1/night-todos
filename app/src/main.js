@@ -169,10 +169,17 @@ function applyScenes() {
     const s = stars.find(x => x.n.indexOf('os linux hw 3') >= 0);
     if (s) { s.dl = wall(0) + 2000; s.lifeFix = .13; }
     tFreeze = 2.0 + (at === null ? 400 : at) / 1000; freeze = true;
+  } else if (FLAGS.scene === 'steps') {                           // step visuals: ?scene=steps, &live=1 to run in real time
+    const q = new URLSearchParams(location.search), t0 = FLAGS.t || 3;
+    setT(t0); freeze = q.get('live') !== '1'; tFreeze = t0;
+    if (q.get('stepfin')) { ns.stepsFinish(q.get('stepfin'), t0); tFreeze = t0 + (at === null ? 200 : at) / 1000; }
+    if (q.get('stepundo')) { ns.stepsUndo(q.get('stepundo'), t0); tFreeze = t0 + (at === null ? 200 : at) / 1000; }
+    if (q.get('sel')) ns.select(q.get('sel'));
   } else if (FLAGS.scene === 'crossfade') {
     ns.skySwap(FLAGS.devSeed || 11, tFreeze);
     tFreeze += (at === null ? 450 : at) / 1000; freeze = true;
   }
+  if (new URLSearchParams(location.search).get('select')) ns.select(new URLSearchParams(location.search).get('select'));   // dev: ?select=<title> selects a star
   if (FLAGS.hover !== null) ns.hover(FLAGS.hover);
   if (FLAGS.script) { ns.script(FLAGS.script); document.documentElement.setAttribute('data-ready', '1'); return true; }
   if (FLAGS.bench) {

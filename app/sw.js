@@ -1,5 +1,5 @@
 /* sw.js — cache-first app shell. Bump VERSION on every release. All paths relative (works under a subpath). */
-const VERSION = 'ns-v11-20261114b';
+const VERSION = 'ns-v11-20261114d';
 const SHELL = [
   './',
   './fonts/IBMPlexMono-Medium.woff2',
@@ -14,6 +14,7 @@ const SHELL = [
   './src/choreo/create.js',
   './src/choreo/expire.js',
   './src/choreo/finish.js',
+  './src/choreo/step.js',
   './src/choreo/ritual.js',
   './src/choreo/undo.js',
   './src/dev/hooks.js',
@@ -23,12 +24,14 @@ const SHELL = [
   './src/math.js',
   './src/model/parser.js',
   './src/model/placement.js',
+  './src/model/steps.js',
   './src/model/store.js',
   './src/model/timeline.js',
   './src/model/week.js',
   './src/platform.js',
   './src/render/compose.js',
   './src/render/ritual.js',
+  './src/render/steps.js',
   './src/render/text.js',
   './src/sky/clock.js',
   './src/sky/clouds.js',

@@ -6,10 +6,10 @@ import { cloudReset, cloudDebug } from '../sky/clouds.js';
 import { resetClockCache, clockTick } from '../sky/clock.js';
 import { moonSt } from '../sky/moon.js';
 import { specialsNow, setForceShower, satTime, setMoonShow, cometHead, satNow } from '../sky/events.js';
-import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, dpr, P, D, N } from '../framebuffer.js';
+import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, UH, dpr, P, D, N } from '../framebuffer.js';
 import { stars, NS, GHI, rebuildStars, store } from '../model/store.js';
-import { events, doFinish, doUndo, pipTotal } from '../model/timeline.js';
-import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, focus, wg } from '../model/placement.js';
+import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDelete, mkSteps, pipTotal } from '../model/timeline.js';
+import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
 import { bar, submitBar, barParse, msAvg } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { skipRitual, ritualInfo } from '../render/ritual.js';
@@ -17,6 +17,8 @@ import { ensureWeeks, previousWeekKey } from '../model/week.js';
 import { selfTest } from './selftest.js';
 import { skySwap } from '../render/compose.js';
 import { isReduced } from '../tokens.js';
+import { doneCount, nextIdx, sui } from '../model/steps.js';
+import { stepsBack, stepsFront } from '../render/steps.js';
 
 let api = null;
 const findStar = n => { const k = stars.findIndex(s => s.n === n); return k >= 0 ? k : stars.findIndex(s => s.n.indexOf(n) >= 0); };
@@ -72,8 +74,47 @@ export function installHooks(a) {
       for (let i = 0; i < NS; i++) { hp[i] = hk[i] = i === f ? 1 : 0; frK[i] = (i === f && !stars[i].done && !stars[i].miss) ? 1 : 0; }
       computeFocus(); api.render();
     },
-    select(name) { setSelIdx(name === null ? -1 : findStar(name)); api.render(); },
+    select(name) {
+      const f = name === null ? -1 : findStar(name); setSelIdx(f);
+      for (let i = 0; i < NS; i++) { lk[i] = i === f ? 1 : 0; if (i === f) { hp[i] = hk[i] = 1; frK[i] = !stars[i].done && !stars[i].miss ? 1 : 0; } }
+      computeFocus(); api.render();
+    },
     skySwap(seed, atT) { skySwap(seed, atT); },
+    stepsFinish(name, atT) { return doStepNext(findStar(name), atT); },
+    stepsUndo(name, atT) {                                  // reopen the most recently finished step
+      const i = findStar(name), s = stars[i]; if (!s || !s.steps) return false;
+      let b = -1; s.steps.forEach((t, k) => { if (t.doneAt && (b < 0 || t.doneAt >= s.steps[b].doneAt)) b = k; });
+      return b >= 0 && doStepToggle(i, s.steps[b].id, atT);
+    },
+    hoverRow(name, k) { const i = findStar(name); sui.rowStar = k < 0 ? -1 : i; sui.rowHover = k; api.render(); },       // dev: put the row hover on row k of the selected list
+    rowPos(name, k) { const L = lab[findStar(name)], q = L && L.rr ? L.rr[k] : null, r = api.canvas().getBoundingClientRect(); return q ? { x: r.left + (q.x0 + 6) * 3 / (GW * 3) * r.width, y: r.top + (q.y0 + q.y1) / 2 * 3 / UH * r.height } : null; },   // dev: client coordinates of a list row
+    stepsScroll(v) { for (let i = 0; i < NS; i++) if (lab[i].list) { sui.st[i] = sui.sy[i] = v; } api.render(true); },
+    stepsAdd(name, text, atT) { return doStepAdd(findStar(name), text, atT); },
+    stepsDelete(name, k, atT) { const i = findStar(name), s = stars[i]; return !!s && !!s.steps && !!s.steps[k] && doStepDelete(i, s.steps[k].id, atT); },
+    stepsInfo() { return { stars: stars.filter(s => s.steps).map(s => [s.n, doneCount(s), s.steps.length, !!s.stepBehind, !!s.stepReady, nextIdx(s)]) }; },
+    /* dev: n live tasks with steps spread over the sky (for 48-star and timing checks); `steps` = steps per task */
+    fillSteps(n, steps = 5, clear = false) {
+      const now = wall(T), r = rng(77);
+      if (clear) store.tasks.length = 0;
+      for (let i = 0; i < n; i++) {
+        const nsteps = steps > 0 ? steps : 0;
+        store.tasks.push({ id: 'f' + i, title: 'task ' + (i + 1) + ' · ' + ['essay', 'lab', 'reading', 'notes', 'quiz'][i % 5], createdAt: now - 2 * 864e5, deadline: now + (1 + r() * 6) * 864e5,
+          big: i % 9 === 0 ? 1 : 0, x: .06 + ((i % 8) + r() * .5) / 8.6, y: .08 + (Math.floor(i / 8) + r() * .4) / 6.6, doneAt: null, link: null, week: null,
+          steps: mkSteps(Array.from({ length: nsteps }, (_, q) => 'step ' + (q + 1))) });
+        if (nsteps && i % 3 === 0 && store.tasks[store.tasks.length - 1].steps[0]) store.tasks[store.tasks.length - 1].steps[0].doneAt = now - 36e5;
+      }
+      rebuildStars(now); api.render(true); return stars.length;
+    },
+    /* dev: time render/steps.js on its own over `n` frames (ms per frame for the live step-stars) */
+    stepsBench(n = 300) {
+      const t0 = T, bump = new Float32Array(64); let tb = 0, tf = 0;
+      for (let i = 0; i < n; i++) {
+        setT(t0 + i / 60);
+        let a = performance.now(); for (let q = 0; q < NS; q++) stepsBack(q, bump); tb += performance.now() - a;
+        a = performance.now(); for (let q = 0; q < NS; q++) stepsFront(q); tf += performance.now() - a;
+      }
+      setT(t0); return { backMs: tb / n, frontMs: tf / n, totalMs: (tb + tf) / n, stars: stars.filter(s => s.steps && s.steps.length).length };
+    },
     nextSeed: null,
     move(name, gx, gy) { const s = stars[findStar(name)]; if (!s) return; s.gx = gx; s.gy = gy; if (s.task) { s.task.x = gx / (GW - 1); s.task.y = gy / (SH - 1); } },
     render() {

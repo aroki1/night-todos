@@ -1,8 +1,10 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
-import { parseDeadline } from '../model/parser.js';
+import { parseDeadline, splitBar } from '../model/parser.js';
 import { fmtLeft, isoWeekKey, isoWeekOf } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
-import { sanitize, isUrgent } from '../model/store.js';
+import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
+import { isDrag, clampScroll, stepRows } from '../model/steps.js';
+import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 
 export function selfTest() {
   const now = new Date(2026, 10, 13, 21, 0, 0), at = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime(), D = 864e5;
@@ -123,5 +125,50 @@ export function selfTest() {
   ok(isUrgent({ dl: uNow + 3 * D, life: .2 }, uNow), 'urgent: low life fraction still counts');
   ok(!isUrgent({ dl: null, life: 1 }, uNow), 'not urgent: no deadline, full life');
 
+  /* steps: slot fill by count, the finish moment */
+  ok(slotCount(4) === 4 && slotCount(20) === 8, 'steps: K = min(n, 8)');
+  ok(slotFill(1, 4) === 1 && slotFill(13, 20) === 5.2 && slotFill(5, 5) === 5 && slotFill(0, 0) === 0, 'steps: filled = done * K / n');
+  ok(slotF(5.2, 4) === 1 && Math.abs(slotF(5.2, 5) - .2) < 1e-9 && slotF(5.2, 6) === 0, 'steps: slot f is clamp(filled - i)');
+  ok(pulseMs(5) === 180 && pulseMs(20) === 220 && pulseMs(100) === 400, 'steps: pulse 11 ms/grain, clamp 180-400');
+  const f0 = stepFinishState(60, { dist: 12 }), f1 = stepFinishState(200, { dist: 12 }), f2 = stepFinishState(2000, { dist: 12 });
+  ok(f0.dim > 0 && f0.k === 0 && f1.flash > 0 && f2.active === false && f2.k === 1, 'steps: finish stages');
+  ok(stepFinishState(125, { reduced: true }).k === .5 && stepFinishState(100, { undo: true, dist: 12 }).k > 0 && stepFinishState(500, { undo: true, dist: 12 }).k === 0, 'steps: reduced crossfade and undo');
+  ok(collapseK(0) === 1 && collapseK(400) === 0 && collapseK(200) === .5 && collapseK(125, true) === .5, 'steps: the orbit folds in 400 ms (250 ms fade when reduced)');
+
+  /* steps: pacing is part of isUrgent. behind = n > 0 && (1 - life) > doneAt(now) / n + 0.3 */
+  const mkSt = (n, doneAts) => Array.from({ length: n }, (_, k) => ({ id: 's' + k, text: 'x', doneAt: doneAts[k] || null }));
+  const sd = (n, d, life) => ({ dl: uNow + 7 * D, life, steps: mkSt(n, Array.from({ length: d }, () => uNow - 1)) });
+  ok(isUrgent(sd(6, 1, .3), uNow) && !isUrgent(sd(4, 1, .86), uNow) && !isUrgent(sd(20, 13, .5), uNow) && !isUrgent(sd(5, 5, .6), uNow), 'steps: behind makes a task urgent');
+  ok(!isUrgent(sd(4, 1, .45), uNow) && isUrgent(sd(4, 1, .44), uNow), 'steps: pace margin edge (0.3)');
+  ok(isUrgent({ dl: uNow + 7 * D, life: .5, steps: mkSt(4, [uNow + 1e3, uNow + 1e3, uNow + 1e3]) }, uNow) && !isUrgent({ dl: uNow + 7 * D, life: .5, steps: mkSt(4, [uNow - 1, uNow - 1, uNow - 1]) }, uNow), 'steps: done count is taken at the event time');
+  ok(stepsDoneBy({ steps: mkSt(3, [5, 9]) }, 7) === 1 && stepsDoneBy({}, 7) === 0, 'steps: stepsDoneBy');
+  ok(!isUrgent({ dl: uNow + 7 * D, life: .6, done: 1, steps: mkSt(6, []) }, uNow) && !isUrgent({ dl: uNow + 7 * D, life: .9, steps: [] }, uNow), 'steps: finished or step-less tasks never pace-urgent');
+
+  /* steps: the bar. title, deadline / step / step */
+  const sp = splitBar('hm one-pager, fri / outline / draft'), pd = parseDeadline(sp.dls, now);
+  ok(sp.title === 'hm one-pager' && sp.steps.length === 2 && sp.steps[0] === 'outline' && sp.steps[1] === 'draft' && pd.ok && pd.date.getTime() === at(2026, 11, 13, 23, 59), 'bar: "hm one-pager, fri / outline / draft" = 2 steps');
+  const sx = splitBar('x, 20/11');
+  ok(sx.steps.length === 0 && sx.title === 'x' && parseDeadline(sx.dls, now).ok && parseDeadline(sx.dls, now).date.getTime() === at(2026, 11, 20, 23, 59), 'bar: "x, 20/11" = 0 steps and 20 Nov');
+  ok(splitBar('x, fri 18:00 / a 20/11 / b').steps.join('|') === 'a 20/11|b' && splitBar('a, b, fri / c, d').title === 'a, b' && splitBar('a, b, fri / c, d').steps[0] === 'c, d', 'bar: commas in steps and titles');
+  ok(splitBar('a / b, fri').steps.length === 0 && splitBar('a / b, fri').title === 'a / b' && splitBar('x, fri /').steps.length === 0 && splitBar('x, fri /').dls.trim() === 'fri', 'bar: a slash in the title or a trailing slash makes no steps');
+  ok(splitBar('x, fri / a !').big && splitBar('x, fri / a !').steps.join() === 'a' && splitBar('no deadline yet').steps.length === 0, 'bar: ! still makes it big');
+
+  /* steps: loading an old store (golden fixture): tasks saved before steps existed load with steps: [] and lose nothing */
+  const OLD = '{"version":1,"tasks":[{"id":"t1","title":"read ch. 7","createdAt":1783000000000,"deadline":1784000000000,"big":1,"x":0.2,"y":0.3,"doneAt":null,"link":null,"week":null},' +
+    '{"id":"t2","title":"dp set","createdAt":1783000000000,"deadline":1783500000000,"big":0,"x":0.6,"y":0.5,"doneAt":1783400000000,"link":"t1","week":"2026-W45"}],' +
+    '"weeks":{"2026-W45":{"seed":5,"archivedAt":3}},"lastSeenWeek":"2026-W46","prefs":{"reducedMotion":"on"}}';
+  const oldRaw = JSON.parse(OLD), loadedOld = sanitize(oldRaw);
+  ok(loadedOld && loadedOld.tasks.length === 2 && loadedOld.tasks.every(t => Array.isArray(t.steps) && t.steps.length === 0), 'golden: old store loads with steps: []');
+  ok(deepEq(loadedOld.tasks.map(t => { const c = Object.assign({}, t); delete c.steps; return c; }), oldRaw.tasks) && deepEq(loadedOld.weeks, oldRaw.weeks) && loadedOld.lastSeenWeek === '2026-W46' && loadedOld.prefs.reducedMotion === 'on', 'golden: old store loses nothing');
+  const withSteps = { version: 1, tasks: [Object.assign({}, oldRaw.tasks[0], { steps: [{ id: 'a', text: 'outline', doneAt: 5 }, { id: 'b', text: '  ', doneAt: null }, { id: 'c', text: 'draft', doneAt: 'x' }, null, { id: 'a', text: 'dup', doneAt: null }] })], weeks: {}, lastSeenWeek: null, prefs: {} };
+  const ws = sanitize(withSteps).tasks[0].steps;
+  ok(ws.length === 3 && ws[0].doneAt === 5 && ws[1].doneAt === null && ws[1].text === 'draft' && ws[2].text === 'dup' && ws[2].id !== 'a', 'store: junk steps are dropped, the task survives, ids stay unique');
+  const ws1 = sanitize(withSteps); ok(deepEq(sanitize(JSON.parse(JSON.stringify(ws1))), ws1), 'store: steps round-trip');
+  ok(sanitize({ version: 1, tasks: [Object.assign({}, oldRaw.tasks[0], { steps: Array.from({ length: 30 }, (_, k) => ({ id: 'q' + k, text: 's' + k, doneAt: null })) })] }).tasks[0].steps.length === 20, 'store: at most 20 steps per task');
+  /* steps: the list scrolls (no '+k more' row), a move over 8 px is a drag and not a tap */
+  ok(!isDrag(0, 8) && !isDrag(5, 6) && isDrag(0, 8.5) && isDrag(9, 0) && !isDrag(0, 0), 'steps: drag threshold is 8 px');
+  ok(clampScroll(-3, 40) === 0 && clampScroll(55, 40) === 40 && clampScroll(12, 40) === 12, 'steps: scroll clamps to the content');
+  const lr = stepRows({ id: 'zz', n: 'zz', steps: Array.from({ length: 9 }, (_, k) => ({ id: 'w' + k, text: 'row ' + k, doneAt: null })) });
+  ok(lr.length === 9 && !lr.some(r => r.k === 'more') && lr.filter(r => r.num > 0).length === 5, 'steps: every open row is listed, no +k more row, keys 1-5 only on the first five');
   return { pass, fail, total: pass + fail, failed };
 }

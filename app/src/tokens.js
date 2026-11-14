@@ -74,7 +74,7 @@ export const URGENT = { life: .25, leftMs: 60 * 60 * 1000 };
 export const SIZE = {
   labelFont: 12, caretW: 6, caretH: 18,
   starR: 3, starRBig: 5, starCore: 1, starCoreBig: 2,
-  maxStars: 48, maxTitle: 80, ellipsisAt: 22,
+  maxStars: 48, maxTitle: 80, maxBar: 240, ellipsisAt: 22,
   labelHysteresis: 20, labelGap: 4,
   moonClearStars: 14, moonClearEdges: 6,
   pastScale: .32, pastMaxWeeks: 26, pastMinGap: 40, pastBottomBand: .15,
@@ -101,7 +101,8 @@ export const FLAGS = {
   hover: Q.get('hover'),
   star: Q.get('star'),
   script: Q.get('script'),
-  devSeed: Q.get('seed2') ? +Q.get('seed2') : null
+  devSeed: Q.get('seed2') ? +Q.get('seed2') : null,
+  steps: Q.get('steps')                       // dev: steps=1 puts steps on the demo tasks
 };
 
 /* reduced motion: system default, overridable at runtime by /motion and prefs */
@@ -119,3 +120,22 @@ export const ARROW = ['....#', '....#', '.#..#', '#####', '.#...'];
 
 export const BGPIX = (255 << 24) | (7 << 16) | (4 << 8) | 3;   // #030407, also the gap between dots
 export const BG_HEX = '#030407';
+
+/* steps inside a task: an orbit of dust around the star, one companion per slot (up to 8).
+   Brightness ceiling: below the parent core and glow, at the constellation's level. */
+export const PACE = { margin: .3 };               // behind = (1 - life) > done/n + margin; the one rule lives in model/store.js isUrgent
+export const STEPS = {
+  maxSteps: 20, maxSlots: 8,
+  maxText: 60,                                     // characters kept per step
+  hover: 1.6,                                      // hover / selection multiplier on all step light
+  rowStep: 6, rowStepTouch: 11,                    // list row pitch in grains (11 grains is at least 32 CSS px at dpr 2)
+  maxOpenRows: 5, maxDoneRows: 5, indent: 4,
+  panelFrac: .4, panelRows: 6, hintPad: 5,         // list panel: max height as a share of the sky; on desktop also at most 6 rows (done header + 5 open); gutter for the scroll hints
+  dragPx: 8, scrollEase: 16,                       // a touch move of more than 8 css px is a scroll, not a tap; wheel scroll eases at 1/16 s
+  collapse: 400, longPress: 500,                   // ms: the orbit folding into the core on finish; long-press to delete a row
+  rx: 11, rxBig: 13, ratio: .42, tilt: -16,        // degrees
+  sampPerGrain: 3, dust: .09, jit: .45, behind: .7, rev: 240,
+  shimmer: [6, 11],                                // seconds
+  openCore: .55, doneCore: .85, nb: .4, halo: .09, haloSig: 1.3,
+  arc: .13, arcGlow: .05, tick: .4, tickCalm: .55, glint: 4
+};

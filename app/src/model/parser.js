@@ -33,8 +33,8 @@ export function parseDeadline(str, now) {
     const p = f.split('-'); if (p.length !== 3 || !p.every(x => /^\d+$/.test(x))) return UN;
     const dt = mkDate(+p[0], +p[1], +p[2], 0, 0); if (!dt) return UN;
     day = { k: 'exact', y: +p[0], m: +p[1], d: +p[2] }; used = 1;
-  } else if (f.indexOf('.') >= 0) {
-    const p = f.split('.'); if (p.length !== 2 || !p.every(x => /^\d+$/.test(x))) return UN;
+  } else if (f.indexOf('.') >= 0 || f.indexOf('/') >= 0) {                  // 20.11 and 20/11 both read as day.month
+    const p = f.split(/[./]/); if (p.length !== 2 || !p.every(x => /^\d+$/.test(x))) return UN;
     if (!mkDate(2000, +p[1], Math.max(1, Math.min(29, +p[0])), 0, 0)) return UN;
     day = { k: 'md', m: +p[1], d: +p[0] }; used = 1;
   } else if (monTok(f) >= 0) {
@@ -63,4 +63,25 @@ export function parseDeadline(str, now) {
   }
   if (!out) return UN;
   return out <= now ? PAST : { ok: true, date: out };
+}
+
+/* the bar: `title, deadline / step / step`. Steps split only on a lone slash between spaces (" / "), so `20/11` is never split.
+   The separator counts only after a comma, so a title may contain " / ". Commas inside steps are fine.
+   -> { title, big, dls (the deadline text or null), steps: [text] } */
+const SEP = /\s\/(?=\s|$)/g;
+export function splitBar(text) {
+  let t = text, big = false, steps = [];
+  if (/\s!$/.test(t)) { t = t.replace(/\s*!$/, ''); big = true; }
+  SEP.lastIndex = 0;
+  for (let m = SEP.exec(t); m; m = SEP.exec(t)) {
+    const head = t.slice(0, m.index);
+    if (head.indexOf(',') < 0) continue;
+    steps = t.slice(m.index + 2).split(/\s\/(?=\s|$)/).map(x => x.trim()).filter(x => x);
+    t = head; break;
+  }
+  const ci = t.lastIndexOf(',');                                   // title = before the LAST comma
+  let title = ci < 0 ? t.trim() : t.slice(0, ci).trim();
+  const dls = ci < 0 ? null : t.slice(ci + 1);
+  if (/\s!$/.test(title)) { title = title.replace(/\s*!$/, ''); big = true; }
+  return { title, big, dls, steps };
 }

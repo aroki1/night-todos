@@ -1,7 +1,7 @@
 /* model/store.js — persistent data (tasks, weeks, prefs) and the week's sky view.
    This module never imports sky generation, render, ui or choreography. */
 import { clamp01 } from '../math.js';
-import { FLAGS, URGENT } from '../tokens.js';
+import { FLAGS, URGENT, PACE, STEPS } from '../tokens.js';
 import { CLOCK0, wall, fmtDate, fmtDay, fmtLeft, isoWeekKey } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
 import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
@@ -10,7 +10,8 @@ import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
 let persistence = { load: async () => null, save: async () => { } };
 export function setPersistence(p) { persistence = p || { load: async () => null, save: async () => { } }; }
 
-export const DEMO_ON = FLAGS.demo && FLAGS.dev;   // demo tasks never exist in the product
+export const STEPS_SCENE = FLAGS.scene === 'steps' && FLAGS.dev;   // dev scene for the step visuals
+export const DEMO_ON = (FLAGS.demo || STEPS_SCENE) && FLAGS.dev;   // demo tasks never exist in the product
 export const MAXS = 48;
 const HR = 36e5;
 
@@ -26,6 +27,15 @@ const DEF = [
   { n: 'mentor session notes', gx: 300, gy: 150, miss: 1, stamp: 'missed · wed 11 nov' }
 ];
 
+/* dev scene for steps: fake step arrays live on these demo tasks only. Positions are fractions of the sky. */
+const named = (a, d) => a.map((t, i) => ({ id: 's' + i, text: t, doneAt: i < d ? 1.78e12 + i * 36e5 : null }));
+const STEP_DEF = [
+  { n: 'hm one-pager', nx: .40, ny: .22, big: 1, lifeFix: .86, off: (4 * 24 + 3) * HR, steps: named(['outline', 'draft intro', 'tables and figures', 'proofread'], 1) },
+  { n: 'os linux hw 3', nx: .20, ny: .60, lifeFix: .3, off: 26 * HR + 59 * 6e4, steps: named(['read ch. 4', 'set up the vm', 'cron task', 'shell scripts', 'write report', 'submit'], 1) },
+  { n: 'lit review', nx: .62, ny: .56, lifeFix: .5, off: (3 * 24 + 5) * HR, steps: named(Array.from({ length: 20 }, (_, i) => 'paper ' + (i + 1) + ' notes'), 13) },
+  { n: 'slides deck', nx: .82, ny: .24, lifeFix: .6, off: (2 * 24 + 4) * HR, steps: named(['outline', 'slide draft', 'figures', 'rehearse', 'export pdf'], 5) },
+  { n: 'call dentist', nx: .46, ny: .84, lifeFix: .7, off: 20 * HR }
+];
 export let stars = [], NS = 0, GHI = 0;
 export function setNS(v) { NS = v; }
 export let rolledFrom = null;
@@ -54,9 +64,16 @@ export function lifeAt(s, t) {
   if (s.dl === null) return s.life;
   return s.life0 * clamp01((s.dl - wall(t)) / s.rem0);
 }
-/* the one urgency rule: low life fraction OR little absolute time left. `now` is wall ms; `life` defaults to s.life */
+/* steps done by wall time `now` (doneAt is the event time, so a replay at any T counts the same) */
+export function stepsDoneBy(s, now) { let d = 0; if (s.steps) for (const t of s.steps) if (t.doneAt && t.doneAt <= now) d++; return d; }
+/* pacing: the share of time used outruns the share of steps done by more than the margin. Only a live task with steps. */
+export function isBehind(s, now, life = s.life, live = true) {
+  const n = s.steps ? s.steps.length : 0;
+  return n > 0 && (!live || (!s.done && !s.miss)) && (1 - life) > stepsDoneBy(s, now) / n + PACE.margin;
+}
+/* the one urgency rule: low life fraction OR little absolute time left OR behind on steps. `now` is wall ms; `life` defaults to s.life */
 export function isUrgent(s, now, life = s.life) {
-  return life < URGENT.life || (s.dl !== null && s.dl - now < URGENT.leftMs);
+  return life < URGENT.life || (s.dl !== null && s.dl - now < URGENT.leftMs) || isBehind(s, now, life);
 }
 export function timeStr(s, t) { const left = fmtLeft(s.dl - wall(t)); return { left, full: fmtDate(s.dl) + ' · ' + left }; }
 
@@ -67,6 +84,8 @@ function taskIdStar(t) {
     stamp: t.doneAt ? 'done · ' + fmtDate(t.doneAt) : (!t.doneAt && t.deadline <= wall(0) ? 'missed · ' + fmtDay(t.deadline) : '')
   });
   s.id = t.id; s.task = t; s.nx = t.x; s.ny = t.y;
+  if (!t.steps) t.steps = [];
+  s.steps = t.steps;                                       // the task's own array: mutations persist with the task
   s.dl = t.deadline;
   s.rem0 = Math.max(1, t.deadline - (t.createdAt || t.deadline - 7 * 864e5));
   s.life0 = 1; s.life = 1;
@@ -76,7 +95,9 @@ function taskIdStar(t) {
 
 export function rebuildStars(nowMs) {
   if (DEMO_ON) {
-    stars = DEF.map(d => { const s = mkStar(d); if (d.off !== undefined) { s.dl = CLOCK0 + d.off; s.rem0 = d.off; s.life0 = d.life; } return s; });
+    const defs = STEPS_SCENE ? STEP_DEF.map(d => Object.assign({}, d, { gx: Math.round(d.nx * (GW - 1)), gy: Math.round(d.ny * (SH - 1)) })) : DEF;
+    if (!STEPS_SCENE && FLAGS.steps === '1') for (const d of defs) if (!d.done && !d.miss && !d.steps) d.steps = named(d.n === 'os linux hw 3' ? ['read ch. 4', 'set up the vm', 'cron task', 'shell scripts', 'write report', 'submit'] : d.n === 'hm one-pager' ? ['outline', 'draft intro', 'tables and figures', 'proofread'] : ['skim', 'problems', 'review'], 1);
+    stars = defs.map(d => { const s = mkStar(d); if (d.off !== undefined) { s.dl = CLOCK0 + d.off; s.rem0 = d.off; s.life0 = d.life === undefined ? 1 : d.life; } return s; });
     GHI = stars.length; stars.push(mkStar({ n: '', gx: 0, gy: 0, gh: 1, on: 0, base: 0 })); NS = stars.length;
     for (const fn of rebuildHooks) fn();
     return;
@@ -95,7 +116,10 @@ export function rebuildStars(nowMs) {
 }
 
 export function syncStarPositions() {
-  for (const s of stars) if (s.task) { s.gx = Math.round(s.task.x * (GW - 1)); s.gy = Math.round(s.task.y * (SH - 1)); }
+  for (const s of stars) {
+    if (s.task) { s.gx = Math.round(s.task.x * (GW - 1)); s.gy = Math.round(s.task.y * (SH - 1)); }
+    else if (STEPS_SCENE && s.nx !== null && !s.gh) { s.gx = Math.round(s.nx * (GW - 1)); s.gy = Math.round(s.ny * (SH - 1)); }
+  }
 }
 
 export function nearestDone(si) {
@@ -116,6 +140,7 @@ export function edgeGeom(f, t) {
 /* ---------- store mutations (timeline calls these through commit) ---------- */
 export function addTask(t) { store.tasks.push(t); saveSoon(); }
 export function removeTask(t) { const k = store.tasks.indexOf(t); if (k >= 0) store.tasks.splice(k, 1); saveSoon(); }
+export const touchSave = () => saveSoon();
 export function markDone(t, ms, linkId) { t.doneAt = ms; t.link = linkId || null; t.week = null; saveSoon(); }
 export function clearDone(t) { t.doneAt = null; t.link = null; t.week = null; saveSoon(); }
 
@@ -132,6 +157,20 @@ export function flushSave() {
   persistence.save({ version: 1, tasks: store.tasks, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs });
 }
 
+/* tasks saved before steps existed load with steps: []. Junk steps are dropped, never the task. */
+export function sanitizeSteps(a) {
+  if (!Array.isArray(a)) return [];
+  const out = [], seen = new Set();
+  for (const t of a) {
+    if (out.length >= STEPS.maxSteps) break;
+    if (!t || typeof t.text !== 'string' || !t.text.trim()) continue;
+    let id = typeof t.id === 'string' && t.id ? t.id : newId();
+    while (seen.has(id)) id = newId();
+    seen.add(id);
+    out.push({ id, text: t.text.trim().slice(0, STEPS.maxText), doneAt: Number.isFinite(t.doneAt) ? t.doneAt : null });
+  }
+  return out;
+}
 export function sanitize(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.tasks) || (raw.version !== undefined && raw.version !== 1)) return null;
   const tasks = raw.tasks.filter(t => t && typeof t.title === 'string' && Number.isFinite(t.deadline)).map(t => ({
@@ -144,7 +183,8 @@ export function sanitize(raw) {
     y: clamp01(Number.isFinite(t.y) ? t.y : .4),
     doneAt: Number.isFinite(t.doneAt) ? t.doneAt : null,
     link: typeof t.link === 'string' ? t.link : null,
-    week: typeof t.week === 'string' ? t.week : null
+    week: typeof t.week === 'string' ? t.week : null,
+    steps: sanitizeSteps(t.steps)
   }));
   return {
     version: 1, tasks,
