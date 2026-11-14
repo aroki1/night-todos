@@ -15,7 +15,7 @@ import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { skipRitual, ritualInfo } from '../render/ritual.js';
 import { ensureWeeks, previousWeekKey } from '../model/week.js';
 import { selfTest } from './selftest.js';
-import { skySwap } from '../render/compose.js';
+import { skySwap, setFrozen, frozen } from '../render/compose.js';
 import { isReduced } from '../tokens.js';
 import { doneCount, nextIdx, sui } from '../model/steps.js';
 import { stepsBack, stepsFront } from '../render/steps.js';
@@ -133,18 +133,21 @@ export function installHooks(a) {
       return { avg: sum / n, median: fr[n >> 1], p95: fr[Math.floor(n * .95)], max: mx };
     },
     /* dev, needs ?prof=1: drive `frames` active-rate frames (T advances 1/60 s per rAF) after `warm` warm-up frames and return per-stage median / p95 in ms.
-       o.finish = task title: finish it at the current T and loop T over the choreography window (120..1300 ms) so every sampled frame is mid-flight. */
+       o.finish = task title: finish it at the current T, and undo + re-finish it every 71 frames (T never rewinds) so most sampled frames are mid-flight. */
     async profRun(o = {}) {
       if (!pf.on) return { err: 'start with ?dev=1&prof=1' };
-      const n = o.frames || 300, warm = o.warm ?? 60, t0 = T, cyc = o.finish ? 71 : 0, ints = []; let prev = 0;
+      const n = o.frames || 300, warm = o.warm ?? 60, t0 = T, cyc = o.finish ? 71 : 0, ints = [], wasFrozen = frozen; let prev = 0;
       api.stop();
-      if (o.finish) ns.finish(o.finish, t0, false);
-      for (let i = 0; i < n + warm; i++) {
-        const ts = await new Promise(requestAnimationFrame);
-        setT(cyc ? t0 + .12 + (i % cyc) / 60 : t0 + i / 60);
-        if (i === warm) { pf.reset(); prev = ts; } else if (i > warm) ints.push(ts - prev), prev = ts;
-        api.frame();
-      }
+      setFrozen(false);                                    // the dev scenes leave the sky frozen: a frozen compose() would refresh clouds in full every frame
+      try {
+        for (let i = 0; i < n + warm; i++) {
+          const ts = await new Promise(requestAnimationFrame);
+          setT(t0 + i / 60);                               // T only moves forward: a rewind forces a full cloud refresh
+          if (cyc && i % cyc === 0) { if (i) ns.undo(T); ns.finish(o.finish, T, false); }   // re-trigger the finish each cycle instead of looping T back
+          if (i === warm) { pf.reset(); prev = ts; } else if (i > warm) ints.push(ts - prev), prev = ts;
+          api.frame();
+        }
+      } finally { setFrozen(wasFrozen); }
       ints.sort((a, b) => a - b);
       const s = pf.summary(), cv = api.canvas(), gl = document.createElement('canvas').getContext('webgl'), ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
       s.rafInterval = { med: ints[ints.length >> 1], p95: ints[Math.floor(ints.length * .95)] };

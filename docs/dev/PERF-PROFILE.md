@@ -105,6 +105,22 @@ Upload the tone-mapped grain grid (GW x SH x RGBA8: 0.65 MB at d125, 0.74 MB at 
 
 The gain on the blit stages is 10-20x, but the whole frame improves only about 2-2.5x: the CPU core (clouds 6-7 ms, composeBase 1-2 ms, small stages) remains. A 10x frame gain needs clouds off the per-frame path as well. At dpr 2 software the frame (25 ms) does not make 60 fps today (rAF interval 33 ms); after the GPU path it would.
 
+## Clouds, live path (SPEC-perf-frame part 1)
+
+**Measurement fix.** `ns.profRun` now unfreezes the sky while it runs (restored afterwards), keeps T monotonic, and in `finish` mode undoes and re-finishes every 71 frames instead of rewinding T. New sub-stages: `clouds.kf`, `clouds.rows`, `clouds.upsample` (`pf.lap`); `summary()` also reports `max`. With the fix, the "clouds" rows above were already close to the live path: the old runs were not frozen, so the 5-7 ms was real, not an artifact (one full-grid upsample every ~5 frames, 6 ms spike, plus a 1/5 slice of rows at ~6.5 ms; a full exact refresh is ~31 ms).
+
+**Optimization.** The live path (`cloudsTick`) now keyframes the slow layers `w`/`m` every 0.5 s of sky time (next keyframe computed ahead over the slices, linear interpolation), caches the lattice cell per octave, prunes octaves of `n` that cannot reach the cloud threshold, hoists the row factor, and spreads the upsample over the slices into a double buffer (`CRn/CGn/CBn`, published with one `set` when the cycle completes). `cloudRows` / `cloudUpsample` / `clouds()` / `cloudsForce()` (frozen, forced, sky swaps) keep the exact computation; frozen shots are byte-identical. Live vs exact (node, same t): max deviation 4e-4 of a 0.2 range (0.1 of 255 levels), exact at keyframe times.
+
+Clouds, ambient scene, GPU on, mean / median / p95 / max ms per frame, 300 frames (before = fixed profRun on the old code):
+
+| config | before | after | after: rows | after: upsample |
+|---|---|---|---|---|
+| d125 | 7.4 / 6.9 / 11.5 / 14.8 | 3.7 / 3.6 / 4.7 / 6.6 | 2.2 mean | 0.9 mean |
+| d2 | 7.9 / 7.4 / 12.5 / 14.2 | 3.6 / 3.5 / 5.1 / 19 (one outlier) | 2.0 mean | 1.0 mean |
+| phone x4 | 5.8 / 5.6 / 9.1 / 13.2 | 3.3 / 3.2 / 4.9 / 9.1 | 1.9 mean | 0.8 mean |
+
+Before the change, `clouds.rows` averaged 6.4-7.0 and `clouds.upsample` 0.7-1.0 mean with a 4-6 ms p95 spike. The upsample spike is gone; the mean is about half. The spec's thresholds (mean < 1 ms, no spike > 3 ms) are not met: the remaining cost is the `n` layer itself (about 7 ms per full refresh, 12 refreshes/s). Going lower needs `n` to be keyframed/interpolated or computed at lower resolution, which changes the live picture slightly more than the spec allows.
+
 ## Other large wins (described, not done)
 
 1. **Clouds**: 5-7 ms every active frame at all sizes (about 30-40% of core). They drift slowly; refresh every 3-4 frames (the loop already has `setCloudPace`; active uses 0) or compute at half resolution and upsample, or move to the shader. Biggest single CPU saving, about 5 ms.
