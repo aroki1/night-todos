@@ -5,6 +5,7 @@ import { GW, SH, splat, geometryListeners } from '../framebuffer.js';
 import { T, wall, isoWeekKey, weekLabel, weekDistance } from './clock.js';
 import { store } from '../model/store.js';
 import { archivedWeeks } from '../model/week.js';
+import { weekTitle } from '../model/morning.js';
 
 let past = [];
 let hoverKey = null, hoverSince = -99, hoverAlpha = 0;
@@ -103,7 +104,7 @@ export function updatePastHover(dt) {
   if (found) {
     if (hoverKey !== found.p.key) { hoverKey = found.p.key; hoverSince = T; }
     hoverAlpha = clamp01((T - hoverSince) / .15);
-    hoverInfo = { text: found.p.label + ' · ' + found.p.n + ' stars', x: Math.max(2, Math.min(GW - 30, found.bx + 6)), y: Math.max(4, Math.min(SH - 8, found.p.ay + 6)), a: hoverAlpha };
+    hoverInfo = { text: weekTitle(found.p.key, (store.weeks[found.p.key] && store.weeks[found.p.key].name) || '') + ' · ' + found.p.n + ' stars', x: Math.max(2, Math.min(GW - 30, found.bx + 6)), y: Math.max(4, Math.min(SH - 8, found.p.ay + 6)), a: hoverAlpha };
   } else {
     if (hoverAlpha > 0) { hoverAlpha = Math.max(0, hoverAlpha - dt / .15); if (hoverInfo) hoverInfo.a = hoverAlpha; }
     if (hoverAlpha <= 0) { hoverKey = null; hoverInfo = null; }

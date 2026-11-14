@@ -1,0 +1,62 @@
+/* model/quotes.js — one line per ISO week for the morning (docs/specs/SPEC-morning.md section 9). Written for the app: no authors.
+   Week 53 reuses week 52. Lowercase, plain, at most 90 characters. */
+export const QUOTES = [
+  'begin where you are.',
+  'a small thing finished is still finished.',
+  'what you did this week stays done.',
+  'rest counts too.',
+  'one step, then the next one.',
+  'not every week has to be a big one.',
+  'a quiet week is still a week.',
+  'slow is a speed.',
+  'look how far the light came.',
+  'the night was long. the morning came anyway.',
+  "you don't have to carry all of it at once.",
+  'some weeks you plant. some weeks you pick.',
+  'done is a kind of quiet.',
+  'it was enough to show up.',
+  'the list is not the measure of the week.',
+  "what's left over is just next week's start.",
+  'tired is information, not failure.',
+  'new week, same you, a little further.',
+  'nobody finishes everything.',
+  "it's fine to begin again.",
+  'keep what helped. leave the rest.',
+  'small work, done often.',
+  'a missed thing is not a missed week.',
+  'go gently into monday.',
+  'you got through the week. that was the job.',
+  'easy weeks are allowed.',
+  'start with the smallest one.',
+  'the hard part was starting. you did that.',
+  "plans change. that's what they're for.",
+  'a short list is still a list.',
+  'you can put some of it down now.',
+  "most things take longer. that's normal.",
+  'nothing here needs to be perfect.',
+  'the week is over. you can stop holding it.',
+  'pick one thing for monday. just one.',
+  'good enough was good enough.',
+  'if it still matters, it will come up again.',
+  'leave a little room in the week.',
+  'half done is more than not started.',
+  'fewer things, more finished.',
+  'some things can just stay undone.',
+  "it adds up, even when it doesn't feel like it.",
+  'a week can be ordinary and still be fine.',
+  'the next step can be a small one.',
+  'every flower here was one finished thing.',
+  'what got missed was not the whole week.',
+  'sleep is part of the work.',
+  "a new week doesn't need a new you.",
+  'look back once. then look ahead.',
+  'what you finished, you can let go of.',
+  "the weeks don't have to match.",
+  'keep going, but not in a hurry.'
+];
+
+/* the line of ISO week `key` ('2026-W46'); week 53 reuses week 52, a bad key gives week 1 */
+export function quoteFor(key) {
+  const m = /-W(\d+)$/.exec(String(key || '')), w = m ? Math.max(1, Math.min(52, +m[1])) : 1;
+  return QUOTES[w - 1];
+}

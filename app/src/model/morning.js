@@ -43,9 +43,20 @@ export function weekSummary(tasks, weekKey, nowMs) {
   return { done, missed, carried, steps };
 }
 
+/* the title of a week: `week 46`, or `week 46 · <name>` when named */
+export function weekTitle(weekKey, name = '') { return weekLabel(weekKey) + (name ? ' · ' + name : ''); }
+
+/* how many weeks the user was away, after the app learns it is now `nowMs` and the last week it saw was `prevWeek`.
+   A new week sets it (1 = last week, the normal case); the same week keeps what was there. */
+export function nextAway(prevWeek, nowMs, away) {
+  const nowKey = isoWeekKey(nowMs);
+  if (!prevWeek || weekDistance(prevWeek, nowKey) <= 0) return away || 0;
+  return weekDistance(prevWeek, nowKey);
+}
+
 /* the text lines of the morning (voice: docs/specs/SPEC-morning.md section 9). away = weeks the user was away (0 = normal) */
 export function summaryLines(sum, weekKey, name = '', away = 0) {
-  const out = [weekLabel(weekKey) + (name ? ' · ' + name : '')];
+  const out = [weekTitle(weekKey, name)];
   if (away >= 2) { out.push(away + ' weeks away'); return out; }
   if (!sum.done && !sum.missed && !sum.carried) { out.push('a quiet week'); return out; }
   const parts = [sum.done ? sum.done + ' done' : 'nothing finished'];

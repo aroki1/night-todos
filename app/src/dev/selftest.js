@@ -3,7 +3,8 @@ import { parseDeadline, splitBar } from '../model/parser.js';
 import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
-import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName } from '../model/morning.js';
+import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway } from '../model/morning.js';
+import { QUOTES, quoteFor } from '../model/quotes.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
@@ -269,5 +270,14 @@ export function selfTest() {
   const wE = { seed: 5, archivedAt: 1 }, S1 = { done: 1, missed: 0, carried: 2, steps: 3 };
   ok(JSON.stringify(withSummary(wE, S1)) === JSON.stringify({ seed: 5, archivedAt: 1, summary: S1 }) && !wE.summary && withSummary({ seed: 5, summary: S1 }, { done: 9, missed: 9, carried: 9, steps: 9 }).summary.done === 1 && withSummary(undefined, S1).summary.carried === 2, 'week entry: the summary is written once');
   ok(withName({ seed: 5, name: 'a' }, '  b  ').name === 'b' && !('name' in withName({ seed: 5, name: 'a' }, '   ')) && cleanName(' ' + 'y'.repeat(40)).length === 32, 'week entry: name');
+
+  /* morning M3: lines, title, away */
+  ok(QUOTES.length === 52 && QUOTES.every(q => typeof q === 'string' && q.length > 0 && q.length <= 90 && q === q.toLowerCase()) && new Set(QUOTES).size === 52, 'quotes: 52 unique lowercase lines, at most 90 characters');
+  ok(quoteFor('2026-W01') === 'begin where you are.' && quoteFor('2026-W53') === QUOTES[51] && quoteFor('2026-W52') === QUOTES[51] && quoteFor('bad') === QUOTES[0], 'quotes: by ISO week, 53 reuses 52');
+  ok(weekTitle('2026-W46') === 'week 46' && weekTitle('2026-W46', 'moving day') === 'week 46 · moving day', 'week title');
+  const tA = new Date(2026, 10, 16, 9, 0).getTime();                                  // Mon 16 Nov 2026 = 2026-W47
+  ok(nextAway('2026-W46', tA, 0) === 1 && nextAway('2026-W44', tA, 0) === 3 && nextAway('2026-W47', tA, 3) === 3 && nextAway(null, tA, 0) === 0, 'away: weeks since the last seen week; same week keeps it');
+  ok(sanitize({ version: 1, tasks: [], morningAway: 3 }).morningAway === 3 && [-1, 1.5, 'x', 999, undefined].every(v => sanitize({ version: 1, tasks: [], morningAway: v }).morningAway === 0), 'store: morningAway is a small whole number');
+  ok(summaryLines({ done: 2, missed: 0, carried: 0, steps: 0 }, '2026-W46', '', 3).join('|') === 'week 46|3 weeks away' && summaryLines({ done: 2, missed: 0, carried: 0, steps: 0 }, '2026-W46', '', 1).join('|') === 'week 46|2 done', 'summary: away from 2 weeks only');
   return { pass, fail, total: pass + fail, failed };
 }

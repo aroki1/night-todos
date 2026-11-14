@@ -12,6 +12,7 @@ import { drawHills, drawGrass, hillLines } from '../sky/land.js';
 import { drawMountains, drawTreeline, drawRiver, drawMist } from '../sky/valley.js';
 import { drawFlora } from '../sky/flora.js';
 import { weekSummary, summaryLines, flowerList } from '../model/morning.js';
+import { quoteFor } from '../model/quotes.js';
 import { morningEvents } from '../model/timeline.js';
 import { morningState, HOLD_END, textK, bloom } from '../choreo/morning.js';
 import { drawCenterWeek } from './text.js';
@@ -24,7 +25,7 @@ let mor = null;           // { cfg, sc, lines, st }
 export function morningScene() { return !!mor; }
 export function morningCfg() { return mor ? mor.cfg : null; }
 export function morningInfo() {
-  return mor ? { season: mor.sc.season, gap: mor.cfg.gapMode, flowers: mor.sc.flowers.length, lines: mor.lines.slice(), phase: morningNow().phase, ms: (T - mor.cfg.t0) * 1000 } : null;
+  return mor ? { season: mor.sc.season, gap: mor.cfg.gapMode, flowers: mor.sc.flowers.length, lines: mor.lines.slice(), quote: quoteFor(mor.cfg.weekKey), phase: morningNow().phase, ms: (T - mor.cfg.t0) * 1000 } : null;
 }
 
 /* the state now (a pure function of T and the control events) */
@@ -43,7 +44,7 @@ export function morningMoving() {
 export function setMorningName(name) {
   if (!mor) return;
   mor.cfg.name = name;
-  mor.lines = summaryLines(weekSummary(mor.cfg.tasks, mor.cfg.weekKey, mor.cfg.nowMs), mor.cfg.weekKey, name || '');
+  mor.lines = summaryLines(mor.cfg.summary || weekSummary(mor.cfg.tasks, mor.cfg.weekKey, mor.cfg.nowMs), mor.cfg.weekKey, name || '', mor.cfg.away || 0);
 }
 /* filled by main.js; ui/* calls these */
 export const morningCtl = { advance() { }, leave(name) { return false; }, cut() { } };
@@ -75,7 +76,7 @@ function build() {
     sun: { x: GW * (MORNING.sun.x + nudge), y: SH * (portrait ? MORNING.sun.yPhone : pal.sunY), r: sunR },
     flowers: flowerList(c.tasks, c.weekKey, c.nowMs, MORNING.minGap / Math.max(1, GW))
   };
-  mor.lines = summaryLines(weekSummary(c.tasks, c.weekKey, c.nowMs), c.weekKey, c.name || '');
+  mor.lines = summaryLines(c.summary || weekSummary(c.tasks, c.weekKey, c.nowMs), c.weekKey, c.name || '', c.away || 0);
   mor.nDone = mor.sc.flowers.filter(f => !f.bud).length;
   /* the week that is ending, as it stood on Sunday night: its done and missed stars at their own places (the night compose has no stars of it) */
   const byId = new Map(); mor.pt = [];
@@ -425,10 +426,9 @@ export function drawMorningText() {
     if (a <= .01) return;
     ctx.globalAlpha = a; ctx.fillStyle = i === 0 ? T3.ink : T3.dim; ctx.fillText(t, x, y0 + i * lh);
   });
-  const q = MORNING.quote, yq = y0 + (L + 1) * lh;
-  const aq = textK(st, L + 1), ab = textK(st, L + 2);
-  if (aq > .01) { ctx.globalAlpha = aq; ctx.fillStyle = T3.dim; ctx.fillText(q.text, x, yq); }
-  if (q.by && ab > .01) { ctx.globalAlpha = ab; ctx.fillStyle = T3.dim; ctx.fillText('— ' + q.by, x, yq + lh); }
+  const q = quoteFor(mor.cfg.weekKey), yq = y0 + (L + 1) * lh;
+  const aq = textK(st, L + 1);
+  if (aq > .01) { ctx.globalAlpha = aq; ctx.fillStyle = T3.dim; ctx.fillText(q, x, yq); }
   ctx.globalAlpha = 1;
   drawCenterWeek(mor.cfg.newWeek, st.weekLabelK);
   ctx.textAlign = 'left';

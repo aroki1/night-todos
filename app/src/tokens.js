@@ -82,8 +82,7 @@ export const MORNING = {
   skyMid: .45,                                   // where the mid sky colour sits, as a share of the horizon height
   minGap: 12,                                     // grains between flower stems
   gap: { night: [3 / 255, 4 / 255, 7 / 255], paper: hex('#d8ccb4'), mosaicK: .72 },
-  text: { ink: '#14120f', dim: '#2e2a22', x: .06, y: .10, yPhone: .08, lineGrains: 6, name: 'name this week' },
-  quote: { text: 'a placeholder line until the quotes arrive', by: '' }
+  text: { ink: '#14120f', dim: '#2e2a22', x: .06, y: .10, yPhone: .08, lineGrains: 6, name: 'name this week' }
 };
 
 /* layout, in grains and layout units (1 grain = 3 units = 3 CSS px at 1x) */
@@ -176,7 +175,8 @@ export const FLAGS = {
   season: Q.get('season'),                     // dev: winter | spring | summer | autumn
   gap: Q.get('gap'),                           // dev: paper | mosaic
   flowers: Q.has('flowers') ? +Q.get('flowers') : null,
-  buds: Q.has('buds') ? +Q.get('buds') : null
+  buds: Q.has('buds') ? +Q.get('buds') : null,
+  away: Q.has('away') ? +Q.get('away') : 0,     // dev: ?morning=1&away=3 shows the `N weeks away` line
 };
 
 /* reduced motion: system default, overridable at runtime by /motion and prefs */

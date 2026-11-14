@@ -7,7 +7,7 @@ import { setMorningScene, clearMorningScene, morningScene, morningNow, morningCf
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
 import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
-import { shouldStartMorning, nextDue, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
+import { shouldStartMorning, nextDue, nextAway, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
 import { doFinish, doUndo, pushMorning, clearMorning } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
 import { drawLabels, drawPastHover } from './render/text.js';
@@ -218,9 +218,9 @@ function applyScenes() {
     ns.injectWeeks(+new URLSearchParams(location.search).get('weeks') || 6);
     freeze = true;
   }
-  if (FLAGS.morning) {      // dev: ?morning=1 [&at=<ms>&leave=<ms>&season=&gap=paper|mosaic&flowers=&buds=], frozen unless &live=1
+  if (FLAGS.morning) {      // dev: ?morning=1 [&at=<ms>&leave=<ms>&away=<n>&season=&gap=paper|mosaic&flowers=&buds=], frozen unless &live=1
     const q = new URLSearchParams(location.search);
-    ns.morning({ season: FLAGS.season, gap: FLAGS.gap, flowers: FLAGS.flowers, buds: FLAGS.buds, at: FLAGS.at, leave: q.has('leave') ? +q.get('leave') : null });
+    ns.morning({ season: FLAGS.season, gap: FLAGS.gap, flowers: FLAGS.flowers, buds: FLAGS.buds, at: FLAGS.at, away: FLAGS.away, leave: q.has('leave') ? +q.get('leave') : null });
     freeze = q.get('live') !== '1';
   }
   if (freeze) api.freeze(tFreeze);
@@ -234,7 +234,7 @@ function checkRollover() {
   if (liveWeek === null) { liveWeek = key; return; }
   if (key === liveWeek || DEMO_ON || morningScene()) return;
   const from = liveWeek; liveWeek = key;
-  archivePast(store, now); store.morningDue = nextDue(from, now, store.morningDue); store.lastSeenWeek = key; flushSave();
+  archivePast(store, now); store.morningAway = nextAway(from, now, store.morningAway); store.morningDue = nextDue(from, now, store.morningDue); store.lastSeenWeek = key; flushSave();
   rebuildStars(now); rebuildPast();
 }
 
@@ -252,7 +252,7 @@ function startRealMorning(key) {
   store.weeks[key] = withSummary(w, weekSummary(store.tasks, key, now)); saveSoon();
   makeSky(seedForWeek(key)); cloudsForce(); rebuildPast();
   beginMorning({ tasks: store.tasks, weekKey: key, nowMs: now, season: seasonOf(now), gapMode: 'mosaic', seed: seedForWeek(key),
-    name: store.weeks[key].name || '', t0: T, reduced: isReduced(), newSeed: seedForWeek(nowKey), newWeek: weekLabel(nowKey), write: true });
+    name: store.weeks[key].name || '', summary: store.weeks[key].summary, away: store.morningAway || 0, t0: T, reduced: isReduced(), newSeed: seedForWeek(nowKey), newWeek: weekLabel(nowKey), write: true });
 }
 /* the sunset starts at sky time `at`. A real morning saves the name and clears morningDue here (by any path) */
 function leaveMorning(at, name) {
@@ -261,7 +261,7 @@ function leaveMorning(at, name) {
   if (nm) setMorningName(nm);
   if (c.write) {
     if (nm) store.weeks[c.weekKey] = withName(store.weeks[c.weekKey], nm);
-    store.morningDue = null; flushSave();
+    store.morningDue = null; store.morningAway = 0; flushSave();
   }
   pushMorning('leave', at, !!nm);
   skySwap(c.newSeed, at, TIME.crossfadeMorning);

@@ -276,7 +276,7 @@ export function installHooks(a) {
       for (let i = 0; i < 2; i++) tasks.push({ id: 'x' + i, title: 'missed ' + i, createdAt: ws, deadline: ws + D, big: 0, x: r(), y: r(), doneAt: null, link: null, week: key, steps: [] });
       const at = o.at === null || o.at === undefined ? HOLD_END + 400 : o.at;
       return api.showMorning({ tasks, weekKey: key, nowMs: now, season: o.season || seasonOf(now), gapMode: o.gap === 'paper' ? 'paper' : 'mosaic',
-        seed: seedForWeek(key), name: '', t0: T - at / 1000, reduced: isReduced(), newSeed: seedForWeek(isoWeekKey(now)), newWeek: weekLabel(isoWeekKey(now)), write: false },
+        seed: seedForWeek(key), name: '', away: o.away || 0, t0: T - at / 1000, reduced: isReduced(), newSeed: seedForWeek(isoWeekKey(now)), newWeek: weekLabel(isoWeekKey(now)), write: false },
         { leaveMs: o.leave });
     },
     morningInfo() { return morningInfoR() || { active: false }; },
