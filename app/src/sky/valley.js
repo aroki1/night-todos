@@ -91,7 +91,7 @@ export function drawTreeline(sc, farLine) {
 /* ---- the river: irregular banks, water as a cool dark reflection of the sky, sun glints, a dark rim and a few reeds ---- */
 export function drawRiver(sc, nearLine) {
   needRiver(sc); if (sc.portrait) return;
-  const { rl, rr } = rv, S = sc.pal.sky, o = sc.seed % 997, gl = MORNING.valley.glint, g = sc.pal.grass;
+  const { rl, rr } = rv, S = sc.pal.sky, o = sc.seed % 997, g = sc.pal.grass;
   const topC = mix3(mix3(S[2], S[0], 0.55), [0, 0, 0], 0.18), botC = mix3(S[0], [0, 0, 0], 0.38), rim = mix3(g[3], g[1], 0.3), gr = sc.sun.r * 0.7, wc = [0, 0, 0];
   for (let j = Math.max(0, sc.horizon - 2); j < SH; j++) {
     const l = rl[j], r = rr[j]; if (r <= 0) continue;
@@ -107,11 +107,6 @@ export function drawRiver(sc, nearLine) {
       over(i, j, wc, cov);
       if (din > 0.3 && din < 2.2) over(i, j, rim, 0.4 * (1 - Math.abs(din - 1) / 1.2));             // thin darker wet edge
       if (din > 0.5 && din < 2.6 && H(i * 1.7 + o, j * 0.9) < 0.1 * (1 - din / 2.6)) { over(i, j, g[2], 0.8); over(i, j - 1, g[2], 0.7); }   // a few grass tips lean over the water
-      const dx = Math.abs(i - sc.sun.x) / (gr + (r - l) * 0.2);                    // dappled light: short flickers, densest under the sun
-      if (dx < 1 && din > 1) {
-        const off = H(j, o + 9) * 5, cell = Math.floor((i + off) / 5), len = 2 + ((H(cell, j + o) * 3) | 0), pos = (i + off) - cell * 5;
-        if (pos < len && H(cell * 1.3 + 1, j * 1.9 + o) < 0.55 * Math.pow(1 - dx, 1.6) * (0.4 + 0.6 * t)) over(i, j, gl, (0.3 + 0.22 * (1 - dx)) * cov);
-      }
     }
   }
   /* reeds on the banks: thin blades, some with a cattail head */
@@ -124,10 +119,40 @@ export function drawRiver(sc, nearLine) {
 }
 
 /* ---- mist: a soft pale band lying on the valley floor, a little denser where it drifts (low-frequency noise) ---- */
+const mistA = (sc, i, j, o, y0, sig) => 0.4 * Math.exp(-((j - y0) * (j - y0)) / (2 * sig * sig)) * (0.65 + 0.7 * vn(i * 0.011, j * 0.12, o + 40));
 export function drawMist(sc) {
   const o = sc.seed % 997, c = MORNING.valley.mist, y0 = sc.horizon + 6, sig = Math.max(5, SH * 0.06);
-  for (let j = Math.max(0, Math.floor(y0 - sig * 3)); j < Math.min(SH, y0 + sig * 3.5); j++) {
-    const e = Math.exp(-((j - y0) * (j - y0)) / (2 * sig * sig));
-    for (let i = 0; i < GW; i++) over(i, j, c, 0.4 * e * (0.65 + 0.7 * vn(i * 0.011, j * 0.12, o + 40)));
+  for (let j = Math.max(0, Math.floor(y0 - sig * 3)); j < Math.min(SH, y0 + sig * 3.5); j++) for (let i = 0; i < GW; i++) over(i, j, c, mistA(sc, i, j, o, y0, sig));
+}
+
+/* ---- river glints (M4b): short flickers in the dappled light, densest under the sun. The cells are the old ones, a third at most; each flickers on its own period.
+   The list is built once per scene: grain, strength (the mist over it already taken off), period and phase. drawGlints paints the flickers at sky time `t`. ---- */
+let gl = null, glSc = null, glW = 0, glH = 0;
+function buildGlints(sc, nearLine) {
+  const out = [], G = MORNING.glints, o = sc.seed % 997, gr = sc.sun.r * 0.7, my0 = sc.horizon + 6, msig = Math.max(5, SH * 0.06);
+  needRiver(sc);
+  const { rl, rr } = rv;
+  if (!sc.portrait) for (let j = Math.max(0, sc.horizon - 2); j < SH; j++) {
+    const l = rl[j], r = rr[j]; if (r <= 0) continue;
+    const t = (j - (sc.horizon - 2)) / (SH - sc.horizon + 2);
+    for (let i = Math.max(0, Math.floor(l)); i <= Math.min(GW - 1, Math.ceil(r)); i++) {
+      const dx = Math.abs(i - sc.sun.x) / (gr + (r - l) * 0.2); if (dx >= 1 || i - l < 1 || r - i < 1 || j < nearLine[i] + 1) continue;
+      const off = H(j, o + 9) * 5, cell = Math.floor((i + off) / 5), len = 2 + ((H(cell, j + o) * 3) | 0), pos = (i + off) - cell * 5;
+      if (pos < len && H(cell * 1.3 + 1, j * 1.9 + o) < G.chance * Math.pow(1 - dx, 1.6) * (0.4 + 0.6 * t)) {
+        const a = (0.3 + 0.22 * (1 - dx)) * (1 - Math.min(1, mistA(sc, i, j, o, my0, msig)));
+        out.push({ i, j, a, p: G.period[0] + (G.period[1] - G.period[0]) * H(cell + 0.4, j * 0.7 + o), ph: H(cell * 2.1, j + o + 5) });
+      }
+    }
+  }
+  gl = out; glSc = sc; glW = GW; glH = SH;
+}
+/* the glints at sky time t, scaled by k (0..1); each is on for MORNING.glints.on seconds of its period, as a smooth blink */
+export function drawGlints(sc, nearLine, t, k) {
+  if (k <= 0) return;
+  if (glSc !== sc || glW !== GW || glH !== SH) buildGlints(sc, nearLine);
+  const c = MORNING.valley.glint, on = MORNING.glints.on;
+  for (let q = 0; q < gl.length; q++) {
+    const g = gl[q], u = ((t / g.p + g.ph) % 1) * g.p; if (u >= on) continue;
+    over(g.i, g.j, c, g.a * k * Math.sin(Math.PI * u / on));
   }
 }

@@ -13,7 +13,7 @@ import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover
 import { bar, submitBar, barParse, msAvg } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { HOLD_END } from '../choreo/morning.js';
-import { morningInfo as morningInfoR } from '../render/morning.js';
+import { morningInfo as morningInfoR, setMorningHover } from '../render/morning.js';
 import { ensureWeeks, previousWeekKey } from '../model/week.js';
 import { seasonOf } from '../model/morning.js';
 import { selfTest } from './selftest.js';
@@ -280,6 +280,7 @@ export function installHooks(a) {
         { leaveMs: o.leave });
     },
     morningInfo() { return morningInfoR() || { active: false }; },
+    morningHover(i) { setMorningHover(i, true); api.render(true); },
     noMorning() { return api.hideMorning(); },
     weekKey() { return isoWeekKey(wall(T)); }
   };

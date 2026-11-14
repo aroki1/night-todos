@@ -21,8 +21,8 @@ const RADIAL = {
   hellebore:     { n: 5, a: 0.78, p: 0.5, core: 0.34, dots: 1 }
 };
 const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
-const S = [0, 0, 0];
-const L = MORNING.light;
+const S = [0, 0, 0], WHITE = [1, 1, 1];
+const L = MORNING.light, WF = MORNING.wind.flower;
 let rimK = 0;                                  // this flower's backlight (strongest under the sun)
 
 /* o (the sunrise and the sunset, M2b): { bloom(order) -> { stem, head } 0..1, bud: 0..1, dark: 0..1 (toward the silhouette), shadow: 0..1, dy: rows the whole land is lowered by, keep: (i, j) -> 0..1 or null }.
@@ -32,11 +32,13 @@ let KEEP = null;                               // M2c: (i, j) -> 0..1, how much 
 const ov = (i, j, c, a) => over(i, j + DY, c, KEEP ? a * KEEP(i, j + DY) : a);
 const SIL = MORNING.rise.sil, SIL_B = MORNING.rise.silBase, SIL_G = MORNING.rise.silGain;
 
-export function drawFlora(sc, o) {
+export function drawFlora(sc, o, W) {      // W: the wind of this frame (sky/life.js) or none: the stems stand straight (up to their own lean)
   const g = sc.pal.grass, stemC = sc.pal.stem, leafC = mix3(stemC, g[2], 0.3), sky = sc.pal.sky[2], shadow = g[3];
   const sz = Math.max(SMALL_MIN, Math.min(1, GW / SMALL_W));
   const BL = o ? o.bloom : null, budK = o ? o.bud : 1, shK = o ? o.shadow : 1, dark = o ? o.dark : 0;
   DY = o ? o.dy | 0 : 0; KEEP = o && o.keep ? o.keep : null;
+  const idxOf = new Map(); for (let k = 0; k < sc.flowers.length; k++) idxOf.set(sc.flowers[k], k);
+  sc.heads = [];                                                                        // head centres (with the wind, without the growth) for hover, tap and the butterflies
   const grow = f => (f.bud ? budK : BL ? BL(f.order).stem : 1);                      // how much of its stem is up
   const list = sc.flowers.slice().sort((a, b) => b.depth - a.depth || a.x - b.x);   // far first
   const spot = f => {
@@ -74,13 +76,26 @@ export function drawFlora(sc, o) {
       ov(i, j, S, a);
     };
     const lean = ((f.pick >> 3) % 5) - 2;                               // -2..2: stems are not ruled lines
-    const stem = (hs, h, c) => { for (let q = 0; q < hs; q++) px(x + Math.round(lean * (q / h) * (q / h)), base - q, c); return x + Math.round(lean * (hs / h) * (hs / h)); };
+    const hs0 = f.bud ? Math.max(4, Math.round((8 + (f.pick % 3)) * lerp(1, FAR_STEM, far))) : Math.max(6, Math.round((STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0)) * sz * lerp(1, FAR_STEM, far)));
+    const ls = lean + (W ? W.col[x] * hs0 * WF : 0);                    // the lean plus the wind: the stem bends by it, the head rides on its tip
+    {                                                                    // record the head at rest (no bloom, no dy) for the morning hover
+      const R0 = Math.max(R_MIN, (f.big ? R_BIG : R_NEAR) * sz * lerp(1, FAR_R, far)), h0 = Math.max(6, Math.round((STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0)) * sz * lerp(1, FAR_STEM, far)));
+      let gx = x + Math.round(ls), gy, r;
+      if (f.bud) { gy = base - Math.max(4, Math.round((8 + (f.pick % 3)) * lerp(1, FAR_STEM, far))) - 1.5; r = 3; }
+      else if (sp === 'tulip' || sp === 'crocus') { const Hh = R0 * (sp === 'crocus' ? 2.8 : 2.4); gy = base - h0 - Hh * .5; r = Math.max(R0 * 1.05, Hh * .5); }
+      else if (sp === 'snowdrop') { const Hh = R0 * 1.9; gx += 3; gy = base - h0 + Hh * .5; r = Math.max(R0, Hh * .5); }
+      else { gy = base - h0 - Math.round(R0) + 1; r = R0; }
+      sc.heads.push({ i: idxOf.get(f), gx, gy, r });
+    }
+    const hov = sc.hov && sc.hov.i === idxOf.get(f) ? sc.hov.k * MORNING.labelBox.bright : 0;   // the hovered flower's head is lightened (the label's link is drawn by render/morning.js)
+    const hp = hov > 0 ? (i, j, c, a) => px(i, j, mix3(c, WHITE, hov), a) : px;
+    const stem = (hs, h, c) => { for (let q = 0; q < hs; q++) px(x + Math.round(ls * (q / h) * (q / h)), base - q, c); return x + Math.round(ls * (hs / h) * (hs / h)); };
     px(x - 1, base, shadow, 0.5); px(x + 1, base, shadow, 0.5);
     if (f.bud) {
       const h = Math.max(4, Math.round((8 + (f.pick % 3)) * lerp(1, FAR_STEM, far))), hs = Math.max(1, Math.round(h * gk)), tx = stem(hs, h, stemC), ty = base - hs, bw = far < 0.6 ? 1 : 1;
       const green = mix3(stemC, g[2], 0.25);
-      px(tx, ty, green); for (let k = -bw; k <= bw; k++) px(tx + k, ty - 1, green); for (let k = -bw; k <= bw; k++) px(tx + k, ty - 2, mix3(green, pet, 0.8));
-      px(tx, ty - 3, pet);
+      px(tx, ty, green); for (let k = -bw; k <= bw; k++) px(tx + k, ty - 1, green); for (let k = -bw; k <= bw; k++) hp(tx + k, ty - 2, mix3(green, pet, 0.8));
+      hp(tx, ty - 3, pet);
       continue;
     }
     const BLf = BL ? BL(f.order) : null, hh = BLf ? BLf.head * BLf.head * (3 - 2 * BLf.head) : 1;
@@ -88,7 +103,7 @@ export function drawFlora(sc, o) {
     const h = Math.max(6, Math.round((STEM_NEAR + (f.pick % STEM_VAR) + (f.big ? STEM_BIG : 0)) * sz * lerp(1, FAR_STEM, far))), hs = Math.max(1, Math.round(h * gk));
     const tx = stem(hs, h, stemC), ty = base - hs;
     if (h >= 10) {                                                      // two leaves, one each side, pointing up and out
-      const q1 = Math.round(h * 0.3), q2 = Math.round(h * 0.55), xq = q => x + Math.round(lean * (q / h) * (q / h));
+      const q1 = Math.round(h * 0.3), q2 = Math.round(h * 0.55), xq = q => x + Math.round(ls * (q / h) * (q / h));
       if (hs >= q1 + 2) { px(xq(q1) + 1, base - q1, leafC); px(xq(q1) + 2, base - q1 - 1, leafC); px(xq(q1) + 3, base - q1 - 2, leafC); }
       if (hs >= q2 + 2) { px(xq(q2) - 1, base - q2, leafC); px(xq(q2) - 2, base - q2 - 1, leafC); }
     }
@@ -98,9 +113,9 @@ export function drawFlora(sc, o) {
       px(tx, ty, green); px(tx, ty - 1, mix3(green, pet, 0.8 * hh / 0.2)); continue;
     }
     const Rh = R * hh;
-    if (sp === 'tulip' || sp === 'crocus') cup(px, tx, ty, Rh, sp === 'crocus', pet, core);
-    else if (sp === 'snowdrop') bell(px, tx, ty, Rh, stemC, pet, core);
-    else radial(px, RADIAL[sp] || RADIAL.daisy, tx, ty - Math.round(Rh) + 1, Rh, f.petals, pet, core);
+    if (sp === 'tulip' || sp === 'crocus') cup(hp, tx, ty, Rh, sp === 'crocus', pet, core);
+    else if (sp === 'snowdrop') bell(hp, tx, ty, Rh, stemC, pet, core);
+    else radial(hp, RADIAL[sp] || RADIAL.daisy, tx, ty - Math.round(Rh) + 1, Rh, f.petals, pet, core);
   }
   DY = 0; KEEP = null;
 }

@@ -108,6 +108,7 @@ const SCENES = {
   morningSummer: 'morning=1&season=summer',
   morningRise: 'morning=1&at=4500',                    // the sunrise, half way: the land up, the sky turning
   morningSet: 'morning=1&leave=9500&at=14000',         // the sunset, 4.5 s in: dusk, the sun low, the heads closing
+  morningLabel: { q: 'morning=1', eval: 'ns.morningHover(0);ns.render(true)' },   // the label of the first flower: plate, two lines, link
   barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true)" }   // nothing selected: the bar placeholder is the step syntax
 };
 const PERF = { size: '1917x933', dpr: 2, frames: 300 };
@@ -133,7 +134,11 @@ for (const [sz, o] of Object.entries(SIZES)) for (const [name, sc] of Object.ent
 }
 jobs.push({
   url: `http://localhost:${PORT}/?${BASE}&prof=1`, size: PERF.size, dpr: PERF.dpr, wait: 1000,
-  eval: `ns.profRun({frames:${PERF.frames}}).then(s=>JSON.stringify({raw:{total:s.total,err:s.err}}))`
+  eval: `ns.profRun({frames:${PERF.frames}}).then(s=>JSON.stringify({kind:'night',raw:{total:s.total,err:s.err}}))`
+});
+jobs.push({
+  url: `http://localhost:${PORT}/?${BASE}&morning=1&prof=1`, size: PERF.size, dpr: PERF.dpr, wait: 1000,
+  eval: `ns.profRun({frames:${PERF.frames}}).then(s=>JSON.stringify({kind:'morning',raw:{total:s.total,err:s.err}}))`
 });
 const listFile = path.join(tmp, 'shots.json');
 fs.writeFileSync(listFile, JSON.stringify(jobs));
@@ -143,12 +148,15 @@ const cdpOut = (r.stdout || '') + (r.stderr || '');
 const bad = cdpOut.split('\n').filter(l => /^(EXC|ERR|TIMEOUT|EVALEXC)/.test(l));
 if (r.status !== 0 || bad.length) fail(['browser run failed:', ...bad.slice(0, 8)]);
 
-/* perf: median CPU frame from ns.profRun (the EVAL line is the last one) */
-const evalLine = cdpOut.split('\n').filter(l => l.startsWith('EVAL ')).pop();
-let prof = null;
-try { prof = JSON.parse(JSON.parse(evalLine.slice(5))); } catch (_) { }
-const med = prof && perfMedian(prof.raw);
-if (!(med > 0)) fail(['perf: could not read a median CPU frame from ns.profRun:', (evalLine || 'no EVAL line').slice(0, 300)]);
+/* perf: median CPU frames from ns.profRun, night and the morning hold (each EVAL line carries its kind) */
+const profs = {};
+for (const l of cdpOut.split('\n')) if (l.startsWith('EVAL ')) {
+  try { const o = JSON.parse(JSON.parse(l.slice(5))); if (o && o.kind) profs[o.kind] = o; } catch (_) { }
+}
+const med = profs.night && perfMedian(profs.night.raw);
+const mMed = profs.morning && perfMedian(profs.morning.raw);
+if (!(med > 0)) fail(['perf: could not read a median CPU frame from ns.profRun (night):', (JSON.stringify(profs.night || null)).slice(0, 300)]);
+if (!(mMed > 0)) fail(['perf: could not read a median CPU frame from ns.profRun (morning hold):', (JSON.stringify(profs.morning || null)).slice(0, 300)]);
 function perfMedian(s) {
   if (s.total && typeof s.total.med === 'number') return s.total.med;
   if (s.cpu && typeof s.cpu.med === 'number') return s.cpu.med;
@@ -168,7 +176,7 @@ if (UPDATE || UPDATE_PERF || !g) {
     hashes, perf: { measuredMedianMs: keep ? g.perf.measuredMedianMs : Math.round(med * 100) / 100, budgetMs: budget, frames: PERF.frames, setup: 'ambient (no scene), 1917x933 dpr 2, GPU' }
   }, null, 2) + '\n');
   fs.rmSync(tmp, { recursive: true, force: true });
-  console.log(`verify: goldens updated (${keys.length} hashes, perf median ${med.toFixed(2)} ms, budget ${budget} ms)`);
+  console.log(`verify: goldens updated (${keys.length} hashes, perf night ${med.toFixed(2)} ms, morning ${mMed.toFixed(2)} ms, budget ${budget} ms)`);
   process.exit(0);
 }
 
@@ -177,9 +185,10 @@ for (const k of keys) {
   if (g.hashes[k] !== hashes[k]) errs.push(`golden mismatch: ${k}  -> ${path.join(tmp, k + '.png')}`);
 }
 if (med > g.perf.budgetMs) errs.push(`perf: median CPU frame ${med.toFixed(2)} ms > budget ${g.perf.budgetMs} ms`);
+if (mMed > g.perf.budgetMs) errs.push(`perf: morning median CPU frame ${mMed.toFixed(2)} ms > budget ${g.perf.budgetMs} ms`);
 if (errs.length) {
   console.log('verify FAILED\n' + errs.join('\n'));
   process.exit(1);
 }
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log(`verify OK: ${keys.length} goldens, perf ${med.toFixed(2)}/${g.perf.budgetMs} ms, node ${(nodeMs / 1000).toFixed(1)}s, total ${((Date.now() - T0) / 1000).toFixed(1)}s`);
+console.log(`verify OK: ${keys.length} goldens, perf ${med.toFixed(2)}/${g.perf.budgetMs} ms, morning ${mMed.toFixed(2)} ms, node ${(nodeMs / 1000).toFixed(1)}s, total ${((Date.now() - T0) / 1000).toFixed(1)}s`);

@@ -8,7 +8,7 @@ import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } fro
 import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo } from './bar.js';
 import { skySwap } from '../render/compose.js';
 import { setPointerGrain, clearPointerGrain } from '../sky/past.js';
-import { morningPhase, morningCtl } from '../render/morning.js';
+import { morningPhase, morningCtl, morningHit, setMorningHover, morningHover } from '../render/morning.js';
 import { wake } from './bar.js';
 import { stepsLive, toggleDoneRows, sui, isDrag, clampScroll } from '../model/steps.js';
 
@@ -96,9 +96,12 @@ export function bindPointer() {
   cv.addEventListener('mousemove', e => {
     const [px, py] = toUnits(e);
     const mp = morningPhase();
-    if (mp && mp !== 'end') {                             // the morning: no star hover; the bar still reads as text
+    if (mp && mp !== 'end') {                             // the morning: no star hover; a flower shows its label in the hold
       setMouseHover(-1); sui.rowHover = -1;
-      cv.style.cursor = py >= BARY ? 'text' : 'default';
+      if (py >= BARY) { setMorningHover(-1); cv.style.cursor = 'text'; return; }
+      const i = mp === 'hold' ? morningHit(px / 3, py / 3) : -1;
+      setMorningHover(i);
+      cv.style.cursor = i >= 0 ? 'pointer' : 'default';
       return;
     }
     if (skyBtn) skyBtn.hover = inBtn(px, py);
@@ -108,7 +111,7 @@ export function bindPointer() {
     const onUndo = inUndo(px, py);
     cv.style.cursor = (mouseHover >= 0 || hr || inBtn(px, py) || onUndo) ? 'pointer' : (py >= BARY) ? 'text' : 'default';
   });
-  cv.addEventListener('mouseleave', () => { setMouseHover(-1); setPointerGrain(-1e9, -1e9); });
+  cv.addEventListener('mouseleave', () => { setMouseHover(-1); setMorningHover(-1); setPointerGrain(-1e9, -1e9); });
   cv.addEventListener('click', e => {
     if (e.pointerType === 'touch') return;             // handled by pointerdown
     const [px, py] = toUnits(e);
@@ -148,9 +151,13 @@ export function bindPointer() {
     if (e.pointerType !== 'touch') return;
     const [px, py] = toUnits(e);
     const mp = morningPhase();
-    if (mp && mp !== 'end') {                             // the morning: the bar still opens; a tap on the sky only hurries the sunrise
+    if (mp && mp !== 'end') {                             // the morning: the bar still opens; in the hold a tap toggles a flower's label
       if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
       if (mp === 'night' || mp === 'rise') morningCtl.advance();
+      else if (mp === 'hold') {
+        const i = morningHit(px / 3, py / 3);
+        setMorningHover(i >= 0 && i !== morningHover() ? i : -1);
+      }
       wake(); return;
     }
     if (inBtn(px, py)) { skySwap(11, T); wake(); return; }

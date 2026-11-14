@@ -30,6 +30,7 @@ localStorage.setItem('night-sky:v1',JSON.stringify({version:1,weeks:{},lastSeenW
 | Name the week | in the hold type `moving day`, Enter | sunset starts, `week 46 · moving day` stays until ~1 s; console: JSON.parse(localStorage['night-sky:v1']).weeks['2026-W46'].name |
 | Task from the morning | in the hold type `essay, fri`, Enter | sunset starts; the new star assembles near its end; no name saved |
 | Controls | click or Space during the sunrise; Esc during the sunset | jumps to the hold in 0.4 s; the sunset ends in 0.6 s |
+| Flower label | `?morning=1&live=1`, hover or tap a flower | `title · wed`; a bud shows its title; it never starts the sunset |
 | Name in the night | name the week in the morning, then hover its far constellation | `week 46 · <name> · 3 stars` |
 | Away 3 weeks | seed with `lastSeenWeek:'2026-W44'`, open `?clock=2026-11-16T09:00` | the morning says `3 weeks away`; reload before leaving: still `3 weeks away` |
 

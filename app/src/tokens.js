@@ -50,9 +50,42 @@ export const MORNING = {
     aster: [hex('#9b7fd1'), hex('#f2c94c')], chrysanthemum: [hex('#e8963a'), hex('#a8541f')], snowdrop: [hex('#f4f6f8'), hex('#8fb87a')],
     hellebore: [hex('#e9d8e4'), hex('#c9b45a')], crocus: [hex('#9d6fd6'), hex('#f0b43c')], tulip: [hex('#e2553f'), hex('#3a2a1a')]
   },
-  sun: { core: hex('#fffbee'), limb: hex('#ffd890'), halo: hex('#ffe2a8'), r: .15, x: .5, nudge: .06, yPhone: .52 },
+  /* M4c, the flower label. Per species: plate (a pastel of the petals' complementary hue, drawn in grains), ink (the title, a dark shade of the petals, a CSS colour for the text layer),
+     dim (the second line, lighter), line (the dotted link to the head: the petal colour). box (grains): pad above and below the text, padX at its sides, lh = one text row, gap from the head, margin to the frame, subPx = the second line's font,
+     plate = its alpha, edge = how much darker its 1-grain rim is, speck = per-grain brightness variation, dot = link dot spacing, bright = how much the hovered head is lightened, sunPad = clearance around the sun. */
+  label: {
+    daisy: { plate: hex('#e2d6f0'), ink: '#4a3022', dim: '#66503f', line: hex('#f7f3ea') },
+    poppy: { plate: hex('#cdeedd'), ink: '#6a1220', dim: '#82343f', line: hex('#d94a3a') },
+    cornflower: { plate: hex('#fbd9c4'), ink: '#1c2f78', dim: '#3f5393', line: hex('#4a6fd8') },
+    aster: { plate: hex('#f9f2b8'), ink: '#45257a', dim: '#644a92', line: hex('#9b7fd1') },
+    chrysanthemum: { plate: hex('#cde6f6'), ink: '#762a0e', dim: '#8f4a2a', line: hex('#e8963a') },
+    snowdrop: { plate: hex('#f6d3dc'), ink: '#1c4726', dim: '#40664a', line: hex('#f4f6f8') },
+    hellebore: { plate: hex('#d4e5cc'), ink: '#47193a', dim: '#664258', line: hex('#e9d8e4') },
+    crocus: { plate: hex('#f7edba'), ink: '#3c1a68', dim: '#5c4388', line: hex('#9d6fd6') },
+    tulip: { plate: hex('#cdeedd'), ink: '#561812', dim: '#773b34', line: hex('#e2553f') }
+  },
+  labelBox: { pad: 2, padX: 3, lh: 5, gap: 6, margin: 2, subPx: 11, plate: .9, edge: .2, speck: .05, dot: 2, bright: .15, sunPad: 3 },
+  sun: { core: hex('#fffbee'), limb: hex('#ffd890'), halo: hex('#ffe2a8'), r: .15, x: .5, nudge: .06, yPhone: .52, shimmer: .03, shimmerHz: .12 },
   /* the valley: trunk, reeds and cattails, river glints, mist */
   valley: { trunk: hex('#4a3626'), reed: hex('#7a8a3a'), cattail: hex('#6b4a2a'), glint: hex('#fff2c8'), mist: hex('#fff0d0') },
+  /* M4b, the living hold. All of it is a function of sky time T and the week seed; reduced motion shows none of it.
+     wind: base sway sin(T*w + x*k) and a steady lean (tip offset per grain of blade height), gusts (Gaussian bumps along x: one every `every` s +- jit/2, speed grains/s, sigma grains, strength),
+     flower: stems sway this much more than blades per grain of stem height; rampMs: the hold's motion comes in over this long after the hold starts (the sunrise has none of it); easeMs: leaving from the full hold, the sway eases out over this long.
+     clouds: 0..3 thin day clouds (count = floor(H * (max + 1))), width and height as shares of SH, y band as shares of SH, drift in grains/s, strongest alpha (also over the sun).
+     glints: river glints are flickers now: share of cells (today's was .55), period and the length of one flicker in s.
+     life: slot = the length of a time slot in s, in which each kind is on or off (chance p, salt); fade = the cross fade between slots; kinds per season (never more than 2 non-bird kinds, a flock only crosses when at most 1 is on). */
+  wind: { w: .33, k: .018, amp: .045, lean: .03, gust: { every: 16.67, jit: 6.67, speed: 15, sig: 16, amp: .15 }, flower: 1.1, rampMs: 1500, stillT: 40, easeMs: 600 },
+  clouds: { max: 3, w: [.28, .46], h: [.05, .085], y: [.1, .34], drift: .18, alpha: .3, color: hex('#fff6e6') },
+  glints: { chance: .17, period: [4.17, 8.33], on: 1.5 },
+  life: {
+    slot: 50, fade: 3.33,
+    kinds: { spring: ['butterfly', 'dew'], summer: ['pollen', 'butterfly'], autumn: ['dew'], winter: [] },
+    p: { pollen: .7, butterfly: .7, dew: .6 }, salt: { pollen: 4, butterfly: 6, dew: 3 },
+    pollen: { n: [10, 20], rise: .66, span: .35, drift: 5, driftHz: .21, a: .4, haloBoost: 1.6, color: hex('#fff0a8') },
+    dew: { life: .67, every: 1.67, p: .6, a: .85, color: hex('#fffdf0') },
+    butterfly: { drift: .012, hz: 1.8, restHz: .48, cycle: 30, wobble: [3.18, 5.46], land: .5, approach: 1.5, stay: [2, 5], colors: [hex('#fff4c8'), hex('#f2c94c'), hex('#e8c0ff')], body: hex('#3a2a1a') },
+    birds: { every: 108.3, jit: 83.3, n: [3, 7], dx: 8, dy: 4, cross: 53.3, y: [.18, .34], hz: .96, bob: .36, a: .75, color: hex('#2c3040') }
+  },
   /* backlight: rim gold, long shadows, rolling ground */
   light: { rim: hex('#ffd36e'), rimGrass: .62, rimBase: .1, rimSpread: .36, roll: .4, rollWarm: .16, shadowA: .55, shadowLen: .95, shadowDx: .32 },
   /* sunrise and sunset drawing (M2b, M2c). glow: the horizon warming under the night (share of the horizon height where it starts, peak mix, profile exponent).
@@ -129,7 +162,7 @@ export const TIME = {
 };
 
 /* frame pacing (fps): active = something is moving or the user just touched it; idle = a calm sky drifting. Sky time T still advances every RAF. */
-export const FPS = { active: 60, idle: 15 };
+export const FPS = { active: 60, idle: 15, morning: 30 };
 
 /* sizes and budgets */
 /* urgency: a star goes amber when its remaining life fraction is low OR the absolute time left is short.

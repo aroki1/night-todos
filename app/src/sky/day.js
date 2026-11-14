@@ -1,5 +1,5 @@
 /* sky/day.js — the morning sky and sun (static in M1). Every grain is a function of the scene `sc` only. */
-import { lerp, rng, vn } from '../math.js';
+import { lerp, rng, vn, fbm, H } from '../math.js';
 import { MORNING } from '../tokens.js';
 import { GW, SH, BR, BG, BB, over } from '../framebuffer.js';
 
@@ -33,9 +33,9 @@ export function drawDaySky(sc) {
 
 /* the sun: halo and rays added to the sky, then the disc with fractional edge coverage */
 /* o (the sunrise and the sunset, M2b): { y: centre row, haloK: halo strength 0..1, fade: the whole sun's strength 0..1, clip: per column, the first row that is land (nothing is drawn from there down), core, limb, halo: colours }. No o = the resting sun of the hold */
-export function drawSun(sc, o) {
+export function drawSun(sc, o, haloK = 1) {          // haloK: the halo of the resting sun (the hold paints it twice, 1 and 0, to animate it)
   const S = MORNING.sun, { x: fx, r } = sc.sun, fy = o ? o.y : sc.sun.y, hc = o ? o.halo : S.halo, hr = r * HALO_RAD, k2 = 1 / (2 * HALO_SIG * HALO_SIG * r * r);
-  const hk = o ? o.haloK : 1, clip = o ? o.clip : null, fade = o ? o.fade : 1;
+  const hk = o ? o.haloK : haloK, clip = o ? o.clip : null, fade = o ? o.fade : 1;
   const ph = (sc.seed % 628) / 100, so = sc.seed % 997;
   if (o) haloMoving(sc, o, hc, hr, k2, hk * fade);
   const x0 = Math.max(0, Math.floor(fx - hr)), x1 = Math.min(GW - 1, Math.ceil(fx + hr));
@@ -105,5 +105,36 @@ export function skyRows(sc, p3, tab, off) {
   for (let j = 0; j < SH; j++) {
     const t = j <= mid ? j / Math.max(1, mid) : Math.min(1, (j - mid) / Math.max(1, hz - mid)), p = j <= mid ? a : b, q = j <= mid ? b : c, o = off + j * 3;
     tab[o] = lerp(p[0], q[0], t); tab[o + 1] = lerp(p[1], q[1], t); tab[o + 2] = lerp(p[2], q[2], t);
+  }
+}
+
+/* ---- day clouds (M4b): 0..3 thin soft clouds from the fbm, drifting right; one alpha field per cloud, built once per scene ---- */
+let cl = null, clSc = null, clW = 0, clH = 0;
+function buildClouds(sc) {
+  const C = MORNING.clouds, o = sc.seed % 997, n = Math.min(C.max, Math.floor(H(o, 47) * (C.max + 1))), out = [];
+  for (let c = 0; c < n; c++) {
+    const w = Math.max(12, Math.round(SH * lerp(C.w[0], C.w[1], H(o + c, 33)))), h = Math.max(4, Math.round(SH * lerp(C.h[0], C.h[1], H(o + c, 35)))), f = new Float32Array(w * h);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const x = (i + 0.5) / w * 2 - 1, y = (j + 0.5) / h * 2 - 1, e = 1 - (x * x + y * y);
+      f[j * w + i] = e <= 0 ? 0 : Math.min(1, Math.max(0, (fbm(i * 0.1 + c * 31, j * 0.24, o + c * 7) - 0.3) * 4)) * Math.pow(e, 0.6);
+    }
+    out.push({ w, h, f, y: Math.round(SH * lerp(C.y[0], C.y[1], H(o + c, 37))), x0: H(o + c, 39), per: GW + 2 * w });
+  }
+  cl = out; clSc = sc; clW = GW; clH = SH;
+}
+/* the clouds at sky time t, strength k (0..1). skyTop (per column, the first row that is land or ridge) keeps them out of the land; the layered sunrise draws them before the land and passes none */
+export function drawClouds(sc, t, k, skyTop) {
+  if (k <= 0) return;
+  if (clSc !== sc || clW !== GW || clH !== SH) buildClouds(sc);
+  const C = MORNING.clouds, a0 = C.alpha * k;
+  for (const c of cl) {
+    const x = Math.floor(((c.x0 * c.per + C.drift * t) % c.per) - c.w);
+    for (let j = 0; j < c.h; j++) {
+      const y = c.y + j; if (y < 0 || y >= SH) continue;
+      for (let i = 0; i < c.w; i++) {
+        const a = c.f[j * c.w + i], gi = x + i; if (a <= 0.01 || gi < 0 || gi >= GW || (skyTop && y >= skyTop[gi])) continue;
+        over(gi, y, C.color, a * a0);
+      }
+    }
   }
 }

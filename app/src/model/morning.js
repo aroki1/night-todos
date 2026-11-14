@@ -1,7 +1,7 @@
 /* model/morning.js — when the weekly morning is due and when it may start. Pure: no store, no DOM, no clock reads. */
 import { TIME } from '../tokens.js';
 import { clamp01, hstr } from '../math.js';
-import { isoWeekKey, weekDistance, weekLabel } from '../sky/clock.js';
+import { isoWeekKey, weekDistance, weekLabel, WDN } from '../sky/clock.js';
 import { previousWeekKey } from './week.js';
 import { splitBar, parseDeadline } from './parser.js';
 
@@ -75,11 +75,23 @@ export function flowerList(tasks, weekKey, nowMs, minGap = 0) {
   const buds = tasks.filter(t => carries(t, weekKey, nowMs));
   const mk = (t, i, bud) => {
     const st = t.steps || [], n = st.filter(s => s && s.doneAt).length;
-    return { id: t.id, title: t.title, x: clamp01(t.x), depth: clamp01(1 - t.y), big: t.big ? 1 : 0, petals: st.length ? Math.max(4, Math.min(8, n)) : 0, pick: hstr(t.id), order: i, bud, doneAt: t.doneAt || null };
+    return { id: t.id, title: t.title, x: clamp01(t.x), depth: clamp01(1 - t.y), big: t.big ? 1 : 0, petals: st.length ? Math.max(4, Math.min(8, n)) : 0, nSteps: st.length, nDone: n, pick: hstr(t.id), order: i, bud, doneAt: t.doneAt || null };
   };
   const out = done.map((t, i) => mk(t, i, false)).concat(buds.map((t, i) => mk(t, done.length + i, true)));
   spreadX(out, minGap);
   return out;
+}
+
+/* the hover label of a flower: { title, sub }. sub: `finished wed`, plus ` · 4 of 6 steps` when the task had steps; a bud: `carries over`.
+   A title longer than 28 characters is cut to 27 plus `…`. */
+export function flowerLabel(f) {
+  if (!f) return { title: '', sub: '' };
+  const title = String(f.title || ''), t = title.length > 28 ? title.slice(0, 27) + '…' : title;
+  if (f.bud) return { title: t, sub: 'carries over' };
+  const day = Number.isFinite(f.doneAt) ? WDN[new Date(f.doneAt).getDay()] : '';
+  let sub = day ? 'finished ' + day : 'finished';
+  if (f.nSteps > 0) sub += ' · ' + (f.nDone | 0) + ' of ' + f.nSteps + (f.nSteps === 1 ? ' step' : ' steps');
+  return { title: t, sub };
 }
 
 /* a week name: trimmed, at most 32 characters (sanitizeWeeks in store.js keeps the same rule) */

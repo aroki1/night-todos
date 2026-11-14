@@ -34,7 +34,7 @@ function lines(sc) {
 function build(sc) {
   lines(sc);
   const o = sc.seed % 997, cap = GW * SH / 3 | 0;
-  const bx = new Int16Array(cap), by = new Int16Array(cap), bh = new Uint8Array(cap), bn = new Int8Array(cap), bu = new Uint8Array(cap), bt = new Uint8Array(cap);
+  const bx = new Int16Array(cap), by = new Int16Array(cap), bh = new Uint8Array(cap), bn = new Int8Array(cap), bu = new Uint8Array(cap), bt = new Uint8Array(cap), am = new Float32Array(cap);
   let m = 0;
   for (let y = Math.floor(sc.horizon) - 12; y < SH; y++) for (let i = 0; i < GW && m < cap; i++) {
     const top = nearLine[i], t = (y - top) / (SH - top); if (t < 0) continue;
@@ -44,7 +44,7 @@ function build(sc) {
     const u = H(i + 0.3, y + o), v = H(y * 0.7 + 5, i * 0.3 + o);
     const h = Math.max(2, Math.round(lerp(H_FAR, H_NEAR, Math.pow(t, HEXP)) * (0.7 + 0.6 * u)));
     bx[m] = i; by[m] = y; bh[m] = h; bu[m] = Math.min(UB - 1, (u * UB) | 0); bt[m] = Math.min(255, (t * 255) | 0);
-    bn[m] = Math.round((v * 2 - 1) * h * 0.3);
+    bn[m] = Math.round((v * 2 - 1) * h * 0.3); am[m] = h * (0.75 + 0.5 * u);          // am: how far the wind bends this blade's tip (grains per unit of wind)
     m++;
   }
   rel = new Float32Array(GW * SH);                                                      // gentle rolling bands: low-frequency noise, stretched across the view, tilted a little
@@ -52,7 +52,7 @@ function build(sc) {
     const d = Math.max(0, y - nearLine[i]) / Math.max(1, SH - nearLine[i]), fy = 0.05 + 0.1 * d, fx = 0.006 + 0.01 * d;                     // bands get broader toward the viewer
     rel[y * GW + i] = (vn(i * fx + y * 0.003 + 60, y * fy, o + 51) * 0.7 + vn(i * fx * 2.3 + 9, y * fy * 2.1, o + 57) * 0.3 - 0.5) * 1.5;
   }
-  tab = { n: m, bx, by, bh, bn, bu, bt, sway: new Float32Array(m) }; key = sceneKey(sc);
+  tab = { n: m, bx, by, bh, bn, bu, bt, am: am.subarray(0, m), sway: new Float32Array(m) }; key = sceneKey(sc);
 }
 const ensure = sc => { if (!tab || key !== sceneKey(sc)) build(sc); };
 
@@ -97,7 +97,21 @@ export function drawHills(sc, between) {
   drawGround(sc, nearBot);
 }
 
-export function drawGrass(sc) {
+/* a near blade picked by r (0..1) for a dew glint: its tip as it was drawn last, or null (the sway of the last drawGrass is kept in the table) */
+export function bladeTip(sc, r) {
+  ensure(sc);
+  const { n, bx, by, bh, bn, bt, sway } = tab;
+  for (let t = 0; t < 8 && n > 0; t++) {
+    const b = Math.min(n - 1, (((r + t * 0.6180339) % 1) * n) | 0), h = bh[b];
+    if (h < 8 || bt[b] < 90) continue;
+    const i = bx[b] + Math.round(bn[b] + sway[b]), j = by[b] - h + 1;
+    if (!inWater(sc, i, j, 1)) return [i, j];
+  }
+  return null;
+}
+
+/* W: the wind of this frame (sky/life.js `wind`: .col per column) or null = the blades at rest (the cached land of the sunrise and the sunset) */
+export function drawGrass(sc, W) {
   ensure(sc);
   const g = sc.pal.grass, hz = sc.pal.sky[2];
   /* palettes by distance bucket (haze toward the hill colour) and blade variation: [base, body, mid, tip] */
@@ -110,7 +124,8 @@ export function drawGrass(sc) {
     }
     pal.push(row);
   }
-  const { n, bx, by, bh, bn, bu, bt, sway } = tab;
+  const { n, bx, by, bh, bn, bu, bt, sway, am } = tab;
+  if (W) { const col = W.col; for (let b = 0; b < n; b++) sway[b] = col[bx[b]] * am[b]; } else sway.fill(0);
   if (rimK.length !== GW) rimK = new Float32Array(GW);
   for (let i = 0; i < GW; i++) rimK[i] = sunNear(sc, i) * RL.rimGrass;
   for (let b = 0; b < n; b++) {

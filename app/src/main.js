@@ -3,7 +3,7 @@ import { FLAGS, FPS, TIME, isReduced, setReducedPref, LAYOUT, SIZE } from './tok
 import { initCanvas, configure, cv, GW, SH, ROWS, dpr, blit } from './framebuffer.js';
 import { setT, T, wall, clockTick, isoWeekKey, seedForWeek, weekLabel, resyncClock } from './sky/clock.js';
 import { archivePast } from './model/week.js';
-import { setMorningScene, clearMorningScene, morningScene, morningNow, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
+import { setMorningScene, clearMorningScene, morningScene, morningNow, morningPhase, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
 import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
@@ -111,8 +111,10 @@ function loop(ts) {
   computeFocus();
   const hm = updateHover(dt), pm = updatePastHover(dt);
   const active = isAnimating() || barAnimating() || hm || pm || ts - lastInput < INPUT_ACTIVE_MS;
-  /* active: every RAF (the display rate). idle: at most FPS.idle renders/s; 3 ms of slack so a 60 Hz display gets 4 frames, not 5 */
-  if (!active && ts - lastRenderTs < 1000 / FPS.idle - 3) return;
+  /* active: every RAF (the display rate). idle: at most FPS.idle renders/s; the still morning hold runs at FPS.morning unless reduced motion.
+     3 ms of slack so a 60 Hz display gets 4 frames, not 5 */
+  const fps = morningPhase() === 'hold' && !isReduced() ? FPS.morning : FPS.idle;
+  if (!active && ts - lastRenderTs < 1000 / fps - 3) return;
   lastRenderTs = ts;
   setCloudPace(active ? 0 : 2);
   renderNow(false);

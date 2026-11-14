@@ -3,7 +3,7 @@ import { parseDeadline, splitBar } from '../model/parser.js';
 import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
-import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway } from '../model/morning.js';
+import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
@@ -279,5 +279,12 @@ export function selfTest() {
   ok(nextAway('2026-W46', tA, 0) === 1 && nextAway('2026-W44', tA, 0) === 3 && nextAway('2026-W47', tA, 3) === 3 && nextAway(null, tA, 0) === 0, 'away: weeks since the last seen week; same week keeps it');
   ok(sanitize({ version: 1, tasks: [], morningAway: 3 }).morningAway === 3 && [-1, 1.5, 'x', 999, undefined].every(v => sanitize({ version: 1, tasks: [], morningAway: v }).morningAway === 0), 'store: morningAway is a small whole number');
   ok(summaryLines({ done: 2, missed: 0, carried: 0, steps: 0 }, '2026-W46', '', 3).join('|') === 'week 46|3 weeks away' && summaryLines({ done: 2, missed: 0, carried: 0, steps: 0 }, '2026-W46', '', 1).join('|') === 'week 46|2 done', 'summary: away from 2 weeks only');
+
+  /* morning M4: the flower label */
+  const wed = new Date(2026, 10, 18, 12).getTime();                                  // Wed 18 Nov 2026
+  { const a = flowerLabel({ title: 'essay', doneAt: wed, bud: false }); ok(a.title === 'essay' && a.sub === 'finished wed', 'flower label: title, and the day it was finished'); }
+  { const a = flowerLabel({ title: 'essay', doneAt: wed, bud: false, nSteps: 6, nDone: 4 }); ok(a.sub === 'finished wed · 4 of 6 steps', 'flower label: the steps done of all when the task had steps'); }
+  ok(flowerLabel({ title: 'carry 0', doneAt: null, bud: true }).sub === 'carries over' && flowerLabel({ title: 'carry 0', doneAt: wed, bud: true }).title === 'carry 0', 'flower label: a bud says it carries over');
+  ok(flowerLabel({ title: 'x'.repeat(40), doneAt: wed, bud: false }).title === 'x'.repeat(27) + '…', 'flower label: a long title is cut to 28 characters');
   return { pass, fail, total: pass + fail, failed };
 }
