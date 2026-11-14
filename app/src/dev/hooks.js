@@ -6,7 +6,7 @@ import { cloudReset, cloudDebug } from '../sky/clouds.js';
 import { resetClockCache, clockTick } from '../sky/clock.js';
 import { moonSt } from '../sky/moon.js';
 import { specialsNow, setForceShower, satTime, setMoonShow, cometHead, satNow } from '../sky/events.js';
-import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, UH, dpr, P, D, N } from '../framebuffer.js';
+import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, UH, dpr, P, D, N, dotPixel, glActive, glLose } from '../framebuffer.js';
 import { stars, NS, GHI, rebuildStars, store } from '../model/store.js';
 import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDelete, mkSteps, pipTotal } from '../model/timeline.js';
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
@@ -157,6 +157,7 @@ export function installHooks(a) {
       return s;
     },
     now() { return T; },
+    gl: { active: glActive, lose: glLose },
     selfTest() { return selfTest(); },
     typeTrace(str) {
       const out = []; ns.key('n');
@@ -220,7 +221,7 @@ export function installHooks(a) {
     stats() { return { ms: msAvg, grains: N, dpr, P, D }; },
     buf(x = 100, y = 100) {
       const k = y * GW + x;
-      return { br: [BR[k], BG[k], BB[k]], px: Array.from(document.getElementById('c').getContext('2d').getImageData(x * P, y * P, 1, 1).data) };
+      return { br: [BR[k], BG[k], BB[k]], px: dotPixel(x, y) };
     },
     cloudDebug(x = 100, y = 100) { return cloudDebug(x, y); },
     comet() { const o = { x: 0, y: 0 }; const vis = cometHead(o); return { wp: wc.wp, comet: !!sky.comet, vis, head: o }; },

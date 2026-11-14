@@ -91,6 +91,7 @@ export const FLAGS = {
   prof: Q.get('prof') === '1',               // dev: per-stage frame timer (stageprof.js)
   dev: Q.get('dev') !== '0' && (Q.get('dev') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'),
   demo: Q.get('demo') === '1',
+  gl: Q.get('gl') !== '0',                   // ?gl=0 forces the 2D canvas path (dev/tests)
   parity: Q.get('v10parity') === '1',
   debug: Q.get('debug') === '1',
   seed: Q.has('seed') ? +Q.get('seed') : null,

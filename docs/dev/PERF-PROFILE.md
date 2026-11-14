@@ -135,3 +135,29 @@ Before the change, `clouds.rows` averaged 6.4-7.0 and `clouds.upsample` 0.7-1.0 
 - Whether the 2D canvas was GPU-accelerated in the GPU runs could not be read directly.
 - Demo has only 8 stars; heavy-star scenes (`ns.fillSteps(48)`) were not profiled. Phone CPU x4 is throttling on a fast CPU, not a real phone.
 - Timer resolution 0.1 ms; p95 of grouped rows is an upper bound.
+
+## After: GPU dot drawing (SPEC-perf-frame part 2)
+
+Ambient scene, GPU run, 300 frames, median / p95 ms. `framebuffer.js` tone-maps one RGBA texel per grain, uploads it, and a WebGL shader expands it to the P x P / D x D dot picture; `blit()` then copies the GL canvas into `#c` with `drawImage`. `?gl=0` keeps the old 2D path.
+
+| | d125 before | d125 after | d2 before | d2 after | phone x4 before | phone x4 after |
+|---|---:|---:|---:|---:|---:|---:|
+| blit.paint | 8.4 / 10.0 | 2.6 / 3.6 | 11.2 / 13.7 | 3.3 / 4.5 | 10.4 / 13.4 | 2.9 / 4.4 |
+| blit.put | 1.4 / 1.6 | 0.2 / 0.3 | 3.0 / 3.6 | 0.2 / 0.3 | 2.6 / 3.2 | 0.9 / 1.4 |
+| CPU total | 16.1 / 18.1 | 8.4 / 10.5 | 20.9 / 24.4 | 9.1 / 11.3 | 24.2 / 28.6 | 13.6 / 18.1 |
+| rAF interval | 13.9 / 21.0 | 7.0 / 14.0 | 20.9 / 27.9 | 7.0 / 14.0 | 27.8 / 34.8 | 14.0 / 20.9 |
+
+Deviation from the spec: the spec's two stacked canvases (GL under a transparent `#c`) were built and measured. At fractional dpr (1.25) the page compositor resamples the two layers differently, so shots differed from `?gl=0` by up to 8 levels in about 2.5% of pixels. Copying the GL canvas into `#c` gives byte-identical shots and the same speed, so that is what ships.
+
+## After: tone mapping in the shader (SPEC-perf-frame part 3)
+
+WebGL2 path: `BR/BG/BB` go up as three R32F textures; `TONE` is a 4096x1 R8 texture uploaded once; the fragment shader does `v>=1 -> 255, v>0 -> TONE[floor(v*4096)], else 0` (NaN and negatives give 0, same as the CPU loop). WebGL1 keeps the CPU tone-map. Ambient, GPU run, 300 frames, median / p95 ms:
+
+| | d125 part 2 | d125 now | d2 part 2 | d2 now | phone x4 part 2 | phone x4 now |
+|---|---:|---:|---:|---:|---:|---:|
+| blit.paint | 2.6 / 3.6 | 0.3 / 0.4 | 3.3 / 4.5 | 0.3 / 0.4 | 2.9 / 4.4 | 0.4 / 0.6 |
+| blit.put | 0.2 / 0.3 | 0.1 / 0.2 | 0.2 / 0.3 | 0.1 / 0.2 | 0.9 / 1.4 | 0.5 / 0.9 |
+| CPU total | 8.4 / 10.5 | 4.5 / 5.9 | 9.1 / 11.3 | 4.7 / 6.0 | 13.6 / 18.1 | 7.9 / 9.6 |
+| rAF interval | 7.0 / 14.0 | 7.0 / 7.1 | 7.0 / 14.0 | 7.0 / 7.1 | 14.0 / 20.9 | 7.0 / 14.0 |
+
+GL vs `?gl=0` shots (steps, finish, labels, ritual, ambient at 1917x933 dpr 1.25 and 375x812 dpr 2, plus the context-loss shot): 0 differing pixels in all 11 pairs. Selftests 136/136.
