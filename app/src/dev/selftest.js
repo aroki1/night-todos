@@ -8,7 +8,7 @@ import { QUOTES, quoteFor } from '../model/quotes.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
-import { onboardingHint, helpLines } from '../ui/guide.js';
+import { onboardingHint, helpLines, enterGate } from '../ui/guide.js';
 
 export function selfTest() {
   const now = new Date(2026, 10, 13, 21, 0, 0), at = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime(), D = 864e5;
@@ -291,5 +291,6 @@ export function selfTest() {
   { const a = flowerLabel({ title: 'essay', doneAt: wed, bud: false, nSteps: 6, nDone: 4 }); ok(a.sub === 'finished wed · 4 of 6 steps', 'flower label: the steps done of all when the task had steps'); }
   ok(flowerLabel({ title: 'carry 0', doneAt: null, bud: true }).sub === 'carries over' && flowerLabel({ title: 'carry 0', doneAt: wed, bud: true }).title === 'carry 0', 'flower label: a bud says it carries over');
   ok(flowerLabel({ title: 'x'.repeat(40), doneAt: wed, bud: false }).title === 'x'.repeat(27) + '…', 'flower label: a long title is cut to 28 characters');
+  { const g = enterGate(350); ok(g(1000) && !g(1100) && !g(1349) && g(1400) && g(2000), 'enter gate: one Enter through per window, later ones pass'); }
   return { pass, fail, total: pass + fail, failed };
 }

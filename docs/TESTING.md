@@ -50,6 +50,19 @@ Bar syntax: `title, deadline / step / step`, `!` at the end = big star. Deadline
 - Enter `/help`: the quiet reference panel opens above the bar. Check desktop and 375 px phone layouts; nothing clips.
 - Press Esc, begin typing, or click/tap the sky: help closes and the underlying action still works.
 
+## 3b. Phone keyboards (real devices)
+
+| Device and browser | Check | Expect |
+|---|---|---|
+| Android, Firefox, Gboard (also Xiaomi keyboard) | tap the bar | keyboard opens at once; the `›` caret blinks |
+| same | type a sentence quickly, with autocomplete and word suggestions | the bar text follows every letter, no bursts |
+| same | `essay, fri` then the keyboard Enter / Done key | one star is created, the keyboard closes; Enter on a half-typed word submits once |
+| same | tap `undo` right after, tap `↻ sky` (dev) | they still work and do not open the keyboard |
+| same | `/help`, then tap the sky | help opens; a tap on the sky closes it |
+| iPhone, Safari | same rows | unchanged: no zoom on focus, Enter creates once |
+
+On touch devices `#bar-input` lies over the bar (rect set in `ui/bar.js`). Desktop keeps it hidden; clicks on the canvas focus it.
+
 ## 4. Scenes (`?scene=...&at=<ms>`)
 `finish`, `urgent`, `overlap`, `undo`, `labels&demo=1&hover=hm%20one-pager`, `occlusion`, `expire`, `steps`, `crossfade`. Without `at` some start at 0 and look empty; scrub `at=500…6000`.
 

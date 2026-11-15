@@ -11,3 +11,9 @@ export function onboardingHint({ taskCount = 0, hasLive = false, hasDone = false
 export function helpLines(touch = false) {
   return touch ? GUIDE.helpTouch : GUIDE.helpDesktop;
 }
+
+/* one Enter can arrive as keydown, beforeinput, a form submit and a compositionend; the gate lets it through once per window (ms) */
+export function enterGate(windowMs = 350) {
+  let last = -1e9;
+  return ts => { if (ts - last < windowMs) return false; last = ts; return true; };
+}

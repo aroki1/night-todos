@@ -93,6 +93,12 @@ function finishOrSelect(i) {
 }
 
 export function bindPointer() {
+  const barInput = document.getElementById('bar-input');
+  if (barInput) barInput.addEventListener('pointerdown', e => {       // touch: the input lies over the bar; the sky button and the undo word stay buttons
+    const [px, py] = toUnits(e);
+    if (inBtn(px, py)) { e.preventDefault(); skySwap(11, T); wake(); }
+    else if (inUndo(px, py)) { e.preventDefault(); tryUndo(doUndo); wake(); }
+  });
   cv.addEventListener('mousemove', e => {
     const [px, py] = toUnits(e);
     const mp = morningPhase();

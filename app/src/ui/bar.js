@@ -1,7 +1,7 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
 import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, setReducedPref, getReducedPref } from '../tokens.js';
-import { ctx, cv, P, SH, ROWS, BARY, UW, dpr } from '../framebuffer.js';
+import { ctx, cv, P, SH, ROWS, BARY, UW, UH, dpr, geometryListeners } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtLeft } from '../sky/clock.js';
 import { parseDeadline, splitBar } from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
@@ -9,7 +9,7 @@ import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce 
 import { undoTarget, externalUndo, doCreate, doStepAdd, applyImport } from '../model/timeline.js';
 import { placeNew, selIdx, setSelIdx } from '../model/placement.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
-import { onboardingHint, helpLines } from './guide.js';
+import { onboardingHint, helpLines, enterGate } from './guide.js';
 
 export const bar = {
   text: '', caret: 0, focus: false, last: -9, title: '', big: false, res: null, pv: '', pvWarn: false,
@@ -30,21 +30,62 @@ function touchLayout() {
 }
 export function closeHelp() { if (!bar.help) return false; bar.help = false; wake(); return true; }
 
+/* the input lies over the bar on touch devices, so a tap lands on it natively (Firefox Android won't raise the keyboard for a programmatic focus) */
+function overlayWanted() {
+  return typeof window !== 'undefined' && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || ((navigator.maxTouchPoints || 0) > 0 && window.innerWidth < 700));
+}
+export function placeBarInput() {
+  if (!input || !cv) return;
+  const on = overlayWanted();
+  input.classList.toggle('over', on);
+  const st = input.style;
+  if (!on) { st.left = st.top = st.width = st.height = st.bottom = ''; return; }
+  const r = cv.getBoundingClientRect(), k = r.height / UH;
+  st.left = r.left + 'px'; st.top = (r.top + BARY * k) + 'px'; st.bottom = 'auto';
+  st.width = r.width + 'px'; st.height = Math.max(1, (UH - BARY) * k) + 'px';
+}
+geometryListeners.push(placeBarInput);
+
+/* one Enter can come as keydown, beforeinput, form submit or the end of a composition: the gate lets one through. Mid-composition it waits for compositionend
+   (or 150 ms: an Enter that never ends the composition still submits what is in the input) */
+const gate = enterGate();
+let pendingEnter = null;
+function syncFromInput() {
+  bar.text = input.value.slice(0, SIZE.maxBar);
+  bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.text.length, input.selectionStart);
+  bar.last = T;
+}
+function fireEnter(ts) {
+  pendingEnter = null;
+  if (!gate(ts)) return;
+  syncFromInput(); submitBar();
+}
+function onEnter(ts, midComposition) {
+  if (!(composing || midComposition)) return fireEnter(ts);
+  if (pendingEnter) return;
+  pendingEnter = { ts, t: setTimeout(() => { if (pendingEnter) fireEnter(pendingEnter.ts); }, 150) };
+}
+
 export function initBar(inputEl) {
   input = inputEl;
   input.setAttribute('maxlength', String(SIZE.maxBar));
   input.value = '';
-  input.addEventListener('input', () => {
-    if (composing) return;
-    bar.text = input.value.slice(0, SIZE.maxBar);
-    bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.caretMax(), input.selectionStart);
-    bar.last = T; wake();
-  });
+  input.addEventListener('input', () => { syncFromInput(); wake(); });          // composing or not: the canvas shows the word as it is typed
   input.addEventListener('keydown', onInputKey);
+  input.addEventListener('beforeinput', e => {
+    if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') { e.preventDefault(); onEnter(e.timeStamp, e.isComposing); }
+  });
+  if (input.form) input.form.addEventListener('submit', e => { e.preventDefault(); onEnter(e.timeStamp, false); });
   input.addEventListener('compositionstart', () => { composing = true; });
-  input.addEventListener('compositionend', () => { composing = false; bar.text = input.value.slice(0, SIZE.maxBar); bar.caret = bar.text.length; bar.last = T; wake(); });
+  input.addEventListener('compositionend', e => {
+    composing = false; syncFromInput(); wake();
+    if (pendingEnter) { clearTimeout(pendingEnter.t); fireEnter(e.timeStamp); }
+  });
+  input.addEventListener('focus', () => { if (!bar.focus) { bar.focus = true; bar.help = false; bar.blink = T; wake(); } });   // a native tap on the overlay focuses it
+  input.addEventListener('blur', () => { if (bar.focus && input.classList.contains('over')) { bar.focus = false; bar.caret = bar.text.length; wake(); } });
   input.addEventListener('select', () => { bar.caret = input.selectionStart || 0; });
   input.addEventListener('click', () => { bar.caret = input.selectionStart || 0; });
+  placeBarInput();
 }
 bar.caretMax = () => bar.text.length;
 
@@ -77,7 +118,7 @@ function onInputKey(e) {
     if (stepTarget() >= 0) { bar.text = ''; bar.caret = 0; input.value = ''; setSelIdx(-1); }     // step mode: Esc deselects, the bar returns to normal
     setBarFocus(false); wake(); return;
   }
-  if (e.key === 'Enter') { e.preventDefault(); submitBar(); return; }
+  if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); onEnter(e.timeStamp, e.isComposing || e.keyCode === 229); return; }
   if (e.key === 'Tab') { e.preventDefault(); return; }
   bar.blink = T;
   // arrows/backspace/etc. are handled natively; recompute the caret after the event
