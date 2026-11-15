@@ -1,7 +1,7 @@
 /* model/placement.js — label content, label placement with scoring + hysteresis, and the
    placement of a new star. All in grains; the screen never decides text positions. */
 import { rng, hstr, segDist, seg, ease, mixTo } from '../math.js';
-import { K, FONT, SIZE, FLAGS, STEPS, PLACE } from '../tokens.js';
+import { K, FONT, SIZE, FLAGS, STEPS, PLACE, TIME } from '../tokens.js';
 import { ctx, GW, SH } from '../framebuffer.js';
 import { stars, NS, GHI, pres, Rb, edgeGeom as geom, isUrgent, starTag } from './store.js';
 import { FS, US } from './timeline.js';
@@ -100,12 +100,12 @@ export function labelInfo(si) {
       l2vis = seg((T - s.und.t0) * 1000, 250, 300);
     }
     if (s.cr) {                                            // creation: the title types in, then the time-left line
-      const ms = (T - s.cr.t0) * 1000;
+      const ms = (T - s.cr.t0) * 1000, t0 = TIME.createLabelStart * 1000, st = TIME.createLabelStep * 1000;
       if (s.cr.reduced) { if (ms < 300) { vis = seg(ms, 0, 300); a1 = vis; a2 = vis; } }
-      else if (ms < 700) shown = false;
+      else if (ms < t0) shown = false;
       else {
-        const n1 = Math.min(s.n.length, Math.floor((ms - 700) / 18) + 1), ts = 700 + s.n.length * 18;
-        const n2 = ms < ts ? 0 : Math.floor((ms - ts) / 18) + 1;
+        const n1 = Math.min(s.n.length, Math.floor((ms - t0) / st) + 1), ts = t0 + s.n.length * st;
+        const n2 = ms < ts ? 0 : Math.floor((ms - ts) / st) + 1;
         title = s.n.slice(0, n1); t2 = full.slice(0, n2); l2vis = t2 ? 1 : 0;
       }
     }
@@ -116,7 +116,8 @@ export function labelInfo(si) {
   if (tapSelected && selIdx === si && !s.done && !s.miss && !s.gh && s.on) {
     t2 = stepsLive(s) ? doneCount(s) + '/' + s.steps.length + ' · tap again to finish' : 'tap again to finish'; c2 = K.dim; place2 = t2; l2vis = 1; a2 = 1;
   }
-  const tsuf = foc && t2 && !t3 && !s.gh && s.on && !s.cr && !US[si] ? tagSuffix(starTag(s)) : '';   // the star's own tag, only in the full (hovered / selected) state
+  const crTyping = s.cr && (s.cr.reduced ? (T - s.cr.t0) * 1000 < 300 : (T - s.cr.t0) * 1000 < (TIME.createLabelStart + (s.n.length + place2.length) * TIME.createLabelStep) * 1000);
+  const tsuf = foc && t2 && !t3 && !s.gh && s.on && !crTyping && !US[si] ? tagSuffix(starTag(s)) : '';   // the star's own tag, only in the full (hovered / selected) state
   if (tsuf && place2) place2 += tsuf;
   L.shown = shown; L.vis = vis; L.title = title; L.c1 = c1; L.a1 = a1; L.w1 = fk > .5 ? 500 : 400;
   L.t2 = t2; L.c2 = c2; L.a2 = a2; L.t3 = t3; L.a3 = a3; L.t4 = tsuf; L.w2 = wg(t2);
