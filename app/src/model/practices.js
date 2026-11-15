@@ -9,7 +9,8 @@ export function dayKey(ms) {
 }
 /* the local day before `ms` (calendar, not 24 h minus one: DST safe) */
 export function prevDayKey(ms) {
-  const d = new Date(ms); d.setDate(d.getDate() - 1);
+  const d = new Date(ms);
+  d.setDate(d.getDate() - 1);
   return dayKey(d.getTime());
 }
 export function dayMs(key) {
@@ -30,27 +31,38 @@ export function canMark(p, key, nowMs) {
 /* -> a new practice with the day added or removed, days unique and sorted */
 export function toggleDay(p, key) {
   const set = new Set((p.days || []).filter(isDayKey));
-  if (set.has(key)) set.delete(key); else set.add(key);
+  if (set.has(key)) set.delete(key);
+  else set.add(key);
   return Object.assign({}, p, { days: [...set].sort() });
 }
 
 function mondayNoon(ms) {
-  const d = new Date(ms); d.setHours(12, 0, 0, 0);
+  const d = new Date(ms);
+  d.setHours(12, 0, 0, 0);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return d;
 }
 
 /* seven booleans, Monday..Sunday of the current ISO week */
 export function weekDots(p, nowMs) {
-  const start = mondayNoon(nowMs), set = new Set(p.days || []), out = [];
-  for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); out.push(set.has(dayKey(d.getTime()))); }
+  const start = mondayNoon(nowMs),
+    set = new Set(p.days || []),
+    out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    out.push(set.has(dayKey(d.getTime())));
+  }
   return out;
 }
 
 /* days done in that ISO week (0..7) */
 export function weekCount(p, weekKey) {
   let n = 0;
-  for (const k of p.days || []) { const ms = dayMs(k); if (Number.isFinite(ms) && isoWeekKey(ms) === weekKey) n++; }
+  for (const k of p.days || []) {
+    const ms = dayMs(k);
+    if (Number.isFinite(ms) && isoWeekKey(ms) === weekKey) n++;
+  }
   return n;
 }
 
@@ -60,10 +72,17 @@ export function ringWeeks(p, nowMs) {
   const dist = weekDistance(isoWeekKey(p.createdAt), isoWeekKey(nowMs));
   if (dist < 0) return [];
   const counts = new Map();
-  for (const k of p.days || []) { const ms = dayMs(k); if (!Number.isFinite(ms)) continue; const wk = isoWeekKey(ms); counts.set(wk, (counts.get(wk) || 0) + 1); }
-  const first = mondayNoon(p.createdAt), out = [];
+  for (const k of p.days || []) {
+    const ms = dayMs(k);
+    if (!Number.isFinite(ms)) continue;
+    const wk = isoWeekKey(ms);
+    counts.set(wk, (counts.get(wk) || 0) + 1);
+  }
+  const first = mondayNoon(p.createdAt),
+    out = [];
   for (let i = 0; i <= dist; i++) {
-    const d = new Date(first); d.setDate(first.getDate() + 7 * i);
+    const d = new Date(first);
+    d.setDate(first.getDate() + 7 * i);
     const key = isoWeekKey(d.getTime());
     out.push({ key, k: (counts.get(key) || 0) / 7 });
   }
@@ -83,19 +102,25 @@ export const ringReach = (p, nowMs) => Math.ceil(PRACTICE.ring1 + (ringCount(p, 
 
 /* `read · 5 of 7`; a title longer than 20 is cut to 19 plus `…` */
 export function practiceLine(p, weekKey) {
-  const t = String(p.title || ''), cut = t.length > 20 ? t.slice(0, 19).trimEnd() + '…' : t;
+  const t = String(p.title || ''),
+    cut = t.length > 20 ? t.slice(0, 19).trimEnd() + '…' : t;
   return cut + ' · ' + weekCount(p, weekKey) + ' of 7';
 }
 
 /* the rows under a practice's label: touch always has `today`; yesterday only while it may still be marked */
 export function practiceRows(p, nowMs, touch) {
-  const set = new Set(p.days || []), tk = dayKey(nowMs), yk = prevDayKey(nowMs), out = [];
+  const set = new Set(p.days || []),
+    tk = dayKey(nowMs),
+    yk = prevDayKey(nowMs),
+    out = [];
   if (touch) out.push({ k: 'practice', day: tk, text: 'today', on: set.has(tk) });
   if (canMark(p, yk, nowMs)) out.push({ k: 'practice', day: yk, text: 'yesterday', on: set.has(yk) });
   return out;
 }
 
 export const livePractices = list => (list || []).filter(p => p && !p.archivedAt);
-export const clampLimit = n => Number.isInteger(n) ? Math.max(1, Math.min(20, n)) : PRACTICE.limit;
+export const clampLimit = n => (Number.isInteger(n) ? Math.max(1, Math.min(20, n)) : PRACTICE.limit);
 /* the create command's decision: is there room for another live practice? */
-export function canCreate(list, limit) { return livePractices(list).length < clampLimit(limit); }
+export function canCreate(list, limit) {
+  return livePractices(list).length < clampLimit(limit);
+}

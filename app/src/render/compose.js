@@ -17,48 +17,86 @@ import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
 import { SPR } from '../sky/components.js';
 import { makeSky } from '../sky/sky.js';
-import { morningNow, morningMoving, morningGap, drawMorning, blendMorning, drawMorningNight, morningNight, morningLayers, groupBegin, groupEnd } from './morning.js';
+import {
+  morningNow,
+  morningMoving,
+  morningGap,
+  drawMorning,
+  blendMorning,
+  drawMorningNight,
+  morningNight,
+  morningLayers,
+  groupBegin,
+  groupEnd
+} from './morning.js';
 import { stepsUpdate } from '../model/steps.js';
 import * as pf from '../stageprof.js';
 import { stepsBack, stepsFront, stepsBullets, stepsPanel } from './steps.js';
 
 export { setThoughtSel, setThoughtHover } from './haze.js';
 export const bump = new Float32Array(SIZE.maxStars);
-const dims = []; let dimN = 0;
-const acts = []; let actN = 0;
+const dims = [];
+let dimN = 0;
+const acts = [];
+let actN = 0;
 export let animating = false;
 export let frozen = false;
 export let frozenForce = false;
 export let xf = null;
-export function setFrozen(v) { frozen = !!v; }
-export function setFrozenForce(v) { frozenForce = !!v; }
-export function isAnimating() { return animating || !!xf || morningMoving(); }
+export function setFrozen(v) {
+  frozen = !!v;
+}
+export function setFrozenForce(v) {
+  frozenForce = !!v;
+}
+export function isAnimating() {
+  return animating || !!xf || morningMoving();
+}
 
 export function prepare() {
   clockTick(false);
   replay(T);
   if (pf.on) pf.mark('prepare.replay');
-  animating = !!xf || hazeAnimating(); actN = 0; dimN = 0;
-  let nTot = 0, lt = -1e9;
+  animating = !!xf || hazeAnimating();
+  actN = 0;
+  dimN = 0;
+  let nTot = 0,
+    lt = -1e9;
   for (let si = 0; si < NS; si++) {
     const s = stars[si];
-    FS[si] = null; US[si] = null;
-    if (s.practice) { if (practiceFxMs(s) > 0) animating = true; continue; }   // a practice is never done, missed, urgent or counted
+    FS[si] = null;
+    US[si] = null;
+    if (s.practice) {
+      if (practiceFxMs(s) > 0) animating = true;
+      continue;
+    } // a practice is never done, missed, urgent or counted
     if (s.gh) continue;
     s.rmMs = s.rm ? (T - s.rm.t0) * 1000 : -1;
     if (s.rmMs >= 0 && s.rmMs < 500) animating = true;
     if (s.on && s.dl !== null) {
-      s.life = lifeAt(s, Math.min(T, expAt(s) - .02));
-      if (!s.miss) { const ts = timeStr(s, T); s.left = ts.left; s.full = ts.full; }
+      s.life = lifeAt(s, Math.min(T, expAt(s) - 0.02));
+      if (!s.miss) {
+        const ts = timeStr(s, T);
+        s.left = ts.left;
+        s.full = ts.full;
+      }
     }
-    if (s.on) { const cn = s.cr ? s.cr.t0 + (s.cr.reduced ? .3 : .9) : -1e9; if (T >= cn) { nTot++; if (s.cr) lt = Math.max(lt, cn); } }
+    if (s.on) {
+      const cn = s.cr ? s.cr.t0 + (s.cr.reduced ? 0.3 : 0.9) : -1e9;
+      if (T >= cn) {
+        nTot++;
+        if (s.cr) lt = Math.max(lt, cn);
+      }
+    }
     if (s.cr && s.on) {
       const ms = (T - s.cr.t0) * 1000;
       if (ms < 1300) animating = true;
       if (!s.cr.reduced && ms < 1100) {
         if (!dims[dimN]) dims[dimN] = { x: 0, y: 0, k: 0 };
-        const A = dims[dimN++]; A.x = s.gx; A.y = s.gy;
-        A.k = .15 * (ms < 200 ? ease.out(ms / 200) : ms < 700 ? 1 : 1 - ease.inOut(seg(ms, 700, 1100)));
+        const A = dims[dimN++];
+        A.x = s.gx;
+        A.y = s.gy;
+        A.k = 0.15 * (ms < 200 ? ease.out(ms / 200) : ms < 700 ? 1 : 1 - ease.inOut(seg(ms, 700, 1100)));
       }
     }
     if (s.miss && s.mT >= 0 && s.mT < 1700) animating = true;
@@ -68,18 +106,24 @@ export function prepare() {
       if (ms < s.fin.arriveMs + 700) animating = true;
       if (!s.fin.reduced && ms >= 120 && ms <= 1300) {
         if (!acts[actN]) acts[actN] = { x: 0, y: 0, ms: 0 };
-        const A = acts[actN++]; A.x = s.gx; A.y = s.gy; A.ms = ms;
+        const A = acts[actN++];
+        A.x = s.gx;
+        A.y = s.gy;
+        A.ms = ms;
       }
     } else if (!s.done && s.und) {
       const ms = (T - s.und.t0) * 1000;
-      if (ms < 700) { US[si] = undoState(s.und, ms); animating = true; }
+      if (ms < 700) {
+        US[si] = undoState(s.und, ms);
+        animating = true;
+      }
     }
     if (hk[si] > 0 && hk[si] < 1) animating = true;
   }
   if (pf.on) pf.mark('prepare.stars');
   setPipTotals(nTot, lt);
   if (undoTarget && T - undoTarget.at < 5.4) animating = true;
-  if (stepsUpdate(T)) animating = true;                                  // step flags (behind / ready) and the step choreography window
+  if (stepsUpdate(T)) animating = true; // step flags (behind / ready) and the step choreography window
   computeFocus();
   if (pf.on) pf.mark('prepare.focus');
   placeLabels();
@@ -88,114 +132,226 @@ export function prepare() {
 }
 
 function drawEdge(g, es, phase, si) {
-  const ax = g.ax, ay = g.ay, ux = g.ux, uy = g.uy, sA = g.sA, sE = sA + es.lineLen, owner = stars[si], from = stars[es.src];
+  const ax = g.ax,
+    ay = g.ay,
+    ux = g.ux,
+    uy = g.uy,
+    sA = g.sA,
+    sE = sA + es.lineLen,
+    owner = stars[si],
+    from = stars[es.src];
   let occ = null;
   for (let j = 0; j < NS; j++) {
     if (j === si || j === es.src || !stars[j].on) continue;
-    const o = stars[j], rr = Rb(o) + 1;
+    const o = stars[j],
+      rr = Rb(o) + 1;
     const t = Math.max(0, Math.min(g.len, (o.gx - ax) * ux + (o.gy - ay) * uy));
-    const dx = ax + ux * t - o.gx, dy = ay + uy * t - o.gy;
-    if (dx * dx + dy * dy < rr * rr) { if (!occ) occ = []; occ.push(o.gx - rr - 1, o.gy - rr - 1, o.gx + rr + 1, o.gy + rr + 1); }
-  }
-  const inOcc = (i, j) => { if (!occ) return false; for (let q = 0; q < occ.length; q += 4) if (i >= occ[q] && j >= occ[q + 1] && i <= occ[q + 2] && j <= occ[q + 3]) return true; return false; };
-  if (es.lineLen > .01 && es.mul > 0) {
-    const px0 = ax + ux * sA, py0 = ay + uy * sA, px1 = ax + ux * sE, py1 = ay + uy * sE;
-    const i0 = Math.floor(Math.min(px0, px1)) - 3, i1 = Math.ceil(Math.max(px0, px1)) + 3;
-    const j0 = Math.floor(Math.min(py0, py1)) - 3, j1 = Math.ceil(Math.max(py0, py1)) + 3;
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      let s = (i - ax) * ux + (j - ay) * uy; s = s < sA ? sA : s > sE ? sE : s;
-      const dx = ax + ux * s - i, dy = ay + uy * s - j, d2 = dx * dx + dy * dy;
-      if (d2 < 9) { let w = .07 * Math.exp(-d2 / 2.4) * es.mul; if (occ && inOcc(i, j)) w *= .3; add(i, j, C.lineG, w); }
+    const dx = ax + ux * t - o.gx,
+      dy = ay + uy * t - o.gy;
+    if (dx * dx + dy * dy < rr * rr) {
+      if (!occ) occ = [];
+      occ.push(o.gx - rr - 1, o.gy - rr - 1, o.gx + rr + 1, o.gy + rr + 1);
     }
-    const beadK = Math.min(1, es.beadPeak / .55);
-    for (let s = sA; s <= sE; s += .25) {
-      const px = ax + ux * s, py = ay + uy * s;
+  }
+  const inOcc = (i, j) => {
+    if (!occ) return false;
+    for (let q = 0; q < occ.length; q += 4) if (i >= occ[q] && j >= occ[q + 1] && i <= occ[q + 2] && j <= occ[q + 3]) return true;
+    return false;
+  };
+  if (es.lineLen > 0.01 && es.mul > 0) {
+    const px0 = ax + ux * sA,
+      py0 = ay + uy * sA,
+      px1 = ax + ux * sE,
+      py1 = ay + uy * sE;
+    const i0 = Math.floor(Math.min(px0, px1)) - 3,
+      i1 = Math.ceil(Math.max(px0, px1)) + 3;
+    const j0 = Math.floor(Math.min(py0, py1)) - 3,
+      j1 = Math.ceil(Math.max(py0, py1)) + 3;
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        let s = (i - ax) * ux + (j - ay) * uy;
+        s = s < sA ? sA : s > sE ? sE : s;
+        const dx = ax + ux * s - i,
+          dy = ay + uy * s - j,
+          d2 = dx * dx + dy * dy;
+        if (d2 < 9) {
+          let w = 0.07 * Math.exp(-d2 / 2.4) * es.mul;
+          if (occ && inOcc(i, j)) w *= 0.3;
+          add(i, j, C.lineG, w);
+        }
+      }
+    const beadK = Math.min(1, es.beadPeak / 0.55);
+    for (let s = sA; s <= sE; s += 0.25) {
+      const px = ax + ux * s,
+        py = ay + uy * s;
       if (occ && inOcc(Math.round(px), Math.round(py))) continue;
-      const fi = clamp01((s - sA) / 1.5), fo = 1 - es.ff * (1 - clamp01((sE - s) / 1.5));
-      const e = sE - s, bo = e < 10 ? .6 * (1 - e / 10) * beadK : 0;
-      splat(px, py, C.line, .11 * fi * fo * (1 + bo) * es.mul);
+      const fi = clamp01((s - sA) / 1.5),
+        fo = 1 - es.ff * (1 - clamp01((sE - s) / 1.5));
+      const e = sE - s,
+        bo = e < 10 ? 0.6 * (1 - e / 10) * beadK : 0;
+      splat(px, py, C.line, 0.11 * fi * fo * (1 + bo) * es.mul);
     }
   }
-  if (es.beadPeak > .003) {
-    const bx = ax + ux * sE, by = ay + uy * sE, bk = Math.min(1, es.beadPeak / .55);
+  if (es.beadPeak > 0.003) {
+    const bx = ax + ux * sE,
+      by = ay + uy * sE,
+      bk = Math.min(1, es.beadPeak / 0.55);
     halo(bx, by, C.pulse, es.beadPeak, es.beadSig || 1.5, es.beadRad || 5);
-    splat(bx, by, C.pulse, .6 * es.beadPeak / .8);
+    splat(bx, by, C.pulse, (0.6 * es.beadPeak) / 0.8);
     for (let k = 1; k <= 7; k++) {
-      const s = sE - es.tailSign * k * .6;
+      const s = sE - es.tailSign * k * 0.6;
       if (s < sA || s > g.sB) continue;
-      splat(ax + ux * s, ay + uy * s, C.pulse, .5 * (1 - k / 7) * bk);
+      splat(ax + ux * s, ay + uy * s, C.pulse, 0.5 * (1 - k / 7) * bk);
     }
   }
   if (es.pulseK > 0) {
-    const ph = (T * .16 + phase) % 1, pp = ph * g.len;
-    if (pp > g.sA && pp < g.sB) halo(ax + ux * pp, ay + uy * pp, C.pulse, .45 * Math.sin(Math.PI * ph) * es.pulseK, 1.4, 4);
+    const ph = (T * 0.16 + phase) % 1,
+      pp = ph * g.len;
+    if (pp > g.sA && pp < g.sB) halo(ax + ux * pp, ay + uy * pp, C.pulse, 0.45 * Math.sin(Math.PI * ph) * es.pulseK, 1.4, 4);
   }
   if (es.bump > 0) bump[es.src] = Math.max(bump[es.src], es.bump);
-  if (es.arrHalo > 0) { const sg = owner.big ? SIZE.haloColdSigBig : SIZE.haloColdSig; halo(owner.gx, owner.gy, C.cold, es.arrHalo, sg, sg * 3); }
+  if (es.arrHalo > 0) {
+    const sg = owner.big ? SIZE.haloColdSigBig : SIZE.haloColdSig;
+    halo(owner.gx, owner.gy, C.cold, es.arrHalo, sg, sg * 3);
+  }
   if (es.miniOn) ring(owner.gx, owner.gy, es.miniR, es.miniB, C.done);
 }
 export function drawEdges() {
   bump.fill(0);
   for (let si = 0; si < NS; si++) {
-    const s = stars[si]; let es = null, src = -1;
+    const s = stars[si];
+    let es = null,
+      src = -1;
     if (s.done && s.link !== null) {
-      src = s.link; const g = edgeGeom(stars[src], s);
+      src = s.link;
+      const g = edgeGeom(stars[src], s);
       if (s.fin) es = edgeState(s.fin, (T - s.fin.t0) * 1000);
       else es = { lineLen: g.path, mul: 1, ff: 1, beadPeak: 0, tailSign: 1, bump: 0, arrHalo: 0, miniB: 0, pulseK: 1 };
-      if (es) { es.src = src; drawEdge(g, es, si * .37, si); }
+      if (es) {
+        es.src = src;
+        drawEdge(g, es, si * 0.37, si);
+      }
     } else if (!s.done && s.und && US[si] && s.und.link !== null) {
-      src = s.und.link; es = undoEdge(s.und, (T - s.und.t0) * 1000);
-      if (es) { es.src = src; drawEdge(edgeGeom(stars[src], s), es, 0, si); }
+      src = s.und.link;
+      es = undoEdge(s.und, (T - s.und.t0) * 1000);
+      if (es) {
+        es.src = src;
+        drawEdge(edgeGeom(stars[src], s), es, 0, si);
+      }
     }
   }
 }
 export function drawHalos(si) {
-  const s = stars[si]; if (!pres(s) || s.practice) return;      // a practice has no halo: it is never done or urgent
-  if (s.gh) { if (s.ghA > .01) { const rr = s.big ? SIZE.haloSigBig : SIZE.haloSig; halo(s.gx, s.gy, C.warm, .03 * s.ghA, rr, rr * 3); } return; }
+  const s = stars[si];
+  if (!pres(s) || s.practice) return; // a practice has no halo: it is never done or urgent
+  if (s.gh) {
+    if (s.ghA > 0.01) {
+      const rr = s.big ? SIZE.haloSigBig : SIZE.haloSig;
+      halo(s.gx, s.gy, C.warm, 0.03 * s.ghA, rr, rr * 3);
+    }
+    return;
+  }
   const ex = s.miss && s.mT >= 0 && s.mT < 1700;
-  if (s.miss && !ex) { halo(s.gx, s.gy, C.ash, .06, 2, 5); return; }
-  const fs = FS[si], us = US[si], b0 = s.big, cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9;
-  let cold = 0, mul = 1, hv = 1;
-  if (s.done) { cold = fs ? fs.haloCold : 1; mul = fs ? fs.haloMul : 1; } else if (us) cold = us.cold; else hv = 1 + .15 * hk[si];
+  if (s.miss && !ex) {
+    halo(s.gx, s.gy, C.ash, 0.06, 2, 5);
+    return;
+  }
+  const fs = FS[si],
+    us = US[si],
+    b0 = s.big,
+    cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9;
+  let cold = 0,
+    mul = 1,
+    hv = 1;
+  if (s.done) {
+    cold = fs ? fs.haloCold : 1;
+    mul = fs ? fs.haloMul : 1;
+  } else if (us) cold = us.cold;
+  else hv = 1 + 0.15 * hk[si];
   if (!s.on) mul = 1 - seg(s.rmMs, 0, 400);
-  if (cms < 1000) mul *= s.cr.reduced ? seg(cms, 0, 300) : cms < 900 ? 1.15 * ease.out(seg(cms, 650, 900)) : 1.15 - .15 * ease.inOut(seg(cms, 900, 1000));
+  if (cms < 1000)
+    mul *= s.cr.reduced
+      ? seg(cms, 0, 300)
+      : cms < 900
+        ? 1.15 * ease.out(seg(cms, 650, 900))
+        : 1.15 - 0.15 * ease.inOut(seg(cms, 900, 1000));
   if (ex) mul *= 1 - ease.inOut(seg(s.mT, 300, 1300));
-  const urgent = !s.done && isUrgent(s, wall(T)), b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
+  const urgent = !s.done && isUrgent(s, wall(T)),
+    b = urgent ? 0.5 + 0.5 * fbm(T * 0.45, si * 3.1, 5) : 1;
   if (cold < 1) {
     const w = (1 - cold) * mul * hv;
-    if (urgent) { halo(s.gx, s.gy, C.amb, .2 * b * w, 4.5, 13); halo(s.gx, s.gy, C.ambC, .38 * b * w, 1.4, 4); }
-    else { const rr = (b0 ? SIZE.haloSigBig : SIZE.haloSig) * (.6 + .4 * s.life); halo(s.gx, s.gy, C.warm, (.08 + .12 * s.life) * w * (b0 ? SIZE.bigGain : 1), rr, rr * 3); halo(s.gx, s.gy, C.warmC, .38 * w, 1.4, 4); }
+    if (urgent) {
+      halo(s.gx, s.gy, C.amb, 0.2 * b * w, 4.5, 13);
+      halo(s.gx, s.gy, C.ambC, 0.38 * b * w, 1.4, 4);
+    } else {
+      const rr = (b0 ? SIZE.haloSigBig : SIZE.haloSig) * (0.6 + 0.4 * s.life);
+      halo(s.gx, s.gy, C.warm, (0.08 + 0.12 * s.life) * w * (b0 ? SIZE.bigGain : 1), rr, rr * 3);
+      halo(s.gx, s.gy, C.warmC, 0.38 * w, 1.4, 4);
+    }
   }
-  if (cold > 0) { halo(s.gx, s.gy, C.cold, .26 * cold * (b0 ? SIZE.bigGain : 1), b0 ? SIZE.haloColdSigBig : SIZE.haloColdSig, b0 ? SIZE.haloColdRadBig : SIZE.haloColdRad); halo(s.gx, s.gy, C.core, .45 * cold, 1.5, 4); }
-  if (ex) halo(s.gx, s.gy, C.ash, .06 * ease.inOut(seg(s.mT, 900, 1600)), 2, 5);
-  if (fs && !fs.reduced) { if (fs.ringOn) ring(s.gx, s.gy, fs.ringR, fs.ringB, C.done); if (fs.flashPeak > 0) halo(s.gx, s.gy, C.core, fs.flashPeak, fs.flashSig, fs.flashRad); }
+  if (cold > 0) {
+    halo(
+      s.gx,
+      s.gy,
+      C.cold,
+      0.26 * cold * (b0 ? SIZE.bigGain : 1),
+      b0 ? SIZE.haloColdSigBig : SIZE.haloColdSig,
+      b0 ? SIZE.haloColdRadBig : SIZE.haloColdRad
+    );
+    halo(s.gx, s.gy, C.core, 0.45 * cold, 1.5, 4);
+  }
+  if (ex) halo(s.gx, s.gy, C.ash, 0.06 * ease.inOut(seg(s.mT, 900, 1600)), 2, 5);
+  if (fs && !fs.reduced) {
+    if (fs.ringOn) ring(s.gx, s.gy, fs.ringR, fs.ringB, C.done);
+    if (fs.flashPeak > 0) halo(s.gx, s.gy, C.core, fs.flashPeak, fs.flashSig, fs.flashRad);
+  }
 }
 /* choreography light: creation motes and the expire exhale (render layer, step 9) */
 function drawMotes(s, si, ms) {
   const n = 18 + Math.floor(H(si, 1.3) * 9);
   for (let m = 0; m < n; m++) {
-    const dur = 600 + 100 * H(si * 1.7, m + .5), r0 = 16 + 6 * H(si + .3, m * 1.9);
-    const a0 = (m / n) * 6.2832 + (H(si, m * 2.7) - .5) * .8;
+    const dur = 600 + 100 * H(si * 1.7, m + 0.5),
+      r0 = 16 + 6 * H(si + 0.3, m * 1.9);
+    const a0 = (m / n) * 6.2832 + (H(si, m * 2.7) - 0.5) * 0.8;
     for (let k = 0; k < 4; k++) {
-      const t = ms - k * 22; if (t < 0 || t > dur) continue;
-      const p = ease.in(t / dur), rad = r0 * (1 - p), ang = a0 + .6 * (1 - p);
-      splat(s.gx + Math.cos(ang) * rad, s.gy + Math.sin(ang) * rad, C.ink2, .35 * (k === 0 ? 1 : 1 - k / 4) * (1 - seg(t, dur - 70, dur)));
+      const t = ms - k * 22;
+      if (t < 0 || t > dur) continue;
+      const p = ease.in(t / dur),
+        rad = r0 * (1 - p),
+        ang = a0 + 0.6 * (1 - p);
+      splat(s.gx + Math.cos(ang) * rad, s.gy + Math.sin(ang) * rad, C.ink2, 0.35 * (k === 0 ? 1 : 1 - k / 4) * (1 - seg(t, dur - 70, dur)));
     }
   }
 }
 function drawExhale(s, ms) {
-  const SP = SPR[s.big ? 1 : 0], r = R(s), core = CORE(s), urgent = isUrgent(s, wall(T));
+  const SP = SPR[s.big ? 1 : 0],
+    r = R(s),
+    core = CORE(s),
+    urgent = isUrgent(s, wall(T));
   const v = Math.min(s.life * r, r - core);
-  const kin = ease.out(seg(ms, 0, 300)), kdr = ease.inOut(seg(ms, 300, 1300)), ksh = ease.inOut(seg(ms, 900, 1600));
-  const bmp = .2 * Math.sin(Math.PI * seg(ms, 0, 600));
+  const kin = ease.out(seg(ms, 0, 300)),
+    kdr = ease.inOut(seg(ms, 300, 1300)),
+    ksh = ease.inOut(seg(ms, 900, 1600));
+  const bmp = 0.2 * Math.sin(Math.PI * seg(ms, 0, 600));
   for (let q = 0; q < SP.n; q++) {
-    const i = SP.I[q], j = SP.J[q], dd = SP.DD[q], ch = SP.CH[q], cent = i === 0 && j === 0;
+    const i = SP.I[q],
+      j = SP.J[q],
+      dd = SP.DD[q],
+      ch = SP.CH[q],
+      cent = i === 0 && j === 0;
     let a0, c0, a, c;
-    if (dd === -1) { a0 = Math.max(0, (s.life - .7) / .3) * .75; c0 = C.ink2; }
-    else if (dd === 0) { a0 = urgent ? .7 * (cent ? 1 : .8) : 1; c0 = urgent ? (cent ? C.ambC : C.ambS) : C.ink; }
-    else { a0 = clamp01(v - (dd - core - 1)); c0 = urgent ? C.ambS : C.ink2; }
+    if (dd === -1) {
+      a0 = Math.max(0, (s.life - 0.7) / 0.3) * 0.75;
+      c0 = C.ink2;
+    } else if (dd === 0) {
+      a0 = urgent ? 0.7 * (cent ? 1 : 0.8) : 1;
+      c0 = urgent ? (cent ? C.ambC : C.ambS) : C.ink;
+    } else {
+      a0 = clamp01(v - (dd - core - 1));
+      c0 = urgent ? C.ambS : C.ink2;
+    }
     if (dd === 0) {
-      const tgt = cent ? 1 : (Math.abs(i) + Math.abs(j) === 1 ? .35 : 0);
+      const tgt = cent ? 1 : Math.abs(i) + Math.abs(j) === 1 ? 0.35 : 0;
       c = ms < 300 ? mixTo(SC, c0, C.ambC, kin) : mixTo(SC, C.ambC, C.ash, kdr);
       a = (a0 + (1 - a0) * kin) * (1 - ksh) + tgt * ksh;
       over(s.gx + i, s.gy + j, c, a);
@@ -204,67 +360,124 @@ function drawExhale(s, ms) {
       const tf = 300 + (r - ch) * 110;
       a = a0 * (1 - seg(ms, tf, tf + 300));
       if (a <= 0) continue;
-      c = mixTo(SC, c0, C.ambS, seg(ms, 300, 700)); c = mixTo(SC, c, C.ash, seg(ms, 700, 1300));
+      c = mixTo(SC, c0, C.ambS, seg(ms, 300, 700));
+      c = mixTo(SC, c, C.ash, seg(ms, 700, 1300));
       over(s.gx + i, s.gy + j, c, a);
     }
   }
 }
 function drawGhost(s) {
-  const SP = SPR[s.big ? 1 : 0], ga = (.18 + .04 * Math.sin(T * 6.2832 / 2.4)) * s.ghA;
-  if (ga <= .002) return;
+  const SP = SPR[s.big ? 1 : 0],
+    ga = (0.18 + 0.04 * Math.sin((T * 6.2832) / 2.4)) * s.ghA;
+  if (ga <= 0.002) return;
   for (let q = 0; q < SP.n; q++) over(s.gx + SP.I[q], s.gy + SP.J[q], C.ink2, ga);
 }
 export function drawSprite(si) {
   const s = stars[si];
-  if (s.practice) { drawPractice(si); return; }             // a practice thins out while it leaves, so it is drawn before the presence test
+  if (s.practice) {
+    drawPractice(si);
+    return;
+  } // a practice thins out while it leaves, so it is drawn before the presence test
   if (!pres(s)) return;
-  if (s.gh) { drawGhost(s); return; }
-  if (s.miss && s.mT >= 0 && s.mT < 1700) { drawExhale(s, s.mT); return; }
-  if (s.miss) {
-    const nb = .5;
-    over(s.gx, s.gy, C.ash, 1);
-    over(s.gx - 1, s.gy, C.ash, nb); over(s.gx + 1, s.gy, C.ash, nb);
-    over(s.gx, s.gy - 1, C.ash, nb); over(s.gx, s.gy + 1, C.ash, nb);
+  if (s.gh) {
+    drawGhost(s);
     return;
   }
-  const SP = SPR[s.big ? 1 : 0], r = R(s), core = CORE(s), fs = FS[si], us = US[si];
-  const urgent = !s.done && isUrgent(s, wall(T)), b = urgent ? .5 + .5 * fbm(T * .45, si * 3.1, 5) : 1;
-  const alive = !s.done && !us, h = alive ? hk[si] : 0, v = Math.min(s.life * r, r - core);
-  const cc = fs ? fs.cc : 0, e = v - cc, ms = fs ? fs.ms : 0, ums = us ? (T - s.und.t0) * 1000 : 0, bp = bump[si];
-  const dis = !s.on, dms = s.rmMs, cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9, crOn = cms < 1200;
+  if (s.miss && s.mT >= 0 && s.mT < 1700) {
+    drawExhale(s, s.mT);
+    return;
+  }
+  if (s.miss) {
+    const nb = 0.5;
+    over(s.gx, s.gy, C.ash, 1);
+    over(s.gx - 1, s.gy, C.ash, nb);
+    over(s.gx + 1, s.gy, C.ash, nb);
+    over(s.gx, s.gy - 1, C.ash, nb);
+    over(s.gx, s.gy + 1, C.ash, nb);
+    return;
+  }
+  const SP = SPR[s.big ? 1 : 0],
+    r = R(s),
+    core = CORE(s),
+    fs = FS[si],
+    us = US[si];
+  const urgent = !s.done && isUrgent(s, wall(T)),
+    b = urgent ? 0.5 + 0.5 * fbm(T * 0.45, si * 3.1, 5) : 1;
+  const alive = !s.done && !us,
+    h = alive ? hk[si] : 0,
+    v = Math.min(s.life * r, r - core);
+  const cc = fs ? fs.cc : 0,
+    e = v - cc,
+    ms = fs ? fs.ms : 0,
+    ums = us ? (T - s.und.t0) * 1000 : 0,
+    bp = bump[si];
+  const dis = !s.on,
+    dms = s.rmMs,
+    cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9,
+    crOn = cms < 1200;
   for (let q = 0; q < SP.n; q++) {
-    const i = SP.I[q], j = SP.J[q], dd = SP.DD[q], ch = SP.CH[q], cent = i === 0 && j === 0;
+    const i = SP.I[q],
+      j = SP.J[q],
+      dd = SP.DD[q],
+      ch = SP.CH[q],
+      cent = i === 0 && j === 0;
     let a0, c0;
-    if (dd === -1) { a0 = Math.max(0, (s.life - .7) / .3) * .75; c0 = C.ink2; }
-    else if (dd === 0) { a0 = urgent ? (.45 + .55 * b) * (cent ? 1 : .8) : 1; c0 = urgent ? (cent ? C.ambC : C.ambS) : C.ink; }
-    else {
-      const sh = .88 + .12 * Math.sin(T * 1.3 + i + j);
-      a0 = clamp01(e - (dd - core - 1)) * sh; c0 = urgent ? C.ambS : C.ink2;
-      if (h > 0) a0 += .45 * h * (clamp01(e + 1 - (dd - core - 1)) * sh - a0);          // hover: preview one more arm grain
+    if (dd === -1) {
+      a0 = Math.max(0, (s.life - 0.7) / 0.3) * 0.75;
+      c0 = C.ink2;
+    } else if (dd === 0) {
+      a0 = urgent ? (0.45 + 0.55 * b) * (cent ? 1 : 0.8) : 1;
+      c0 = urgent ? (cent ? C.ambC : C.ambS) : C.ink;
+    } else {
+      const sh = 0.88 + 0.12 * Math.sin(T * 1.3 + i + j);
+      a0 = clamp01(e - (dd - core - 1)) * sh;
+      c0 = urgent ? C.ambS : C.ink2;
+      if (h > 0) a0 += 0.45 * h * (clamp01(e + 1 - (dd - core - 1)) * sh - a0); // hover: preview one more arm grain
     }
-    if (dis) {                                                                          // undo of an add: dissolve outward
-      const k = ease.out(seg(dms, 0, 400)), len = Math.hypot(i, j), an = H(si, 3.7) * 6.2832;
-      const ux = len ? i / len : Math.cos(an), uy = len ? j / len : Math.sin(an);
+    if (dis) {
+      // undo of an add: dissolve outward
+      const k = ease.out(seg(dms, 0, 400)),
+        len = Math.hypot(i, j),
+        an = H(si, 3.7) * 6.2832;
+      const ux = len ? i / len : Math.cos(an),
+        uy = len ? j / len : Math.sin(an);
       splat(s.gx + i + ux * 8 * k, s.gy + j + uy * 8 * k, c0, a0 * (1 - seg(dms, 0, 400)));
       continue;
     }
     const cD = cent ? C.core : dd === -1 ? C.glint : C.done;
-    let a = a0, c = c0;
-    if (s.done && !fs) { a = 1; c = cD; }
-    else if (fs && fs.reduced) { a = a0 + (1 - a0) * fs.k; c = mixTo(SC, c0, cD, fs.k); }
-    else if (fs) {
-      if (cent) { a = a0 + (1 - a0) * cc; c = mixTo(SC, c0, C.core, cc); }
-      else if (dd === -1) { a = Math.max(a0, fs.glint); c = mixTo(SC, c0, C.glint, fs.glint); }
-      else {
+    let a = a0,
+      c = c0;
+    if (s.done && !fs) {
+      a = 1;
+      c = cD;
+    } else if (fs && fs.reduced) {
+      a = a0 + (1 - a0) * fs.k;
+      c = mixTo(SC, c0, cD, fs.k);
+    } else if (fs) {
+      if (cent) {
+        a = a0 + (1 - a0) * cc;
+        c = mixTo(SC, c0, C.core, cc);
+      } else if (dd === -1) {
+        a = Math.max(a0, fs.glint);
+        c = mixTo(SC, c0, C.glint, fs.glint);
+      } else {
         a = Math.max(a0, igA(ch, ms));
         const k = igK(ch, ms);
-        c = k < .4 ? mixTo(SC, c0, C.core, k / .4) : mixTo(SC, C.core, cD, (k - .4) / .6);
+        c = k < 0.4 ? mixTo(SC, c0, C.core, k / 0.4) : mixTo(SC, C.core, cD, (k - 0.4) / 0.6);
       }
+    } else if (us) {
+      a = a0 + (1 - a0) * (1 - undoShr(ums, ch, r));
+      c = mixTo(SC, c0, cD, us.cold);
     }
-    else if (us) { a = a0 + (1 - a0) * (1 - undoShr(ums, ch, r)); c = mixTo(SC, c0, cD, us.cold); }
-    if (crOn) {                                                                          // creation: assembly centre-out
+    if (crOn) {
+      // creation: assembly centre-out
       if (s.cr.reduced) a *= seg(cms, 0, 300);
-      else { const tR = 550 + ch * 45; a *= seg(cms, tR, tR + 120); if (a <= 0) continue; c = mixTo(SC, C.ink, c, seg(cms, tR, tR + 300)); }
+      else {
+        const tR = 550 + ch * 45;
+        a *= seg(cms, tR, tR + 120);
+        if (a <= 0) continue;
+        c = mixTo(SC, C.ink, c, seg(cms, tR, tR + 300));
+      }
     }
     over(s.gx + i, s.gy + j, c, a);
     if (bp > 0 && dd === 0) add(s.gx + i, s.gy + j, C.core, bp);
@@ -278,37 +491,50 @@ const LK = [];
 export function compose() {
   const st = morningNow();
   if (st) morningGap(st);
-  if (st && st.dayK >= MORNING.rise.nightOff) { drawMorning(st); return; }   // the day (or the dusk) covers the night: skip it
-  const mk = st ? morningNight(st) : null;                   // the morning's fade of each group of the night; null = the plain night
-  if (frozen || isCloudStale() || T < cloudTime()) clouds(); else if (!st) cloudsTick();      // the morning holds the clouds still (the sunrise: they are under the dawn; the sunset: the night comes back as it was): they cost the most
+  if (st && st.dayK >= MORNING.rise.nightOff) {
+    drawMorning(st);
+    return;
+  } // the day (or the dusk) covers the night: skip it
+  const mk = st ? morningNight(st) : null; // the morning's fade of each group of the night; null = the plain night
+  if (frozen || isCloudStale() || T < cloudTime()) clouds();
+  else if (!st) cloudsTick(); // the morning holds the clouds still (the sunrise: they are under the dawn; the sunset: the night comes back as it was): they cost the most
   if (pf.on) pf.mark('clouds');
   if (mk) starFade.t = mk.bg;
   composeBase(acts, actN, dims, dimN);
   starFade.t = 1;
   if (xf) {
-    const k = ease.inOut(clamp01((T - xf.t0) / (xf.dur || .9)));
+    const k = ease.inOut(clamp01((T - xf.t0) / (xf.dur || 0.9)));
     if (k >= 1) xf = null;
-    else for (let q = 0; q < N; q++) {
-      BR[q] = OR[q] * (1 - k) + BR[q] * k; BG[q] = OG[q] * (1 - k) + BG[q] * k; BB[q] = OB[q] * (1 - k) + BB[q] * k;
-    }
+    else
+      for (let q = 0; q < N; q++) {
+        BR[q] = OR[q] * (1 - k) + BR[q] * k;
+        BG[q] = OG[q] * (1 - k) + BG[q] * k;
+        BB[q] = OB[q] * (1 - k) + BB[q] * k;
+      }
   }
   if (pf.on) pf.mark('xfade');
-  if (mk) drawPast(mk.bg, mk.lastKey, mk.last); else drawPast();
+  if (mk) drawPast(mk.bg, mk.lastKey, mk.last);
+  else drawPast();
   if (pf.on) pf.mark('past');
-  moonUpdate(); auroraUpdate(frozenForce);
+  moonUpdate();
+  auroraUpdate(frozenForce);
   const gs = mk ? groupBegin(mk.spec) : 1;
   if (gs) drawAurora();
   if (pf.on) pf.mark('aurora');
   if (gs) drawMoon();
   if (pf.on) pf.mark('moon');
-  if (gs) { drawComet(); drawSats(); drawMeteor(); }
+  if (gs) {
+    drawComet();
+    drawSats();
+    drawMeteor();
+  }
   if (mk) groupEnd(gs, mk.spec);
   if (pf.on) pf.mark('events');
   drawMorningNight();
   if (pf.on) pf.mark('morningNight');
-  if (!st) drawHaze();                                       // thoughts are a night thing; the morning keeps its own scene
+  if (!st) drawHaze(); // thoughts are a night thing; the morning keeps its own scene
   if (pf.on) pf.mark('haze');
-  const ga = mk ? groupBegin(mk.alive) : 1;                  // this week's alive stars: edges, halos, steps, labels' dim, sprites
+  const ga = mk ? groupBegin(mk.alive) : 1; // this week's alive stars: edges, halos, steps, labels' dim, sprites
   if (ga) {
     drawEdges();
     if (pf.on) pf.mark('edges');
@@ -317,12 +543,24 @@ export function compose() {
     for (let si = 0; si < NS; si++) stepsBack(si, bump);
     if (pf.on) pf.mark('steps.back');
     const lk = mk ? mk.labels : 1;
-    for (let si = 0; si < NS; si++) { const L = lab[si]; if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis * lk); }      // the plate fades with its label (M2c)
+    for (let si = 0; si < NS; si++) {
+      const L = lab[si];
+      if (L.shown) dimRect(Math.round(L.bx0), Math.round(L.by0), Math.round(L.bx1), Math.round(L.by1), L.vis * lk);
+    } // the plate fades with its label (M2c)
     if (pf.on) pf.mark('dimRect');
-    for (let si = 0; si < NS; si++) { drawSprite(si); if (pf.on) pf.mark('sprites'); stepsFront(si); if (pf.on) pf.mark('steps.front'); }
-    if (lk < 1) for (let si = 0; si < NS; si++) { LK[si] = lab[si].listK; lab[si].listK *= lk; }       // the open list's opaque panel fades with its label too
-    stepsPanel();                                                          // the open step list sits in front of the sky: its rectangle is opaque
-    if (lk < 1) for (let si = 0; si < NS; si++) lab[si].listK = LK[si];       // (restored: the label text is drawn after this by the faded pass)
+    for (let si = 0; si < NS; si++) {
+      drawSprite(si);
+      if (pf.on) pf.mark('sprites');
+      stepsFront(si);
+      if (pf.on) pf.mark('steps.front');
+    }
+    if (lk < 1)
+      for (let si = 0; si < NS; si++) {
+        LK[si] = lab[si].listK;
+        lab[si].listK *= lk;
+      } // the open list's opaque panel fades with its label too
+    stepsPanel(); // the open step list sits in front of the sky: its rectangle is opaque
+    if (lk < 1) for (let si = 0; si < NS; si++) lab[si].listK = LK[si]; // (restored: the label text is drawn after this by the faded pass)
     if (pf.on) pf.mark('steps.panel');
     stepsBullets();
     if (pf.on) pf.mark('steps.bullets');
@@ -333,10 +571,14 @@ export function compose() {
 
 /* crossfade to a new sky (the old base is snapshotted, then the new week fades in) */
 export function skySwap(seed, atT, dur) {
-  cloudsForce(); actN = 0; composeBase(acts, actN, dims, dimN);
-  OR.set(BR); OG.set(BG); OB.set(BB);
-  makeSky(seed); clockTick(true); cloudsForce();
-  xf = { t0: atT === null || atT === undefined ? T : atT, dur: dur || .9 };
+  cloudsForce();
+  actN = 0;
+  composeBase(acts, actN, dims, dimN);
+  OR.set(BR);
+  OG.set(BG);
+  OB.set(BB);
+  makeSky(seed);
+  clockTick(true);
+  cloudsForce();
+  xf = { t0: atT === null || atT === undefined ? T : atT, dur: dur || 0.9 };
 }
-
-

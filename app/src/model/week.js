@@ -27,18 +27,25 @@ export function ensureWeeks(store, nowMs, fromKey = null) {
   return nowKey;
 }
 export function nextWeekKey(key) {
-  const m = /^(\d+)-W(\d+)$/.exec(key); if (!m) return key;
-  let y = +m[1], w = +m[2] + 1;
+  const m = /^(\d+)-W(\d+)$/.exec(key);
+  if (!m) return key;
+  let y = +m[1],
+    w = +m[2] + 1;
   if (w > 52) {
-    const d = new Date(Date.UTC(y, 11, 28));                 // is there a week 53?
+    const d = new Date(Date.UTC(y, 11, 28)); // is there a week 53?
     const w53 = isoWeekOf(Date.UTC(y, 11, 28)).week === 53;
-    if (w > (w53 ? 53 : 52)) { y++; w = 1; }
+    if (w > (w53 ? 53 : 52)) {
+      y++;
+      w = 1;
+    }
   }
   return y + '-W' + String(w).padStart(2, '0');
 }
 export function previousWeekKey(key) {
-  const m = /^(\d+)-W(\d+)$/.exec(key); if (!m) return key;
-  let y = +m[1], w = +m[2] - 1;
+  const m = /^(\d+)-W(\d+)$/.exec(key);
+  if (!m) return key;
+  let y = +m[1],
+    w = +m[2] - 1;
   if (w < 1) {
     y--;
     const d = new Date(Date.UTC(y, 11, 28));
@@ -75,9 +82,11 @@ export function decideRitual(lastSeenWeek, nowMs, tasks = []) {
 export function archivedWeeks(store, max = 26) {
   const out = [];
   const keys = Object.keys(store.weeks).filter(k => {
-    const w = store.weeks[k]; return w && store.tasks.some(t => t.week === k && t.doneAt);
+    const w = store.weeks[k];
+    return w && store.tasks.some(t => t.week === k && t.doneAt);
   });
   keys.sort((a, b) => weekDistance(a, b));
-  for (const k of keys.reverse().slice(0, max)) out.push({ key: k, seed: store.weeks[k].seed, tasks: store.tasks.filter(t => t.week === k && t.doneAt) });
+  for (const k of keys.reverse().slice(0, max))
+    out.push({ key: k, seed: store.weeks[k].seed, tasks: store.tasks.filter(t => t.week === k && t.doneAt) });
   return out;
 }

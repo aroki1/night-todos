@@ -6,7 +6,33 @@ import { cloudReset, cloudDebug, cloudsPath, cloudsCompare, cloudsGpuStats } fro
 import { resetClockCache, clockTick } from '../sky/clock.js';
 import { moonSt } from '../sky/moon.js';
 import { specialsNow, setForceShower, satTime, setMoonShow, cometHead, satNow } from '../sky/events.js';
-import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, UH, dpr, P, D, N, dotPixel, glActive, glLose } from '../framebuffer.js';
+import {
+  BR,
+  BG,
+  BB,
+  SR,
+  SG,
+  SB,
+  CR,
+  CG,
+  CB,
+  SBR,
+  SBG,
+  SBB,
+  AGR,
+  AGG,
+  AGB,
+  GW,
+  SH,
+  UH,
+  dpr,
+  P,
+  D,
+  N,
+  dotPixel,
+  glActive,
+  glLose
+} from '../framebuffer.js';
 import { stars, NS, GHI, rebuildStars, store, liveThoughts, addThought, newId } from '../model/store.js';
 import { newThought } from '../model/thoughts.js';
 import { dayKey, prevDayKey, canMark, weekDots, weekCount } from '../model/practices.js';
@@ -29,30 +55,56 @@ import { FLAGS } from '../tokens.js';
 import { P as PX, ROWS, configure } from '../framebuffer.js';
 
 let api = null;
-const findStar = n => { const k = stars.findIndex(s => s.n === n); return k >= 0 ? k : stars.findIndex(s => s.n.indexOf(n) >= 0); };
+const findStar = n => {
+  const k = stars.findIndex(s => s.n === n);
+  return k >= 0 ? k : stars.findIndex(s => s.n.indexOf(n) >= 0);
+};
 
 export function installHooks(a) {
   api = a;
   setMoonShow(() => moonSt.show);
-  if (FLAGS.prof) pf.enable(() => performance.now());      // ?dev=1&prof=1: per-stage frame timer (stageprof.js); the clock is passed in so only dev code reads performance.now
+  if (FLAGS.prof) pf.enable(() => performance.now()); // ?dev=1&prof=1: per-stage frame timer (stageprof.js); the clock is passed in so only dev code reads performance.now
   window.ns = {
-    setSeed(n) { makeSky(n); },
+    setSeed(n) {
+      makeSky(n);
+    },
     week(n) {
       const y = new Date(wall(T)).getFullYear();
       const key = y + '-W' + String(n).padStart(2, '0');
-      const sd = seedForWeek(key); makeSky(sd); return sd;
+      const sd = seedForWeek(key);
+      makeSky(sd);
+      return sd;
     },
-    flags(sd) { return skyFlags(sd); },
-    find(pred, from, to) { const out = []; for (let sd = from; sd < to; sd++) { const f = skyFlags(sd); if (new Function('f', 'return ' + pred)(f)) out.push(sd); } return out; },
-    specials() { return specialsNow(); },
-    satCount() { return { moon: moonSt.show, sats: satNow([]).length, comet: !!sky.comet }; },
+    flags(sd) {
+      return skyFlags(sd);
+    },
+    find(pred, from, to) {
+      const out = [];
+      for (let sd = from; sd < to; sd++) {
+        const f = skyFlags(sd);
+        if (new Function('f', 'return ' + pred)(f)) out.push(sd);
+      }
+      return out;
+    },
+    specials() {
+      return specialsNow();
+    },
+    satCount() {
+      return { moon: moonSt.show, sats: satNow([]).length, comet: !!sky.comet };
+    },
     sample(n) {
-      const o = [], r = rng(99);
+      const o = [],
+        r = rng(99);
       for (let i = 0; i < n; i++) {
-        const sd = Math.floor(r() * 1e6), day = Math.floor(r() * 7), hr = r() * 24;
+        const sd = Math.floor(r() * 1e6),
+          day = Math.floor(r() * 7),
+          hr = r() * 24;
         makeSky(sd);
-        setClockBase(new Date(2026, 10, 9 + day, Math.floor(hr), Math.floor(hr % 1 * 60)).getTime() - T * 1000);
-        setT(12 + r() * 600); resetClockCache(); clockTick(true); moonSt.init = false;
+        setClockBase(new Date(2026, 10, 9 + day, Math.floor(hr), Math.floor((hr % 1) * 60)).getTime() - T * 1000);
+        setT(12 + r() * 600);
+        resetClockCache();
+        clockTick(true);
+        moonSt.init = false;
         ns.render();
         o.push(sd + ':' + hr.toFixed(1) + ':' + specialsNow().join('+'));
       }
@@ -62,9 +114,11 @@ export function installHooks(a) {
       ns.render();
       const mx = (x0, y0, x1, y1) => {
         let m = 0;
-        for (let j = Math.max(0, y0); j < Math.min(SH, y1); j++) for (let i = Math.max(0, x0); i < Math.min(GW, x1); i++) {
-          const k = j * GW + i; m = Math.max(m, BR[k], BG[k], BB[k]);
-        }
+        for (let j = Math.max(0, y0); j < Math.min(SH, y1); j++)
+          for (let i = Math.max(0, x0); i < Math.min(GW, x1); i++) {
+            const k = j * GW + i;
+            m = Math.max(m, BR[k], BG[k], BB[k]);
+          }
         return m;
       };
       return {
@@ -73,109 +127,246 @@ export function installHooks(a) {
         starCore2: mx(stars[4].gx, stars[4].gy, stars[4].gx + 1, stars[4].gy + 1)
       };
     },
-    forceShower(v) { setForceShower(v); },
-    freeze(t) { api.freeze(t); },
-    finish(name, atT, hov) { return doFinish(findStar(name), atT, hov); },
-    undo(atT) { return doUndo(atT); },
+    forceShower(v) {
+      setForceShower(v);
+    },
+    freeze(t) {
+      api.freeze(t);
+    },
+    finish(name, atT, hov) {
+      return doFinish(findStar(name), atT, hov);
+    },
+    undo(atT) {
+      return doUndo(atT);
+    },
     hover(name) {
       setForceFocus(name === null ? null : findStar(name));
-      const f = focus === undefined ? -1 : (name === null ? -1 : findStar(name));
-      for (let i = 0; i < NS; i++) { hp[i] = hk[i] = i === f ? 1 : 0; frK[i] = (i === f && !stars[i].done && !stars[i].miss) ? 1 : 0; }
-      computeFocus(); api.render();
+      const f = focus === undefined ? -1 : name === null ? -1 : findStar(name);
+      for (let i = 0; i < NS; i++) {
+        hp[i] = hk[i] = i === f ? 1 : 0;
+        frK[i] = i === f && !stars[i].done && !stars[i].miss ? 1 : 0;
+      }
+      computeFocus();
+      api.render();
     },
     select(name) {
-      const f = name === null ? -1 : findStar(name); setSelIdx(f);
-      for (let i = 0; i < NS; i++) { lk[i] = i === f ? 1 : 0; if (i === f) { hp[i] = hk[i] = 1; frK[i] = !stars[i].done && !stars[i].miss ? 1 : 0; } }
-      computeFocus(); api.render();
+      const f = name === null ? -1 : findStar(name);
+      setSelIdx(f);
+      for (let i = 0; i < NS; i++) {
+        lk[i] = i === f ? 1 : 0;
+        if (i === f) {
+          hp[i] = hk[i] = 1;
+          frK[i] = !stars[i].done && !stars[i].miss ? 1 : 0;
+        }
+      }
+      computeFocus();
+      api.render();
     },
-    skySwap(seed, atT) { skySwap(seed, atT); },
-    stepsFinish(name, atT) { return doStepNext(findStar(name), atT); },
-    stepsUndo(name, atT) {                                  // reopen the most recently finished step
-      const i = findStar(name), s = stars[i]; if (!s || !s.steps) return false;
-      let b = -1; s.steps.forEach((t, k) => { if (t.doneAt && (b < 0 || t.doneAt >= s.steps[b].doneAt)) b = k; });
+    skySwap(seed, atT) {
+      skySwap(seed, atT);
+    },
+    stepsFinish(name, atT) {
+      return doStepNext(findStar(name), atT);
+    },
+    stepsUndo(name, atT) {
+      // reopen the most recently finished step
+      const i = findStar(name),
+        s = stars[i];
+      if (!s || !s.steps) return false;
+      let b = -1;
+      s.steps.forEach((t, k) => {
+        if (t.doneAt && (b < 0 || t.doneAt >= s.steps[b].doneAt)) b = k;
+      });
       return b >= 0 && doStepToggle(i, s.steps[b].id, atT);
     },
-    hoverRow(name, k) { const i = findStar(name); sui.rowStar = k < 0 ? -1 : i; sui.rowHover = k; api.render(); },       // dev: put the row hover on row k of the selected list
-    rowPos(name, k) { const L = lab[findStar(name)], q = L && L.rr ? L.rr[k] : null, r = api.canvas().getBoundingClientRect(); return q ? { x: r.left + (q.x0 + 6) * 3 / (GW * 3) * r.width, y: r.top + (q.y0 + q.y1) / 2 * 3 / UH * r.height } : null; },   // dev: client coordinates of a list row
-    stepsScroll(v) { for (let i = 0; i < NS; i++) if (lab[i].list) { sui.st[i] = sui.sy[i] = v; } api.render(true); },
-    stepsAdd(name, text, atT) { return doStepAdd(findStar(name), text, atT); },
-    stepsDelete(name, k, atT) { const i = findStar(name), s = stars[i]; return !!s && !!s.steps && !!s.steps[k] && doStepDelete(i, s.steps[k].id, atT); },
-    stepsInfo() { return { stars: stars.filter(s => s.steps).map(s => [s.n, doneCount(s), s.steps.length, !!s.stepBehind, !!s.stepReady, nextIdx(s)]) }; },
+    hoverRow(name, k) {
+      const i = findStar(name);
+      sui.rowStar = k < 0 ? -1 : i;
+      sui.rowHover = k;
+      api.render();
+    }, // dev: put the row hover on row k of the selected list
+    rowPos(name, k) {
+      const L = lab[findStar(name)],
+        q = L && L.rr ? L.rr[k] : null,
+        r = api.canvas().getBoundingClientRect();
+      return q ? { x: r.left + (((q.x0 + 6) * 3) / (GW * 3)) * r.width, y: r.top + ((((q.y0 + q.y1) / 2) * 3) / UH) * r.height } : null;
+    }, // dev: client coordinates of a list row
+    stepsScroll(v) {
+      for (let i = 0; i < NS; i++)
+        if (lab[i].list) {
+          sui.st[i] = sui.sy[i] = v;
+        }
+      api.render(true);
+    },
+    stepsAdd(name, text, atT) {
+      return doStepAdd(findStar(name), text, atT);
+    },
+    stepsDelete(name, k, atT) {
+      const i = findStar(name),
+        s = stars[i];
+      return !!s && !!s.steps && !!s.steps[k] && doStepDelete(i, s.steps[k].id, atT);
+    },
+    stepsInfo() {
+      return { stars: stars.filter(s => s.steps).map(s => [s.n, doneCount(s), s.steps.length, !!s.stepBehind, !!s.stepReady, nextIdx(s)]) };
+    },
     /* dev: tags on the demo's own stars, never saved (?tags=1 calls this after demo=1) */
     tagDemo() {
-      const map = { 'hm one-pager': 'study', 'os linux hw 3': 'study', 'patterns quiz prep': 'study', 'dp · knapsack + lis': 'work', 'mentor session notes': 'work' };
+      const map = {
+        'hm one-pager': 'study',
+        'os linux hw 3': 'study',
+        'patterns quiz prep': 'study',
+        'dp · knapsack + lis': 'work',
+        'mentor session notes': 'work'
+      };
       for (const s of stars) if (!s.gh) s.tag = map[s.n] || null;
       api.render(true);
       return stars.filter(s => s.tag).map(s => [s.n, s.tag]);
     },
     /* dev: n live tasks with steps spread over the sky (for 48-star and timing checks); `steps` = steps per task */
     fillSteps(n, steps = 5, clear = false) {
-      const now = wall(T), r = rng(77);
+      const now = wall(T),
+        r = rng(77);
       if (clear) store.tasks.length = 0;
       for (let i = 0; i < n; i++) {
         const nsteps = steps > 0 ? steps : 0;
-        store.tasks.push({ id: 'f' + i, title: 'task ' + (i + 1) + ' · ' + ['essay', 'lab', 'reading', 'notes', 'quiz'][i % 5], createdAt: now - 2 * 864e5, deadline: now + (1 + r() * 6) * 864e5,
-          big: i % 9 === 0 ? 1 : 0, x: .06 + ((i % 8) + r() * .5) / 8.6, y: .08 + (Math.floor(i / 8) + r() * .4) / 6.6, doneAt: null, link: null, week: null,
-          steps: mkSteps(Array.from({ length: nsteps }, (_, q) => 'step ' + (q + 1))) });
-        if (nsteps && i % 3 === 0 && store.tasks[store.tasks.length - 1].steps[0]) store.tasks[store.tasks.length - 1].steps[0].doneAt = now - 36e5;
+        store.tasks.push({
+          id: 'f' + i,
+          title: 'task ' + (i + 1) + ' · ' + ['essay', 'lab', 'reading', 'notes', 'quiz'][i % 5],
+          createdAt: now - 2 * 864e5,
+          deadline: now + (1 + r() * 6) * 864e5,
+          big: i % 9 === 0 ? 1 : 0,
+          x: 0.06 + ((i % 8) + r() * 0.5) / 8.6,
+          y: 0.08 + (Math.floor(i / 8) + r() * 0.4) / 6.6,
+          doneAt: null,
+          link: null,
+          week: null,
+          steps: mkSteps(Array.from({ length: nsteps }, (_, q) => 'step ' + (q + 1)))
+        });
+        if (nsteps && i % 3 === 0 && store.tasks[store.tasks.length - 1].steps[0])
+          store.tasks[store.tasks.length - 1].steps[0].doneAt = now - 36e5;
       }
-      rebuildStars(now); api.render(true); return stars.length;
+      rebuildStars(now);
+      api.render(true);
+      return stars.length;
     },
     /* dev: time render/steps.js on its own over `n` frames (ms per frame for the live step-stars) */
     stepsBench(n = 300) {
-      const t0 = T, bump = new Float32Array(64); let tb = 0, tf = 0;
+      const t0 = T,
+        bump = new Float32Array(64);
+      let tb = 0,
+        tf = 0;
       for (let i = 0; i < n; i++) {
         setT(t0 + i / 60);
-        let a = performance.now(); for (let q = 0; q < NS; q++) stepsBack(q, bump); tb += performance.now() - a;
-        a = performance.now(); for (let q = 0; q < NS; q++) stepsFront(q); tf += performance.now() - a;
+        let a = performance.now();
+        for (let q = 0; q < NS; q++) stepsBack(q, bump);
+        tb += performance.now() - a;
+        a = performance.now();
+        for (let q = 0; q < NS; q++) stepsFront(q);
+        tf += performance.now() - a;
       }
-      setT(t0); return { backMs: tb / n, frontMs: tf / n, totalMs: (tb + tf) / n, stars: stars.filter(s => s.steps && s.steps.length).length };
+      setT(t0);
+      return { backMs: tb / n, frontMs: tf / n, totalMs: (tb + tf) / n, stars: stars.filter(s => s.steps && s.steps.length).length };
     },
     nextSeed: null,
-    move(name, gx, gy) { const s = stars[findStar(name)]; if (!s) return; s.gx = gx; s.gy = gy; if (s.task) { s.task.x = gx / (GW - 1); s.task.y = gy / (SH - 1); } },
+    move(name, gx, gy) {
+      const s = stars[findStar(name)];
+      if (!s) return;
+      s.gx = gx;
+      s.gy = gy;
+      if (s.task) {
+        s.task.x = gx / (GW - 1);
+        s.task.y = gy / (SH - 1);
+      }
+    },
     render() {
-      cloudReset(); resetClockCache(); api.render(true);
+      cloudReset();
+      resetClockCache();
+      api.render(true);
     },
     bench(n) {
-      const t0 = T; let sum = 0, mx = 0, fr = [];
+      const t0 = T;
+      let sum = 0,
+        mx = 0,
+        fr = [];
       api.stop();
-      for (let i = 0; i < n; i++) { setT(t0 + i / 60); const a = performance.now(); api.prepareCompose(); const d = performance.now() - a; sum += d; fr.push(d); if (i > 10) mx = Math.max(mx, d); }
+      for (let i = 0; i < n; i++) {
+        setT(t0 + i / 60);
+        const a = performance.now();
+        api.prepareCompose();
+        const d = performance.now() - a;
+        sum += d;
+        fr.push(d);
+        if (i > 10) mx = Math.max(mx, d);
+      }
       api.freeze(null, false);
       fr.sort((x, y) => x - y);
-      return { avg: sum / n, median: fr[n >> 1], p95: fr[Math.floor(n * .95)], max: mx };
+      return { avg: sum / n, median: fr[n >> 1], p95: fr[Math.floor(n * 0.95)], max: mx };
     },
     /* dev, needs ?prof=1: drive `frames` active-rate frames (T advances 1/60 s per rAF) after `warm` warm-up frames and return per-stage median / p95 in ms.
        o.finish = task title: finish it at the current T, and undo + re-finish it every 71 frames (T never rewinds) so most sampled frames are mid-flight. */
     async profRun(o = {}) {
       if (!pf.on) return { err: 'start with ?dev=1&prof=1' };
-      const n = o.frames || 300, warm = o.warm ?? 60, t0 = T, cyc = o.finish ? 71 : 0, ints = [], wasFrozen = frozen; let prev = 0;
+      const n = o.frames || 300,
+        warm = o.warm ?? 60,
+        t0 = T,
+        cyc = o.finish ? 71 : 0,
+        ints = [],
+        wasFrozen = frozen;
+      let prev = 0;
       api.stop();
-      setFrozen(false);                                    // the dev scenes leave the sky frozen: a frozen compose() would refresh clouds in full every frame
+      setFrozen(false); // the dev scenes leave the sky frozen: a frozen compose() would refresh clouds in full every frame
       try {
         for (let i = 0; i < n + warm; i++) {
           const ts = await new Promise(requestAnimationFrame);
-          setT(t0 + i / 60);                               // T only moves forward: a rewind forces a full cloud refresh
-          if (cyc && i % cyc === 0) { if (i) ns.undo(T); ns.finish(o.finish, T, false); }   // re-trigger the finish each cycle instead of looping T back
-          if (i === warm) { pf.reset(); prev = ts; } else if (i > warm) ints.push(ts - prev), prev = ts;
+          setT(t0 + i / 60); // T only moves forward: a rewind forces a full cloud refresh
+          if (cyc && i % cyc === 0) {
+            if (i) ns.undo(T);
+            ns.finish(o.finish, T, false);
+          } // re-trigger the finish each cycle instead of looping T back
+          if (i === warm) {
+            pf.reset();
+            prev = ts;
+          } else if (i > warm) (ints.push(ts - prev), (prev = ts));
           api.frame();
         }
-      } finally { setFrozen(wasFrozen); }
+      } finally {
+        setFrozen(wasFrozen);
+      }
       ints.sort((a, b) => a - b);
-      const s = pf.summary(), cv = api.canvas(), gl = document.createElement('canvas').getContext('webgl'), ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
-      s.rafInterval = { med: ints[ints.length >> 1], p95: ints[Math.floor(ints.length * .95)] };
+      const s = pf.summary(),
+        cv = api.canvas(),
+        gl = document.createElement('canvas').getContext('webgl'),
+        ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      s.rafInterval = { med: ints[ints.length >> 1], p95: ints[Math.floor(ints.length * 0.95)] };
       s.markMs = pf.markCost();
-      s.info = { cw: cv.width, ch: cv.height, GW, SH, ROWS, P: PX, dpr: window.devicePixelRatio, stars: stars.length, layers: sky.layers.map(l => l.S.length), cpuCores: navigator.hardwareConcurrency,
-        gl: gl ? (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'webgl, no debug info') : 'no webgl' };
+      s.info = {
+        cw: cv.width,
+        ch: cv.height,
+        GW,
+        SH,
+        ROWS,
+        P: PX,
+        dpr: window.devicePixelRatio,
+        stars: stars.length,
+        layers: sky.layers.map(l => l.S.length),
+        cpuCores: navigator.hardwareConcurrency,
+        gl: gl ? (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'webgl, no debug info') : 'no webgl'
+      };
       return s;
     },
-    now() { return T; },
+    now() {
+      return T;
+    },
     /* dev: add a thought in memory without saving; select the i-th live thought (negative = from the end) */
     thought(text, tag) {
       const th = newThought(String(text || 'a thought'), tag || null, wall(T), newId(), store.useMs);
-      addThought(th); api.render(true); return th.id;
+      addThought(th);
+      api.render(true);
+      return th.id;
     },
     selectThought(i) {
-      const list = liveThoughts(), th = list[i < 0 ? list.length + i : i];
+      const list = liveThoughts(),
+        th = list[i < 0 ? list.length + i : i];
       if (!th) return null;
       enterThoughtWhen(th.id, false);
       api.render(true);
@@ -183,126 +374,307 @@ export function installHooks(a) {
     },
     /* dev: say the i-th thought ('mon' is its deadline) and show the frame `ms` into the condense (frozen shots) */
     condenseAt(ms, i = 1) {
-      const list = liveThoughts(), th = list[i < 0 ? list.length + i : i]; if (!th) return null;
-      enterThoughtWhen(th.id, true); ns.type('mon'); ns.key('Enter');
-      const t0 = T; setT(t0 + ms / 1000); resetClockCache(); api.render(true);
+      const list = liveThoughts(),
+        th = list[i < 0 ? list.length + i : i];
+      if (!th) return null;
+      enterThoughtWhen(th.id, true);
+      ns.type('mon');
+      ns.key('Enter');
+      const t0 = T;
+      setT(t0 + ms / 1000);
+      resetClockCache();
+      api.render(true);
       return th.id;
     },
-    noThought() { leaveThoughtWhen(); api.render(true); return true; },
-    thoughts() { return store.thoughts.map(t => ({ id: t.id, text: t.text, saidAt: t.saidAt, goneAt: t.goneAt, remindAt: t.remindAt })); },
+    noThought() {
+      leaveThoughtWhen();
+      api.render(true);
+      return true;
+    },
+    thoughts() {
+      return store.thoughts.map(t => ({ id: t.id, text: t.text, saidAt: t.saidAt, goneAt: t.goneAt, remindAt: t.remindAt }));
+    },
     /* dev (L4a): a live practice's state; `i` counts the live ones, negative from the end */
     practice(i) {
-      const list = store.practices.filter(p => !p.archivedAt), p = list[i < 0 ? list.length + i : i];
+      const list = store.practices.filter(p => !p.archivedAt),
+        p = list[i < 0 ? list.length + i : i];
       if (!p) return null;
-      const now = wall(T), y = prevDayKey(now);
-      return { id: p.id, title: p.title, tag: p.tag, days: p.days.slice(), today: dayKey(now), yesterday: y,
-        canYesterday: canMark(p, y, now), dots: weekDots(p, now), week: weekCount(p, isoWeekKey(now)) };
+      const now = wall(T),
+        y = prevDayKey(now);
+      return {
+        id: p.id,
+        title: p.title,
+        tag: p.tag,
+        days: p.days.slice(),
+        today: dayKey(now),
+        yesterday: y,
+        canYesterday: canMark(p, y, now),
+        dots: weekDots(p, now),
+        week: weekCount(p, isoWeekKey(now))
+      };
     },
     /* dev (L4b): mark (or unmark) today of a practice and show the frame `ms` into its flash; stop it and show `ms` into the thinning (frozen shots) */
     practiceMark(name, ms = 0) {
-      const s = stars[findStar(name)]; if (!s || !s.pdata) return null;
-      const t0 = T; doPracticeToggle(s.pdata, dayKey(wall(t0)), t0);
-      setT(t0 + ms / 1000); resetClockCache(); api.render(true); return true;
+      const s = stars[findStar(name)];
+      if (!s || !s.pdata) return null;
+      const t0 = T;
+      doPracticeToggle(s.pdata, dayKey(wall(t0)), t0);
+      setT(t0 + ms / 1000);
+      resetClockCache();
+      api.render(true);
+      return true;
     },
     practiceStopAt(name, ms = 0) {
-      const s = stars[findStar(name)]; if (!s || !s.pdata) return null;
-      const t0 = T; doPracticeStop(s.pdata, t0);
-      setT(t0 + ms / 1000); resetClockCache(); api.render(true); return true;
+      const s = stars[findStar(name)];
+      if (!s || !s.pdata) return null;
+      const t0 = T;
+      doPracticeStop(s.pdata, t0);
+      setT(t0 + ms / 1000);
+      resetClockCache();
+      api.render(true);
+      return true;
     },
-    practices() { return store.practices.map(p => ({ id: p.id, title: p.title, tag: p.tag, days: p.days.slice(), archivedAt: p.archivedAt })); },
+    practices() {
+      return store.practices.map(p => ({ id: p.id, title: p.title, tag: p.tag, days: p.days.slice(), archivedAt: p.archivedAt }));
+    },
     /* dev (L2): the app-use clock, the pick + delivery ignoring presence, and the full thought fields */
-    useMs(ms) { store.useMs = Math.max(0, Number(ms) || 0); api.render(true); return store.useMs; },
-    askNow() { return api.askNow(); },
+    useMs(ms) {
+      store.useMs = Math.max(0, Number(ms) || 0);
+      api.render(true);
+      return store.useMs;
+    },
+    askNow() {
+      return api.askNow();
+    },
     thoughtState() {
-      return store.thoughts.map(t => ({ id: t.id, text: t.text, tag: t.tag, step: t.step, askedAt: t.askedAt, askUse: t.askUse,
-        remindAt: t.remindAt, saidAt: t.saidAt, goneAt: t.goneAt, usedMs: t.usedMs, taskId: t.taskId }));
+      return store.thoughts.map(t => ({
+        id: t.id,
+        text: t.text,
+        tag: t.tag,
+        step: t.step,
+        askedAt: t.askedAt,
+        askUse: t.askUse,
+        remindAt: t.remindAt,
+        saidAt: t.saidAt,
+        goneAt: t.goneAt,
+        usedMs: t.usedMs,
+        taskId: t.taskId
+      }));
     },
     gl: { active: glActive, lose: glLose, error: () => cloudsGpuStats().error },
-    cloudsPath() { return cloudsPath(); },
-    cloudsCompare() { return cloudsCompare(); },
-    cloudsGpuStats() { return cloudsGpuStats(); },
+    cloudsPath() {
+      return cloudsPath();
+    },
+    cloudsCompare() {
+      return cloudsCompare();
+    },
+    cloudsGpuStats() {
+      return cloudsGpuStats();
+    },
     /* dev: resize through configure (what the window resize does, minus star re-layout), then force a cloud refresh */
-    resizeGrid(gw, sh) { configure(gw, sh, ROWS - SH, dpr); cloudReset(); api.render(true); return { GW, SH }; },
-    selfTest() { return selfTest(); },
-    pace() { return api.pace(); },                                  // the smart frame cap state (sky/clock.js pace)
-    renders() { return window.__nsRenders || 0; },
+    resizeGrid(gw, sh) {
+      configure(gw, sh, ROWS - SH, dpr);
+      cloudReset();
+      api.render(true);
+      return { GW, SH };
+    },
+    selfTest() {
+      return selfTest();
+    },
+    pace() {
+      return api.pace();
+    }, // the smart frame cap state (sky/clock.js pace)
+    renders() {
+      return window.__nsRenders || 0;
+    },
     typeTrace(str) {
-      const out = []; ns.key('n');
-      for (const ch of str) { ns.key(ch === ' ' ? 'Space' : ch); ns.advance(170); const g = stars[GHI]; out.push([bar.text.length, +g.ghA.toFixed(2), g.gx, g.gy].join(':')); }
+      const out = [];
+      ns.key('n');
+      for (const ch of str) {
+        ns.key(ch === ' ' ? 'Space' : ch);
+        ns.advance(170);
+        const g = stars[GHI];
+        out.push([bar.text.length, +g.ghA.toFixed(2), g.gx, g.gy].join(':'));
+      }
       return out.join(' ');
     },
-    clock(iso) { setClockISO(iso); cloudReset(); },
-    dbg() { return { T, wall: new Date(wall(T)).toString(), bar: { text: bar.text, title: bar.title, pv: bar.pv, focus: bar.focus, help: bar.help, placeholder: barPlaceholder(), gpos: bar.gpos, gOn: bar.gOn }, ghost: { x: stars[GHI].gx, y: stars[GHI].gy, a: stars[GHI].ghA }, n: stars.length, pipTotal, events: events.length, stars: stars.map(s => [s.n, s.gx, s.gy, s.on, s.done, s.miss]) }; },
+    clock(iso) {
+      setClockISO(iso);
+      cloudReset();
+    },
+    dbg() {
+      return {
+        T,
+        wall: new Date(wall(T)).toString(),
+        bar: {
+          text: bar.text,
+          title: bar.title,
+          pv: bar.pv,
+          focus: bar.focus,
+          help: bar.help,
+          placeholder: barPlaceholder(),
+          gpos: bar.gpos,
+          gOn: bar.gOn
+        },
+        ghost: { x: stars[GHI].gx, y: stars[GHI].gy, a: stars[GHI].ghA },
+        n: stars.length,
+        pipTotal,
+        events: events.length,
+        stars: stars.map(s => [s.n, s.gx, s.gy, s.on, s.done, s.miss])
+      };
+    },
     advance(ms) {
-      const n = Math.max(1, Math.round(ms / 16.667)), dt = ms / 1000 / n;
-      for (let i = 0; i < n; i++) { setT(T + dt); computeFocus(); updateHover(dt); if (ns.onStep) ns.onStep(dt); }
+      const n = Math.max(1, Math.round(ms / 16.667)),
+        dt = ms / 1000 / n;
+      for (let i = 0; i < n; i++) {
+        setT(T + dt);
+        computeFocus();
+        updateHover(dt);
+        if (ns.onStep) ns.onStep(dt);
+      }
       api.render();
     },
     key(spec) {
-      const parts = spec.split('+'), k = parts.pop();
+      const parts = spec.split('+'),
+        k = parts.pop();
       const isChar = k === 'Space' || (k.length === 1 && !k.includes('+'));
       if (bar.focus && isChar) {
         const ch = k === 'Space' ? ' ' : k;
-        if (bar.text.length < 80) { bar.text = bar.text.slice(0, bar.caret) + ch + bar.text.slice(bar.caret); bar.caret++; bar.last = T; }
-        const inp = document.getElementById('bar-input'); if (inp) inp.value = bar.text;
-        api.render(); return;
+        if (bar.text.length < 80) {
+          bar.text = bar.text.slice(0, bar.caret) + ch + bar.text.slice(bar.caret);
+          bar.caret++;
+          bar.last = T;
+        }
+        const inp = document.getElementById('bar-input');
+        if (inp) inp.value = bar.text;
+        api.render();
+        return;
       }
-      if (bar.focus && k === 'Enter') { submitBar(); api.render(); return; }
-      if (bar.focus && k === 'Escape') { bar.focus = false; api.render(); return; }
-      if (bar.focus && k === 'Backspace') { bar.text = bar.text.slice(0, Math.max(0, bar.caret - 1)) + bar.text.slice(bar.caret); bar.caret = Math.max(0, bar.caret - 1); api.render(); return; }
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: k === 'Space' ? ' ' : k, ctrlKey: parts.indexOf('ctrl') >= 0, shiftKey: parts.indexOf('shift') >= 0, bubbles: true, cancelable: true }));
+      if (bar.focus && k === 'Enter') {
+        submitBar();
+        api.render();
+        return;
+      }
+      if (bar.focus && k === 'Escape') {
+        bar.focus = false;
+        api.render();
+        return;
+      }
+      if (bar.focus && k === 'Backspace') {
+        bar.text = bar.text.slice(0, Math.max(0, bar.caret - 1)) + bar.text.slice(bar.caret);
+        bar.caret = Math.max(0, bar.caret - 1);
+        api.render();
+        return;
+      }
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: k === 'Space' ? ' ' : k,
+          ctrlKey: parts.indexOf('ctrl') >= 0,
+          shiftKey: parts.indexOf('shift') >= 0,
+          bubbles: true,
+          cancelable: true
+        })
+      );
       api.render();
     },
-    type(str) { for (const ch of str) ns.key(ch === ' ' ? 'Space' : ch); },
+    type(str) {
+      for (const ch of str) ns.key(ch === ' ' ? 'Space' : ch);
+    },
     clickAt(ux, uy) {
       const r = api.canvas().getBoundingClientRect();
-      api.canvas().dispatchEvent(new MouseEvent('click', { clientX: r.left + ux / (GW * 3) * r.width, clientY: r.top + uy / ((SH + 20) * 3) * r.height, bubbles: true }));
+      api.canvas().dispatchEvent(
+        new MouseEvent('click', {
+          clientX: r.left + (ux / (GW * 3)) * r.width,
+          clientY: r.top + (uy / ((SH + 20) * 3)) * r.height,
+          bubbles: true
+        })
+      );
       api.render();
     },
     click(what) {
       if (what === 'sky') api.clickSky();
       else if (what === 'undo') api.clickUndo();
-      else { const s = stars[findStar(what)]; if (!s) return; api.finishAt(s.gx * 3 + 1, s.gy * 3 + 1); }
+      else {
+        const s = stars[findStar(what)];
+        if (!s) return;
+        api.finishAt(s.gx * 3 + 1, s.gy * 3 + 1);
+      }
     },
     script(str) {
       api.freeze(T);
       for (const tok of str.split(';')) {
-        const i = tok.indexOf(':'), c = i < 0 ? tok : tok.slice(0, i), a = i < 0 ? '' : tok.slice(i + 1);
+        const i = tok.indexOf(':'),
+          c = i < 0 ? tok : tok.slice(0, i),
+          a = i < 0 ? '' : tok.slice(i + 1);
         if (c === 'fz') ns.freeze(+a);
         else if (c === 'adv') ns.advance(+a);
         else if (c === 'key') ns.key(a);
         else if (c === 'type') ns.type(a);
         else if (c === 'click') ns.click(a);
-        else if (c === 'move') { const q = a.split(','); ns.move(q[0], +q[1], +q[2]); ns.render(); }
-        else if (c === 'fin') { ns.finish(a.split(',')[0], +a.split(',')[1], false); }
-        else if (c === 'und') ns.undo(+a);
+        else if (c === 'move') {
+          const q = a.split(',');
+          ns.move(q[0], +q[1], +q[2]);
+          ns.render();
+        } else if (c === 'fin') {
+          ns.finish(a.split(',')[0], +a.split(',')[1], false);
+        } else if (c === 'und') ns.undo(+a);
         else if (c === 'next') ns.nextSeed = +a;
-        else if (c === 'hover') { ns.hover(a === '' ? null : a); ns.render(); }
-        else if (c === 'render') ns.render();
+        else if (c === 'hover') {
+          ns.hover(a === '' ? null : a);
+          ns.render();
+        } else if (c === 'render') ns.render();
         else if (c === 'sat') ns.freeze(satTime(a === '1'));
         else if (c === 'shower') setForceShower(a === '1');
         else if (c === 'dbg') document.documentElement.setAttribute('data-out', JSON.stringify(ns.dbg()));
         else if (c === 'eval') document.documentElement.setAttribute('data-out', JSON.stringify(eval(a)));
       }
     },
-    stats() { return { ms: msAvg, grains: N, dpr, P, D }; },
+    stats() {
+      return { ms: msAvg, grains: N, dpr, P, D };
+    },
     buf(x = 100, y = 100) {
       const k = y * GW + x;
       return { br: [BR[k], BG[k], BB[k]], px: dotPixel(x, y) };
     },
-    cloudDebug(x = 100, y = 100) { return cloudDebug(x, y); },
-    comet() { const o = { x: 0, y: 0 }; const vis = cometHead(o); return { wp: wc.wp, comet: !!sky.comet, vis, head: o }; },
-    special() { return sky.layers.map(l => l.S.filter(s => s.hl || s.vp || s.cross).map(s => [+s.x.toFixed(2), +s.y.toFixed(2)])).flat(); },
-    layerCounts() { return sky.layers.map(l => [l.S.length, l.n]); },
-    fontInfo() { return { w500: wg('3 / 7', 500), w400: wg('3 / 7', 400), chk: document.fonts.check('500 12px "IBM Plex Mono"') }; },
+    cloudDebug(x = 100, y = 100) {
+      return cloudDebug(x, y);
+    },
+    comet() {
+      const o = { x: 0, y: 0 };
+      const vis = cometHead(o);
+      return { wp: wc.wp, comet: !!sky.comet, vis, head: o };
+    },
+    special() {
+      return sky.layers.map(l => l.S.filter(s => s.hl || s.vp || s.cross).map(s => [+s.x.toFixed(2), +s.y.toFixed(2)])).flat();
+    },
+    layerCounts() {
+      return sky.layers.map(l => [l.S.length, l.n]);
+    },
+    fontInfo() {
+      return { w500: wg('3 / 7', 500), w400: wg('3 / 7', 400), chk: document.fonts.check('500 12px "IBM Plex Mono"') };
+    },
     skyBuf(x = 100, y = 100) {
       const k = y * GW + x;
-      return { SR: SR[k], SG: SG[k], SB: SB[k], CR: CR[k], CG: CG[k], CB: CB[k], SBR: SBR[k], SBG: SBG[k], SBB: SBB[k], AGR: AGR[k], AGG: AGG[k], AGB: AGB[k] };
+      return {
+        SR: SR[k],
+        SG: SG[k],
+        SB: SB[k],
+        CR: CR[k],
+        CG: CG[k],
+        CB: CB[k],
+        SBR: SBR[k],
+        SBG: SBG[k],
+        SBB: SBB[k],
+        AGR: AGR[k],
+        AGG: AGG[k],
+        AGB: AGB[k]
+      };
     },
 
     /* product-only test helpers */
     injectWeeks(n = 6, opts = {}) {
-      const now = wall(T), cur = isoWeekKey(now);
+      const now = wall(T),
+        cur = isoWeekKey(now);
       let key = cur;
       const r = rng(4242);
       const out = [];
@@ -314,40 +686,119 @@ export function installHooks(a) {
         for (let i = 0; i < count; i++) {
           const d = new Date(weekStart + (1 + Math.floor(r() * 4)) * 864e5 + Math.floor(r() * 10) * 36e5);
           tasks.push({
-            id: 'w' + w + '-' + i, title: 'week ' + key.slice(-2) + ' · ' + ['essay', 'lab', 'reading', 'notes', 'quiz', 'problem set'][Math.floor(r() * 6)],
-            createdAt: weekStart - 5 * 864e5, deadline: d.getTime() + 2 * 864e5, big: r() < .3 ? 1 : 0,
-            x: .18 + r() * .64, y: .12 + r() * .5, doneAt: d.getTime(), link: null, week: key
+            id: 'w' + w + '-' + i,
+            title: 'week ' + key.slice(-2) + ' · ' + ['essay', 'lab', 'reading', 'notes', 'quiz', 'problem set'][Math.floor(r() * 6)],
+            createdAt: weekStart - 5 * 864e5,
+            deadline: d.getTime() + 2 * 864e5,
+            big: r() < 0.3 ? 1 : 0,
+            x: 0.18 + r() * 0.64,
+            y: 0.12 + r() * 0.5,
+            doneAt: d.getTime(),
+            link: null,
+            week: key
           });
         }
-        for (let i = 1; i < tasks.length; i++) if (r() < .7) tasks[i].link = tasks[Math.floor(r() * i)].id;
+        for (let i = 1; i < tasks.length; i++) if (r() < 0.7) tasks[i].link = tasks[Math.floor(r() * i)].id;
         store.tasks.push(...tasks);
         store.weeks[key] = { seed: seedForWeek(key), archivedAt: now };
         out.push(key);
       }
-      if (!opts.noRebuild) { rebuildStars(now); rebuildPast(); }
+      if (!opts.noRebuild) {
+        rebuildStars(now);
+        rebuildPast();
+      }
       return out;
     },
     /* dev (M1/M2): synthetic tasks for the morning of the week before now; nothing is written to the store */
     morning(o = {}) {
-      const now = wall(T), key = previousWeekKey(isoWeekKey(now)), ws = weekStartMs(key), r = rng(777);
-      const n = o.flowers === null || o.flowers === undefined ? 7 : o.flowers, b = o.buds === null || o.buds === undefined ? 3 : o.buds, D = 864e5;
+      const now = wall(T),
+        key = previousWeekKey(isoWeekKey(now)),
+        ws = weekStartMs(key),
+        r = rng(777);
+      const n = o.flowers === null || o.flowers === undefined ? 7 : o.flowers,
+        b = o.buds === null || o.buds === undefined ? 3 : o.buds,
+        D = 864e5;
       const titles = ['essay', 'lab report', 'reading', 'problem set', 'call mom', 'gym', 'notes', 'quiz prep'];
       const tasks = [];
-      for (let i = 0; i < n; i++) tasks.push({ id: 'm' + i, title: titles[i % 8], createdAt: ws - 2 * D, deadline: ws + 6 * D, big: i % 4 === 0 ? 1 : 0,
-        x: .1 + r() * .8, y: .12 + r() * .55, doneAt: ws + (i + .5) * (6.5 * D / Math.max(1, n)), link: null, week: key,
-        steps: i % 3 === 1 ? Array.from({ length: 6 }, (_, k) => ({ id: 's' + k, text: 'step ' + k, doneAt: k < 3 + (i % 4) ? ws + D : null })) : [] });
-      for (let i = 1; i < n; i++) if (i % 3 !== 0) tasks[i].link = tasks[i - 1].id;                       // a few chains, so the night shows lines
-      for (let i = 0; i < b; i++) tasks.push({ id: 'b' + i, title: 'carry ' + i, createdAt: ws, deadline: now + 3 * D, big: 0, x: .1 + r() * .8, y: .12 + r() * .55, doneAt: null, link: null, week: null, steps: [] });
-      for (let i = 0; i < 2; i++) tasks.push({ id: 'x' + i, title: 'missed ' + i, createdAt: ws, deadline: ws + D, big: 0, x: r(), y: r(), doneAt: null, link: null, week: key, steps: [] });
+      for (let i = 0; i < n; i++)
+        tasks.push({
+          id: 'm' + i,
+          title: titles[i % 8],
+          createdAt: ws - 2 * D,
+          deadline: ws + 6 * D,
+          big: i % 4 === 0 ? 1 : 0,
+          x: 0.1 + r() * 0.8,
+          y: 0.12 + r() * 0.55,
+          doneAt: ws + (i + 0.5) * ((6.5 * D) / Math.max(1, n)),
+          link: null,
+          week: key,
+          steps:
+            i % 3 === 1
+              ? Array.from({ length: 6 }, (_, k) => ({ id: 's' + k, text: 'step ' + k, doneAt: k < 3 + (i % 4) ? ws + D : null }))
+              : []
+        });
+      for (let i = 1; i < n; i++) if (i % 3 !== 0) tasks[i].link = tasks[i - 1].id; // a few chains, so the night shows lines
+      for (let i = 0; i < b; i++)
+        tasks.push({
+          id: 'b' + i,
+          title: 'carry ' + i,
+          createdAt: ws,
+          deadline: now + 3 * D,
+          big: 0,
+          x: 0.1 + r() * 0.8,
+          y: 0.12 + r() * 0.55,
+          doneAt: null,
+          link: null,
+          week: null,
+          steps: []
+        });
+      for (let i = 0; i < 2; i++)
+        tasks.push({
+          id: 'x' + i,
+          title: 'missed ' + i,
+          createdAt: ws,
+          deadline: ws + D,
+          big: 0,
+          x: r(),
+          y: r(),
+          doneAt: null,
+          link: null,
+          week: key,
+          steps: []
+        });
       const at = o.at === null || o.at === undefined ? HOLD_END + 400 : o.at;
-      return api.showMorning({ tasks, weekKey: key, nowMs: now, season: o.season || seasonOf(now), gapMode: o.gap === 'paper' ? 'paper' : 'mosaic',
-        seed: seedForWeek(key), name: '', away: o.away || 0, t0: T - at / 1000, reduced: isReduced(), newSeed: seedForWeek(isoWeekKey(now)), newWeek: weekLabel(isoWeekKey(now)), write: false },
-        { leaveMs: o.leave });
+      return api.showMorning(
+        {
+          tasks,
+          weekKey: key,
+          nowMs: now,
+          season: o.season || seasonOf(now),
+          gapMode: o.gap === 'paper' ? 'paper' : 'mosaic',
+          seed: seedForWeek(key),
+          name: '',
+          away: o.away || 0,
+          t0: T - at / 1000,
+          reduced: isReduced(),
+          newSeed: seedForWeek(isoWeekKey(now)),
+          newWeek: weekLabel(isoWeekKey(now)),
+          write: false
+        },
+        { leaveMs: o.leave }
+      );
     },
-    morningInfo() { return morningInfoR() || { active: false }; },
-    morningHover(i) { setMorningHover(i, true); api.render(true); },
-    noMorning() { return api.hideMorning(); },
-    weekKey() { return isoWeekKey(wall(T)); }
+    morningInfo() {
+      return morningInfoR() || { active: false };
+    },
+    morningHover(i) {
+      setMorningHover(i, true);
+      api.render(true);
+    },
+    noMorning() {
+      return api.hideMorning();
+    },
+    weekKey() {
+      return isoWeekKey(wall(T));
+    }
   };
   const ns = window.ns;
   ns.onStep = null;
@@ -357,7 +808,8 @@ export function installHooks(a) {
 function weekStartMs(key) {
   const m = /^(\d+)-W(\d+)$/.exec(key);
   if (!m) return Date.now();
-  const y = +m[1], w = +m[2];
+  const y = +m[1],
+    w = +m[2];
   const jan4 = new Date(y, 0, 4);
   const day = (jan4.getDay() + 6) % 7;
   const mon = new Date(y, 0, 4 - day + (w - 1) * 7);

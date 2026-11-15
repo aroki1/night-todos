@@ -40,18 +40,25 @@ function carries(t, weekKey, nowMs) {
 /* the numbers of the morning: done and missed in that week, alive tasks carrying over, steps finished during that week,
    and the done tasks by tag (untagged is ''). */
 export function weekSummary(tasks, weekKey, nowMs, practices) {
-  let done = 0, missed = 0, carried = 0, steps = 0; const tags = {};
+  let done = 0,
+    missed = 0,
+    carried = 0,
+    steps = 0;
+  const tags = {};
   for (const t of tasks) {
     if (t.week === weekKey) {
-      if (t.doneAt) { done++; const k = typeof t.tag === 'string' ? t.tag : ''; tags[k] = (tags[k] || 0) + 1; }
-      else missed++;
-    }
-    else if (carries(t, weekKey, nowMs)) carried++;
+      if (t.doneAt) {
+        done++;
+        const k = typeof t.tag === 'string' ? t.tag : '';
+        tags[k] = (tags[k] || 0) + 1;
+      } else missed++;
+    } else if (carries(t, weekKey, nowMs)) carried++;
     for (const s of t.steps || []) if (s && s.doneAt && isoWeekKey(s.doneAt) === weekKey) steps++;
   }
   const out = { done, missed, carried, steps, tags };
   const live = (practices || []).filter(p => p && !p.archivedAt);
-  if (live.length) {                                          // one line per live practice, at most 5, the 5th carries `· +N`
+  if (live.length) {
+    // one line per live practice, at most 5, the 5th carries `· +N`
     const lines = live.slice(0, 5).map(p => practiceLine(p, weekKey));
     if (live.length > 5) lines[4] += ' · +' + (live.length - 5) + ' practices';
     out.practice = lines;
@@ -73,7 +80,9 @@ function tagLine(tags) {
 }
 
 /* the title of a week: `week 46`, or `week 46 · <name>` when named */
-export function weekTitle(weekKey, name = '') { return weekLabel(weekKey) + (name ? ' · ' + name : ''); }
+export function weekTitle(weekKey, name = '') {
+  return weekLabel(weekKey) + (name ? ' · ' + name : '');
+}
 
 /* how many weeks the user was away, after the app learns it is now `nowMs` and the last week it saw was `prevWeek`.
    A new week sets it (1 = last week, the normal case); the same week keeps what was there. */
@@ -86,7 +95,10 @@ export function nextAway(prevWeek, nowMs, away) {
 /* the text lines of the morning. away = weeks the user was away (0 = normal) */
 export function summaryLines(sum, weekKey, name = '', away = 0) {
   const out = [weekTitle(weekKey, name)];
-  if (away >= 2) { out.push(away + ' weeks away'); return out; }
+  if (away >= 2) {
+    out.push(away + ' weeks away');
+    return out;
+  }
   if (!sum.done && !sum.missed && !sum.carried) out.push('a quiet week');
   else {
     const parts = [sum.done ? sum.done + ' done' : 'nothing finished'];
@@ -108,8 +120,22 @@ export function flowerList(tasks, weekKey, nowMs, minGap = 0) {
   const done = tasks.filter(t => t.week === weekKey && t.doneAt).sort((a, b) => a.doneAt - b.doneAt);
   const buds = tasks.filter(t => carries(t, weekKey, nowMs));
   const mk = (t, i, bud) => {
-    const st = t.steps || [], n = st.filter(s => s && s.doneAt).length;
-    return { id: t.id, title: t.title, x: clamp01(t.x), depth: clamp01(1 - t.y), big: t.big ? 1 : 0, petals: st.length ? Math.max(4, Math.min(8, n)) : 0, nSteps: st.length, nDone: n, pick: hstr(t.id), order: i, bud, doneAt: t.doneAt || null };
+    const st = t.steps || [],
+      n = st.filter(s => s && s.doneAt).length;
+    return {
+      id: t.id,
+      title: t.title,
+      x: clamp01(t.x),
+      depth: clamp01(1 - t.y),
+      big: t.big ? 1 : 0,
+      petals: st.length ? Math.max(4, Math.min(8, n)) : 0,
+      nSteps: st.length,
+      nDone: n,
+      pick: hstr(t.id),
+      order: i,
+      bud,
+      doneAt: t.doneAt || null
+    };
   };
   const out = done.map((t, i) => mk(t, i, false)).concat(buds.map((t, i) => mk(t, done.length + i, true)));
   spreadX(out, minGap);
@@ -120,7 +146,8 @@ export function flowerList(tasks, weekKey, nowMs, minGap = 0) {
    A title longer than 28 characters is cut to 27 plus `…`. */
 export function flowerLabel(f) {
   if (!f) return { title: '', sub: '' };
-  const title = String(f.title || ''), t = title.length > 28 ? title.slice(0, 27) + '…' : title;
+  const title = String(f.title || ''),
+    t = title.length > 28 ? title.slice(0, 27) + '…' : title;
   if (f.bud) return { title: t, sub: 'carries over' };
   const day = Number.isFinite(f.doneAt) ? WDN[new Date(f.doneAt).getDay()] : '';
   let sub = day ? 'finished ' + day : 'finished';
@@ -129,7 +156,12 @@ export function flowerLabel(f) {
 }
 
 /* a week name: trimmed, at most 32 characters (sanitizeWeeks in store.js keeps the same rule) */
-export function cleanName(s) { return String(s === null || s === undefined ? '' : s).trim().slice(0, 32).trim(); }
+export function cleanName(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .trim()
+    .slice(0, 32)
+    .trim();
+}
 
 /* Enter in the bar during the morning hold. A '/' command runs as usual; text that parses with a deadline is a task;
    any other text names the week; empty text just lets the morning go. */
@@ -150,8 +182,10 @@ export function withSummary(entry, sum) {
 }
 /* a week entry with a new name (an empty name removes it). Returns a new object */
 export function withName(entry, name) {
-  const o = Object.assign({}, entry || {}), n = cleanName(name);
-  if (n) o.name = n; else delete o.name;
+  const o = Object.assign({}, entry || {}),
+    n = cleanName(name);
+  if (n) o.name = n;
+  else delete o.name;
   return o;
 }
 

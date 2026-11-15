@@ -31,18 +31,26 @@ const server = http.createServer((req, res) => {
     let rel = path.normalize(url).replace(/^(\.\.[/\\])+/, '');
     if (rel === '/' || rel === '\\') rel = '/index.html';
     let file = path.join(root, rel);
-    if (!file.startsWith(root)) { res.writeHead(403); res.end('forbidden'); return; }
+    if (!file.startsWith(root)) {
+      res.writeHead(403);
+      res.end('forbidden');
+      return;
+    }
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
     if (!fs.existsSync(file)) {
       // SPA-ish fallback for extensionless routes; never for files
       if (!path.extname(file)) file = path.join(root, 'index.html');
-      if (!fs.existsSync(file)) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('not found'); return; }
+      if (!fs.existsSync(file)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('not found');
+        return;
+      }
     }
     const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
     res.writeHead(200, {
       'Content-Type': type,
       'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'Pragma': 'no-cache',
+      Pragma: 'no-cache',
       'Service-Worker-Allowed': '/'
     });
     fs.createReadStream(file).pipe(res);

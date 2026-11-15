@@ -5,7 +5,8 @@
   "description": "A todo list where every task is a star.",
   "license": "MIT",
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2",
+    "prettier": "3.10.1"
   },
   "scripts": {
     "dev": "node scripts/serve.mjs app 5173",
@@ -17,6 +18,8 @@
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "verify": "node scripts/verify.mjs",
-    "record": "node scripts/record.mjs"
+    "record": "node scripts/record.mjs",
+    "format": "prettier --write \"app/src/**/*.js\" \"scripts/*.mjs\"",
+    "format:check": "prettier --check \"app/src/**/*.js\" \"scripts/*.mjs\""
   }
 }

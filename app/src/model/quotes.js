@@ -57,6 +57,7 @@ export const QUOTES = [
 
 /* the line of ISO week `key` ('2026-W46'); week 53 reuses week 52, a bad key gives week 1 */
 export function quoteFor(key) {
-  const m = /-W(\d+)$/.exec(String(key || '')), w = m ? Math.max(1, Math.min(52, +m[1])) : 1;
+  const m = /-W(\d+)$/.exec(String(key || '')),
+    w = m ? Math.max(1, Math.min(52, +m[1])) : 1;
   return QUOTES[w - 1];
 }

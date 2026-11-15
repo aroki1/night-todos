@@ -7,7 +7,8 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 - `npm run dev` serves `app/` on `http://127.0.0.1:5173`.
 - `npm test` runs the pure Node self-tests.
 - `npm run shell` regenerates the service-worker shell and module preloads after any change under `app/`.
-- `npm run verify` checks tests, imports, generated files, this module map, deterministic screenshots, and performance.
+- `npm run format` runs Prettier over `app/src/**/*.js` and `scripts/*.mjs`; `npm run verify` fails when files are not formatted.
+- `npm run verify` checks tests, imports, formatting, generated files, this module map, deterministic screenshots, and performance.
 
 ## Ownership and import direction
 

@@ -16,7 +16,7 @@ export async function loadStore() {
     const st = await tauriStore();
     if (st) {
       const raw = await st.get('data');
-      return typeof raw === 'string' ? JSON.parse(raw) : (raw || null);
+      return typeof raw === 'string' ? JSON.parse(raw) : raw || null;
     }
     const s = localStorage.getItem(KEY);
     return s ? JSON.parse(s) : null;
@@ -32,7 +32,9 @@ export async function loadStore() {
         if (s) localStorage.setItem(KEY + ':corrupt:' + Date.now(), s);
       }
       localStorage.removeItem(KEY);
-    } catch (_) { /* start empty */ }
+    } catch (_) {
+      /* start empty */
+    }
     return null;
   }
 }
@@ -41,13 +43,20 @@ export async function saveStore(obj) {
   const text = JSON.stringify(obj);
   try {
     const st = await tauriStore();
-    if (st) { await st.set('data', text); await st.save(); return; }
+    if (st) {
+      await st.set('data', text);
+      await st.save();
+      return;
+    }
     localStorage.setItem(KEY, text);
-  } catch (_) { /* storage may be full or blocked; the sky still works */ }
+  } catch (_) {
+    /* storage may be full or blocked; the sky still works */
+  }
 }
 
 /* ---------- desktop notifications (one per task, never on web) ---------- */
-const notifiedUrgent = new Set(), notifiedMissed = new Set();
+const notifiedUrgent = new Set(),
+  notifiedMissed = new Set();
 
 export async function notifyUrgent(task, now) {
   if (!isTauri || !window.__TAURI__.notification || notifiedUrgent.has(task.id)) return;
@@ -66,5 +75,7 @@ async function send(body) {
     let ok = await n.isPermissionGranted();
     if (!ok) ok = (await n.requestPermission()) === 'granted';
     if (ok) await n.sendNotification({ title: 'Night Sky', body });
-  } catch (_) { /* notifications are a bonus */ }
+  } catch (_) {
+    /* notifications are a bonus */
+  }
 }

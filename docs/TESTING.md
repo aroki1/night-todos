@@ -83,4 +83,4 @@ On touch devices `#bar-input` lies over the bar (rect set in `ui/bar.js`). Deskt
 Resize the window or DevTools device mode: 390x800 (phone), 320x480, 1900x600. Check label clipping at the right edge and the bar.
 
 ## 7. Automated
-`npm test` (selftests) and `npm run verify` (goldens + perf).
+`npm test` (selftests) and `npm run verify` (goldens + perf). verify also fails on unformatted code; fix with `npm run format`.

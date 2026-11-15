@@ -13,10 +13,17 @@ export function undoState(u, ms) {
 }
 
 export function undoEdge(u, ms) {
-  const l0 = u.lineLen0; if (l0 <= 0) return null;
+  const l0 = u.lineLen0;
+  if (l0 <= 0) return null;
   return {
-    lineLen: l0 * (1 - ease.inOut(seg(ms, 0, 450))), mul: 1, ff: u.ff0 * (1 - seg(ms, 0, 100)),
-    tailSign: -1, bump: 0, arrHalo: 0, miniB: 0, pulseK: 0,
-    beadPeak: ms < 450 ? .55 * seg(ms, 0, 100) : .55 * (1 - seg(ms, 450, 570))
+    lineLen: l0 * (1 - ease.inOut(seg(ms, 0, 450))),
+    mul: 1,
+    ff: u.ff0 * (1 - seg(ms, 0, 100)),
+    tailSign: -1,
+    bump: 0,
+    arrHalo: 0,
+    miniB: 0,
+    pulseK: 0,
+    beadPeak: ms < 450 ? 0.55 * seg(ms, 0, 100) : 0.55 * (1 - seg(ms, 450, 570))
   };
 }
