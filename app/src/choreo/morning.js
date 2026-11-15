@@ -1,4 +1,4 @@
-/* choreo/morning.js — the weekly morning as a pure function of time (docs/specs/SPEC-morning.md section 5).
+/* choreo/morning.js — the weekly morning as a pure function of time.
    ms: since the morning started. ev: its control events, oldest first: [{ op: 'advance' | 'leave' | 'cut', ms, named }], same clock.
    reduced: reduced motion, fixed when the morning starts. The render reads only the state, bloom() and textK(). */
 import { seg, ease } from '../math.js';

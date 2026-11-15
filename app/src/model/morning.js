@@ -54,7 +54,7 @@ export function nextAway(prevWeek, nowMs, away) {
   return weekDistance(prevWeek, nowKey);
 }
 
-/* the text lines of the morning (voice: docs/specs/SPEC-morning.md section 9). away = weeks the user was away (0 = normal) */
+/* the text lines of the morning. away = weeks the user was away (0 = normal) */
 export function summaryLines(sum, weekKey, name = '', away = 0) {
   const out = [weekTitle(weekKey, name)];
   if (away >= 2) { out.push(away + ' weeks away'); return out; }

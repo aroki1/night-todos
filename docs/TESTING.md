@@ -42,14 +42,22 @@ Bar syntax: `title, deadline / step / step`, `!` at the end = big star. Deadline
 - Reload after creating: tasks stay.
 - Corrupt storage: `localStorage.setItem('night-sky:v1','{bad')` and reload: app starts empty, a `:corrupt:` backup key appears.
 
-## 3. Scenes (`?scene=...&at=<ms>`)
+## 3. First use and help
+
+- Empty storage: desktop says `add your first star — title, deadline`; phone says `add — title, deadline` without clipping.
+- After creating the first live star, the bar says `click a star to finish` on desktop or `tap twice to finish` on touch.
+- Finish it: the existing undo row shows `undo` and `z`; after it fades, the normal `title, deadline` placeholder returns.
+- Enter `/help`: the quiet reference panel opens above the bar. Check desktop and 375 px phone layouts; nothing clips.
+- Press Esc, begin typing, or click/tap the sky: help closes and the underlying action still works.
+
+## 4. Scenes (`?scene=...&at=<ms>`)
 `finish`, `urgent`, `overlap`, `undo`, `labels&demo=1&hover=hm%20one-pager`, `occlusion`, `expire`, `steps`, `crossfade`. Without `at` some start at 0 and look empty; scrub `at=500…6000`.
 
-## 4. Sky
+## 5. Sky
 `?demo=1&freeze=1&t=12&clock=2026-11-13T03:00` (also 07:00, 12:00, 18:30, 22:00): mood by time of day. Moon: `clock=2026-11-09T23:00` (new) vs `2026-11-24T23:00` (full). `seed=N` for other skies. `gl=0` = 2D canvas path.
 
-## 5. Sizes
+## 6. Sizes
 Resize the window or DevTools device mode: 390x800 (phone), 320x480, 1900x600. Check label clipping at the right edge and the bar.
 
-## 6. Automated
+## 7. Automated
 `npm test` (selftests) and `npm run verify` (goldens + perf).

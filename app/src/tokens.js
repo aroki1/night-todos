@@ -35,8 +35,8 @@ export const PAL = [
   { top: '#07070a', bot: '#111119', hz: [125, 125, 150], cl: [[64, 70, 98], [50, 56, 82]],    tint: ['#f2f2ff', '#d8dcf0', '#fff0dd'] }
 ];
 
-/* the morning scene (docs/specs/SPEC-morning.md). Grain colours are hex() arrays (0..1, before the tone curve); text colours are strings.
-   Start values; M1b tunes them. sky = [top, mid, horizon]; grass = [far, near, tips, shadow]. */
+/* the morning scene. Grain colours are hex() arrays (0..1, before the tone curve); text colours are strings.
+   sky = [top, mid, horizon]; grass = [far, near, tips, shadow]. */
 export const MORNING = {
   seasons: {
     autumn: { sky: [hex('#9fb7d6'), hex('#d9b48c'), hex('#eebd78')], grass: [hex('#7f8456'), hex('#46501e'), hex('#b39a3c'), hex('#1e240c')], stem: hex('#86ad3c'), foliage: [hex('#e2b53a'), hex('#c9822a'), hex('#b4501f'), hex('#8a7a22')], species: ['aster', 'chrysanthemum', 'daisy'], sunY: .40 },
@@ -141,7 +141,7 @@ export const TIME = {
   expireLabelOut: [.9, 1.0], expireLabelIn: [1.0, 1.1],
   undoWindow: 5,
   crossfade: .9, crossfadeMorning: 1.5,
-  /* the weekly morning (docs/specs/SPEC-morning.md section 5). presence: no input for idleMs, or the page shown less than shownMs ago;
+  /* the weekly morning. presence: no input for idleMs, or the page shown less than shownMs ago;
      clock resync when wall time drifts more than driftMs. Then the timeline in ms: [from, to] ranges; A..C count from the start, D from the leave. */
   morning: {
     idleMs: 1500, shownMs: 2000, driftMs: 2000,
@@ -179,6 +179,38 @@ export const SIZE = {
   pastScale: .32, pastMaxWeeks: 26, pastMinGap: 40, pastBottomBand: .15,
   touchHitPx: 22, mouseHitPx: 8,
   pipStep: 9, pipRow: 9
+};
+
+/* first-use copy and the quiet, replayable /help panel. Layout values are in grains. */
+export const GUIDE = {
+  first: 'add your first star — title, deadline',
+  firstTouch: 'add — title, deadline',
+  add: 'title, deadline',
+  finishMouse: 'click a star to finish',
+  finishTouch: 'tap twice to finish',
+  open: 'help · esc to close',
+  helpDesktop: [
+    'help',
+    'add · title, deadline / step / step',
+    'big · add ! at the end',
+    'finish · click a star',
+    'n or / write · tab move · enter finish · z undo',
+    '/export · /import · /motion on|off|system',
+    'esc closes help'
+  ],
+  helpTouch: [
+    'help',
+    'add · title, deadline',
+    'steps · add / step / step',
+    'big · add ! at the end',
+    'finish · tap a star twice',
+    'n or / write · tab move',
+    'enter finish · z undo',
+    '/export · /import',
+    '/motion on|off|system',
+    'esc closes help'
+  ],
+  panel: { margin: 5, padX: 4, padY: 3, row: 5, alpha: .96 }
 };
 
 /* scene flags from the URL (dev-only) */

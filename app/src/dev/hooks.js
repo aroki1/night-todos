@@ -10,7 +10,7 @@ import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, S
 import { stars, NS, GHI, rebuildStars, store } from '../model/store.js';
 import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDelete, mkSteps, pipTotal } from '../model/timeline.js';
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
-import { bar, submitBar, barParse, msAvg } from '../ui/bar.js';
+import { bar, submitBar, barParse, barPlaceholder, msAvg } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { HOLD_END } from '../choreo/morning.js';
 import { morningInfo as morningInfoR, setMorningHover } from '../render/morning.js';
@@ -167,7 +167,7 @@ export function installHooks(a) {
       return out.join(' ');
     },
     clock(iso) { setClockISO(iso); cloudReset(); },
-    dbg() { return { T, wall: new Date(wall(T)).toString(), bar: { text: bar.text, title: bar.title, pv: bar.pv, focus: bar.focus, gpos: bar.gpos, gOn: bar.gOn }, ghost: { x: stars[GHI].gx, y: stars[GHI].gy, a: stars[GHI].ghA }, n: stars.length, pipTotal, events: events.length, stars: stars.map(s => [s.n, s.gx, s.gy, s.on, s.done, s.miss]) }; },
+    dbg() { return { T, wall: new Date(wall(T)).toString(), bar: { text: bar.text, title: bar.title, pv: bar.pv, focus: bar.focus, help: bar.help, placeholder: barPlaceholder(), gpos: bar.gpos, gOn: bar.gOn }, ghost: { x: stars[GHI].gx, y: stars[GHI].gy, a: stars[GHI].ghA }, n: stars.length, pipTotal, events: events.length, stars: stars.map(s => [s.n, s.gx, s.gy, s.on, s.done, s.miss]) }; },
     advance(ms) {
       const n = Math.max(1, Math.round(ms / 16.667)), dt = ms / 1000 / n;
       for (let i = 0; i < n; i++) { setT(T + dt); computeFocus(); updateHover(dt); if (ns.onStep) ns.onStep(dt); }

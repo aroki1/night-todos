@@ -1,4 +1,4 @@
-/* model/quotes.js — one line per ISO week for the morning (docs/specs/SPEC-morning.md section 9). Written for the app: no authors.
+/* model/quotes.js — one line per ISO week for the morning. Written for the app: no authors.
    Week 53 reuses week 52. Lowercase, plain, at most 90 characters. */
 export const QUOTES = [
   'begin where you are.',

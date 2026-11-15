@@ -5,7 +5,7 @@ import { UW, UH, BARY, cv } from '../framebuffer.js';
 import { stars, NS, Rb } from '../model/store.js';
 import { doFinish, doUndo, doStepToggle, doStepDelete, undoTarget, externalUndo } from '../model/timeline.js';
 import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } from '../model/placement.js';
-import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo } from './bar.js';
+import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo, closeHelp } from './bar.js';
 import { skySwap } from '../render/compose.js';
 import { setPointerGrain, clearPointerGrain } from '../sky/past.js';
 import { morningPhase, morningCtl, morningHit, setMorningHover, morningHover } from '../render/morning.js';
@@ -115,6 +115,7 @@ export function bindPointer() {
   cv.addEventListener('click', e => {
     if (e.pointerType === 'touch') return;             // handled by pointerdown
     const [px, py] = toUnits(e);
+    if (py < BARY) closeHelp();
     const mp = morningPhase();
     if (mp && mp !== 'end') {                             // the morning: the bar still opens; a click on the sky only hurries the sunrise
       if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
@@ -150,6 +151,7 @@ export function bindPointer() {
   cv.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'touch') return;
     const [px, py] = toUnits(e);
+    if (py < BARY) closeHelp();
     const mp = morningPhase();
     if (mp && mp !== 'end') {                             // the morning: the bar still opens; in the hold a tap toggles a flower's label
       if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }

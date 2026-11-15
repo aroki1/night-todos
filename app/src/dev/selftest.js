@@ -8,6 +8,7 @@ import { QUOTES, quoteFor } from '../model/quotes.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
+import { onboardingHint, helpLines } from '../ui/guide.js';
 
 export function selfTest() {
   const now = new Date(2026, 10, 13, 21, 0, 0), at = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime(), D = 864e5;
@@ -28,6 +29,10 @@ export function selfTest() {
     const r = parseDeadline(inp, now);
     ok(typeof exp === 'number' ? (r.ok && r.date.getTime() === exp) : r.err === exp, 'parse ' + inp);
   }
+  ok(onboardingHint() === 'add your first star — title, deadline' && onboardingHint({ touch: true }) === 'add — title, deadline', 'guide: an empty store asks for the first star');
+  ok(onboardingHint({ taskCount: 1, hasLive: true }) === 'click a star to finish' && onboardingHint({ taskCount: 1, hasLive: true, touch: true }) === 'tap twice to finish', 'guide: first live star teaches finish for pointer and touch');
+  ok(onboardingHint({ taskCount: 2, hasLive: true, hasDone: true }) === 'title, deadline / step / step' && onboardingHint({ taskCount: 4, hasDone: true }) === 'title, deadline', 'guide: normal and step syntax hints after first finish');
+  ok(helpLines(false)[0] === 'help' && helpLines(false).some(x => x.includes('/export')) && helpLines(true).some(x => x.includes('tap a star twice')), 'guide: help covers data and touch');
   const fl = [[0, '<1m'], [59e3, '<1m'], [60e3, '1m'], [3599e3, '59m'], [3600e3, '1h'], [26.99 * 36e5, '26h'], [47.9 * 36e5, '47h'], [(2 * 24 + 2) * 36e5, '2d 02h'], [(6 * 24 + 2.99) * 36e5, '6d 02h']];
   for (const [ms, exp] of fl) ok(fmtLeft(ms) === exp, 'fmtLeft ' + ms);
 

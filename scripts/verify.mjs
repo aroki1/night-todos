@@ -1,5 +1,5 @@
 /* scripts/verify.mjs — `npm run verify`: one command that says whether a change is safe.
-   Tier 1 (Node, seconds): selftests, import direction (layer table below), SW shell check, module map (CLAUDE.md vs files on disk).
+   Tier 1 (Node, seconds): selftests, import direction (layer table below), SW shell check, public architecture module map vs files on disk.
    Tier 2 (ONE headless Edge via scripts/cdp.mjs): golden screenshot hashes + perf budget, both in scripts/goldens.json.
    `npm run verify -- --update-goldens` rewrites the hashes only; `--update-perf` also re-measures the budget.
    Silent on success except one summary line; on failure prints only what failed (+ paths of the failing shots). */
@@ -69,17 +69,18 @@ function importCheck() {
   return bad;
 }
 
-/* every app/src/**.js and scripts/*.mjs must appear as a backticked path in CLAUDE.md, and every such path in CLAUDE.md must exist */
+/* every app/src/**.js and scripts/*.mjs/json must appear in the public architecture map, and every mapped path must exist */
 function moduleMapCheck() {
-  const md = fs.readFileSync(path.join(ROOT, 'CLAUDE.md'), 'utf8');
+  const mapPath = path.join(ROOT, 'docs', 'dev', 'ARCHITECTURE.md');
+  const md = fs.readFileSync(mapPath, 'utf8');
   const named = new Set([...md.matchAll(/`((?:app\/src\/[\w\/.-]+\.js)|(?:scripts\/[\w.-]+\.(?:mjs|json)))`/g)].map(m => m[1]));
   const onDisk = new Set([
     ...walk(SRC).map(f => 'app/src/' + path.relative(SRC, f).replace(/\\/g, '/')),
     ...fs.readdirSync(path.join(ROOT, 'scripts')).filter(n => /\.(mjs|json)$/.test(n)).map(n => 'scripts/' + n)
   ]);
   const out = [];
-  for (const f of onDisk) if (!named.has(f)) out.push('module-map: ' + f + ' is not in the CLAUDE.md module map');
-  for (const f of named) if (!onDisk.has(f)) out.push('module-map: CLAUDE.md names ' + f + ' but it does not exist');
+  for (const f of onDisk) if (!named.has(f)) out.push('module-map: ' + f + ' is not in docs/dev/ARCHITECTURE.md');
+  for (const f of named) if (!onDisk.has(f)) out.push('module-map: docs/dev/ARCHITECTURE.md names ' + f + ' but it does not exist');
   return out;
 }
 
@@ -102,6 +103,8 @@ const SCENES = {
   finish: 'scene=finish',
   labels: 'scene=labels&demo=1&hover=hm%20one-pager',   // demo=1 + hover: star labels and the hover frame are drawn, so TXT/label tokens are covered
   ambient: 'freeze=1&t=12',
+  onboarding: { q: 'freeze=1&t=12', eval: 'ns.fillSteps(1,0,true)' },
+  help: { q: 'freeze=1&t=12', eval: "ns.key('n');ns.type('/help');ns.key('Enter');document.documentElement.dataset.cmd" },
   /* no demo, 2 tasks without steps (count 2 mod 3). hints: selected star shows the dim "+ step" row */
   hints: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.select('task 1 · essay')" },
   morning: 'morning=1',
@@ -109,7 +112,7 @@ const SCENES = {
   morningRise: 'morning=1&at=4500',                    // the sunrise, half way: the land up, the sky turning
   morningSet: 'morning=1&leave=9500&at=14000',         // the sunset, 4.5 s in: dusk, the sun low, the heads closing
   morningLabel: { q: 'morning=1', eval: 'ns.morningHover(0);ns.render(true)' },   // the label of the first flower: plate, two lines, link
-  barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true)" }   // nothing selected: the bar placeholder is the step syntax
+  barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.finish('task 1',ns.now()-10,true);ns.render()" }   // after the first finish, task count 2 mod 3 shows the step syntax
 };
 const PERF = { size: '1917x933', dpr: 2, frames: 300 };
 

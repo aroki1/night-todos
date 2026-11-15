@@ -3,7 +3,7 @@ import { T } from '../sky/clock.js';
 import { stars, NS } from '../model/store.js';
 import { doFinish, doUndo, doStepNext, doStepToggle, doStepDelete } from '../model/timeline.js';
 import { focus, selIdx, mouseHover, setSelIdx, setMouseHover, setForceFocus, lab } from '../model/placement.js';
-import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget } from './bar.js';
+import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget, closeHelp } from './bar.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
 import { wake } from './bar.js';
 import { stepsLive, stepRows, sui } from '../model/steps.js';
@@ -32,6 +32,7 @@ function morningKey(e, mp) {
 export function bindKeys() {
   window.addEventListener('keydown', e => {
     if (bar.focus) return;                                  // the real input handles everything
+    if (bar.help && e.key === 'Escape') { e.preventDefault(); closeHelp(); return; }
     const mp = morningPhase();
     if (mp && mp !== 'end') { morningKey(e, mp); return; }       // night interactions are off during the morning
     if (e.ctrlKey || e.metaKey || e.altKey) {

@@ -1,6 +1,6 @@
 # Night Sky design system
 
-Written for a future contributor or AI. Change `app/src/tokens.js` first; this document follows it.
+Written for future contributors. Change `app/src/tokens.js` first; this document follows it.
 
 ## 1. Principles
 
@@ -19,7 +19,7 @@ Written for a future contributor or AI. Change `app/src/tokens.js` first; this d
 - One grain = a dot on a pitch of `3 x dpr` device pixels with a 1 device-pixel gap (so grains are DPR-exact; phones get fewer grains, not smaller ones).
 - Grid: `GW x SH` sky grains plus 20 (desktop) or 24 (touch) bar rows. GW and SH come from the viewport; buffers are reallocated on resize (debounced 150 ms), stars keep normalized positions.
 - Pipeline order per frame (`render/compose.js`): base sky (cached, with crossfade) -> clouds -> background stars and components -> past weeks -> moon -> events (aurora, comet, satellites, meteors) -> edges -> glows -> choreography light -> ghost star -> text backing -> sprites (user stars last) -> blit -> canvas text.
-- Ownership and import direction are in `docs/dev/ARCHITECTURE-NOTES.md`.
+- Ownership and import direction are in `docs/dev/ARCHITECTURE.md`.
 
 ## 3. Tokens
 
@@ -102,9 +102,9 @@ A task may have up to 20 steps, `task.steps = [{ id, text, doneAt }]`. Tasks sav
 - Ready (all steps done, task not finished): the whole orbit is cold, one glint travels it per 4 s.
 - With no steps a task looks and behaves exactly as before.
 
-## 9. Decisions carried from the archived specs
+## 9. Decisions carried into the product
 
-Full history in `docs/specs/archive/`; one-line decisions in `docs/dev/DECISIONS.md`.
+One-line decisions live in `docs/dev/DECISIONS.md`; the current module boundaries live in `docs/dev/ARCHITECTURE.md`.
 
 - The product is `app/` only: one grain framebuffer, text the only off-grain layer, no framework, no build step.
 - Weeks are ISO weeks; finished stars archive into past-week constellations and the weekly morning shows what carries over (`model/week.js`).

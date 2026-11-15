@@ -1,18 +1,19 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
-import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, setReducedPref, getReducedPref } from '../tokens.js';
+import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, setReducedPref, getReducedPref } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, dpr } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtLeft } from '../sky/clock.js';
 import { parseDeadline, splitBar } from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
-import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars } from '../model/store.js';
+import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce } from '../model/store.js';
 import { undoTarget, externalUndo, doCreate, doStepAdd, applyImport } from '../model/timeline.js';
 import { placeNew, selIdx, setSelIdx } from '../model/placement.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
+import { onboardingHint, helpLines } from './guide.js';
 
 export const bar = {
   text: '', caret: 0, focus: false, last: -9, title: '', big: false, res: null, pv: '', pvWarn: false,
-  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: []
+  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: [], help: false
 };
 /* step mode: a selected live star turns the bar into "step for <title>"; Enter adds a step to it */
 export function stepTarget() {
@@ -23,6 +24,11 @@ export let undoHit = null, skyBtn = null, msAvg = 0;
 export let wake = () => {};
 export function setWake(fn) { wake = fn; }
 let input = null, composing = false;
+
+function touchLayout() {
+  return typeof window !== 'undefined' && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || window.innerWidth < 700);
+}
+export function closeHelp() { if (!bar.help) return false; bar.help = false; wake(); return true; }
 
 export function initBar(inputEl) {
   input = inputEl;
@@ -46,6 +52,7 @@ export function setBarFocus(v) {
   bar.focus = !!v;
   if (!input) return;
   if (v) {
+    bar.help = false;
     input.value = bar.text;
     try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
     try { input.setSelectionRange(bar.caret, bar.caret); } catch (_) { }
@@ -109,6 +116,10 @@ async function runCommand(cmd) {
   document.documentElement.setAttribute('data-cmd', cmd);
   const [name, ...rest] = cmd.slice(1).trim().split(/\s+/);
   const arg = rest.join(' ');
+  if (name === 'help') {
+    bar.help = true; bar.text = ''; bar.caret = 0; if (input) { input.value = ''; input.blur(); }
+    bar.focus = false; announce(helpLines(touchLayout()).join('. ')); wake(); return true;
+  }
   if (name === 'motion') {
     if (['on', 'off', 'system'].includes(arg)) {
       setReducedPref(arg); store.prefs.reducedMotion = arg; saveSoon();
@@ -213,11 +224,40 @@ export function fitText(t, maxW) {
 }
 export function barPlaceholder() {
   if (morningPhase() === 'hold') return MORNING.text.name;
+  if (bar.help) return GUIDE.open;
   const st = stepTarget();
   if (st >= 0) { const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n); }
-  const any = DEMO_ON ? true : store.tasks.length > 0;
-  if (!DEMO_ON && store.tasks.length % STEPS.barHintEvery === STEPS.barHintEvery - 1) return STEPS.barHint;
-  return any ? 'title, deadline' : 'add your first star — title, deadline';
+  return onboardingHint({
+    taskCount: store.tasks.length,
+    hasLive: stars.some(s => s.on && !s.done && !s.miss && !s.gh),
+    hasDone: store.tasks.some(t => Number.isFinite(t.doneAt)),
+    demo: DEMO_ON,
+    touch: touchLayout()
+  });
+}
+
+function drawHelpPanel() {
+  if (!bar.help) return;
+  const lines = helpLines(touchLayout()), o = GUIDE.panel;
+  ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
+  ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+  let textW = 0;
+  for (const line of lines) textW = Math.max(textW, ctx.measureText(line).width);
+  const w = Math.min(UW - o.margin * 6, Math.ceil((textW + o.padX * 6) / 3) * 3);
+  const hG = o.padY * 2 + lines.length * o.row, xG = o.margin, yG = Math.max(o.margin, SH - o.margin - hG);
+  const x1G = Math.min(Math.floor(UW / 3) - o.margin, xG + Math.ceil(w / 3));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (let gy = yG; gy < yG + hG; gy++) for (let gx = xG; gx < x1G; gx++) {
+    const edge = gx === xG || gx === x1G - 1 || gy === yG || gy === yG + hG - 1;
+    dot(gx, gy, edge ? TXT.rule : TXT.bg, o.alpha);
+  }
+  ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillStyle = i === 0 ? TXT.ink : TXT.ink2;
+    ctx.fillText(lines[i], xG * 3 + o.padX * 3, (yG + o.padY + i * o.row + Math.floor(o.row / 2)) * 3);
+  }
 }
 
 export function drawBar() {
@@ -227,6 +267,7 @@ export function drawBar() {
   const timerRow = SH + barRows - 6;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = TXT.bg; ctx.fillRect(0, SH * P, cv.width, cv.height - SH * P);
   ctx.fillStyle = TXT.rule; ctx.fillRect(0, SH * P, cv.width, Math.max(1, Math.round(dpr)));
+  drawHelpPanel();
   ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); ctx.textBaseline = 'middle';
   ctx.font = '500 12px ' + '"IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.fillStyle = TXT.ink2; ctx.fillText('›', 18, by);
