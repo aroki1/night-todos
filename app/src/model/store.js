@@ -18,7 +18,9 @@ export const THOUGHTS_DEMO = FLAGS.dev && FLAGS.thoughts !== null && FLAGS.thoug
 export const MAXS = 48;
 const HR = 36e5;
 
-export const store = { version: 1, tasks: [], thoughts: [], weeks: {}, lastSeenWeek: null, morningDue: null, morningAway: 0, prefs: { reducedMotion: 'system' } };
+export const store = {
+  version: 1, tasks: [], thoughts: [], useMs: 0, lastAskUse: 0, weeks: {}, lastSeenWeek: null, morningDue: null, morningAway: 0, prefs: { reducedMotion: 'system' }
+};
 
 const DEF = [
   { n: 'hm one-pager',         gx: 268, gy: 40,  big: 1, life: .86, off: (7 * 24 + 2) * HR + 59 * 6e4 },
@@ -64,7 +66,7 @@ function demoThoughts() {
   store.thoughts = [];
   for (let i = 0; i < n; i++) {
     const t = DEMO_THOUGHTS[i % DEMO_THOUGHTS.length] + (i >= DEMO_THOUGHTS.length ? ' ' + (i + 1) : '');
-    store.thoughts.push(newThought(t, i % 4 === 0 ? 'study' : null, now - i * 30 * HR, 'd' + i));
+    store.thoughts.push(newThought(t, i % 4 === 0 ? 'study' : null, now - i * 30 * HR, 'd' + i, store.useMs));
   }
 }
 
@@ -80,7 +82,7 @@ export function mkStar(d) {
     id: null, task: null, nx: null, ny: null
   }, d);
 }
-export const R = s => (s.big ? 5 : 3), CORE = s => (s.big ? 2 : 1);
+export const R = s => (s.big ? SIZE.starRBig : SIZE.starR), CORE = s => (s.big ? SIZE.starCoreBig : SIZE.starCore);
 export const Rb = s => (s.miss ? 0 : R(s));
 export const pres = s => s.on || s.ghA > .002 || (s.rm !== null && s.rmMs >= 0 && s.rmMs < 450);
 export const expAt = s => (s.dl === null ? Infinity : (s.dl - CLOCK0) / 1000);
@@ -179,7 +181,10 @@ export function saveSoon() {
 export function flushSave() {
   if (!dirty) return;
   dirty = false;
-  persistence.save({ version: 1, tasks: store.tasks, thoughts: store.thoughts, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, morningDue: store.morningDue, morningAway: store.morningAway, prefs: store.prefs });
+  persistence.save({
+    version: 1, tasks: store.tasks, thoughts: store.thoughts, useMs: store.useMs, lastAskUse: store.lastAskUse,
+    weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, morningDue: store.morningDue, morningAway: store.morningAway, prefs: store.prefs
+  });
 }
 
 /* tasks saved before steps existed load with steps: []. Junk steps are dropped, never the task. */
@@ -200,13 +205,13 @@ export function sanitizeSteps(a) {
 const TAG_RE = /^[A-Za-z0-9-]{1,16}$/;
 export function cleanTag(v) { return typeof v === 'string' && TAG_RE.test(v) ? v.toLowerCase() : null; }
 const numOrNull = v => Number.isFinite(v) ? v : null;
-/* a thought without text or a creation time is dropped; step is a whole number 0..5; the rest is a number or null */
+/* a thought without text or a creation time is dropped; step is a whole number 0..4; the rest is a number or null */
 export function sanitizeThoughts(a) {
   if (!Array.isArray(a)) return [];
   const out = [];
   for (const t of a) {
     if (!t || typeof t !== 'object' || typeof t.text !== 'string' || !t.text.trim() || !Number.isFinite(t.createdAt)) continue;
-    out.push({
+    const th = {
       id: typeof t.id === 'string' && t.id ? t.id : newId(),
       text: t.text.trim().slice(0, SIZE.maxTitle),
       tag: cleanTag(t.tag),
@@ -215,9 +220,13 @@ export function sanitizeThoughts(a) {
       taskId: typeof t.taskId === 'string' ? t.taskId : null,
       goneAt: numOrNull(t.goneAt),
       remindAt: numOrNull(t.remindAt),
-      step: Number.isInteger(t.step) ? Math.max(0, Math.min(5, t.step)) : 0,
+      askedAt: numOrNull(t.askedAt),
+      askUse: Number.isFinite(t.askUse) && t.askUse >= 0 ? t.askUse : 0,
+      step: Number.isInteger(t.step) ? Math.max(0, Math.min(4, t.step)) : 0,
       usedMs: Number.isFinite(t.usedMs) ? t.usedMs : 0
-    });
+    };
+    if (t.big) th.big = 1;                         // absent when the thought was not written big, so old stores round-trip as they were
+    out.push(th);
   }
   return out;
 }
@@ -264,6 +273,8 @@ export function sanitize(raw) {
   });
   return {
     version: 1, tasks, thoughts: sanitizeThoughts(raw.thoughts),
+    useMs: Number.isFinite(raw.useMs) && raw.useMs >= 0 ? raw.useMs : 0,
+    lastAskUse: Number.isFinite(raw.lastAskUse) && raw.lastAskUse >= 0 ? raw.lastAskUse : 0,
     weeks: sanitizeWeeks(raw.weeks),
     lastSeenWeek: typeof raw.lastSeenWeek === 'string' ? raw.lastSeenWeek : null,
     morningDue: typeof raw.morningDue === 'string' && /^\d{4}-W\d{2}$/.test(raw.morningDue) ? raw.morningDue : null,
@@ -294,11 +305,22 @@ export async function loadModel() {
 }
 
 export function snapshotData() {
-  return JSON.parse(JSON.stringify({ tasks: store.tasks, thoughts: store.thoughts, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs }));
+  return JSON.parse(JSON.stringify({ tasks: store.tasks, thoughts: store.thoughts, useMs: store.useMs, lastAskUse: store.lastAskUse, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs }));
 }
 export function restoreData(snap) {
-  store.tasks = snap.tasks; store.thoughts = snap.thoughts || []; store.weeks = snap.weeks; store.lastSeenWeek = snap.lastSeenWeek; store.prefs = snap.prefs;
+  store.tasks = snap.tasks; store.thoughts = snap.thoughts || [];
+  store.useMs = Number.isFinite(snap.useMs) ? snap.useMs : 0; store.lastAskUse = Number.isFinite(snap.lastAskUse) ? snap.lastAskUse : 0;
+  store.weeks = snap.weeks; store.lastSeenWeek = snap.lastSeenWeek; store.prefs = snap.prefs;
   saveSoon();
+}
+/* app-use clock: add real elapsed time while the tab is visible and focused. Each step is capped at 1 s, and the normal
+   debounce saves it at most once a second (not on every frame). */
+export function advanceUseMs(ms) {
+  const add = Math.min(1000, Math.max(0, Number(ms) || 0));
+  if (add <= 0) return;
+  const sec = Math.floor(store.useMs / 1000);
+  store.useMs += add;
+  if (Math.floor(store.useMs / 1000) !== sec) saveSoon();
 }
 export function replaceData(raw) {
   const data = sanitize(raw);

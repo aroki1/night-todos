@@ -40,6 +40,9 @@ export function bindKeys() {
       return;
     }
     const k = e.key;
+    if (bar.thoughtBack && k.length === 1 && k !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      setBarFocus(true); setBarCaret(); wake(); return;                       // a thought came back: any printable key opens its answer
+    }
     if (selIdx >= 0 && stars[selIdx] && stepsLive(stars[selIdx])) {              // a selected star with steps: Space finishes the next step, 1-5 toggle rows
       if (k === ' ') { e.preventDefault(); doStepNext(selIdx, T); wake(); return; }
       if (k >= '1' && k <= '5') {
@@ -57,7 +60,7 @@ export function bindKeys() {
       e.preventDefault(); bar.letGo = true; setBarFocus(true); setBarCaret(); wake(); return;
     }
     if (k === 'n' || k === '/') {
-      e.preventDefault(); leaveThoughtWhen(); setBarFocus(true); setBarCaret(); if (stepTarget() < 0) setSelIdx(-1); setMouseHover(-1); wake();
+      e.preventDefault(); leaveThoughtWhen('ignored'); bar.firstStepSi = -1; setBarFocus(true); setBarCaret(); if (stepTarget() < 0) setSelIdx(-1); setMouseHover(-1); wake();
     } else if (k === 'Tab') {
       e.preventDefault();
       const l = aliveByGx(), ths = liveThoughts(), n = l.length + ths.length; if (!n) return;
@@ -66,7 +69,8 @@ export function bindKeys() {
       else if (selIdx >= 0) cur = l.indexOf(selIdx);
       const q = e.shiftKey ? (cur <= 0 ? n - 1 : cur - 1) : (cur + 1) % n;
       setMouseHover(-1);
-      if (q < l.length) { leaveThoughtWhen(); setSelIdx(l[q]); }
+      leaveThoughtWhen('ignored');                                              // moving on ends an unanswered coming back
+      if (q < l.length) setSelIdx(l[q]);
       else { setSelIdx(-1); enterThoughtWhen(ths[q - l.length].id, false); }
       wake();
     } else if (k === 'Enter') {
@@ -74,7 +78,7 @@ export function bindKeys() {
       if (focus >= 0) finishFocused();
     } else if (k === 'Escape') {
       if (bar.text !== '') { bar.text = ''; bar.caret = 0; bar.last = T; }
-      leaveThoughtWhen();
+      leaveThoughtWhen('later');
       setSelIdx(-1); setForceFocus(null); wake();
     } else if (k === 'z' || k === 'Z') {
       tryUndo(doUndo);

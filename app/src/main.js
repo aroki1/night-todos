@@ -6,16 +6,17 @@ import { archivePast } from './model/week.js';
 import { setMorningScene, clearMorningScene, morningScene, morningNow, morningPhase, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
-import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, THOUGHTS_DEMO, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
-import { shouldStartMorning, nextDue, nextAway, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
+import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, THOUGHTS_DEMO, advanceUseMs, findThought, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
+import { shouldStartMorning, isPresent, nextDue, nextAway, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
+import { pickDue, thoughtMayCome } from './model/thoughts.js';
 import { doFinish, doUndo, pushMorning, clearMorning } from './model/timeline.js';
-import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
+import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit, enterThoughtWhen, leaveThoughtWhen } from './ui/bar.js';
 import { drawLabels, drawPastHover } from './render/text.js';
 import { setGhostInfo } from './model/placement.js';
 import { bindKeys, finishFocused } from './ui/keys.js';
 import { bindPointer, toUnits, hitStar } from './ui/pointer.js';
 import { prepare, compose, setFrozen, setFrozenForce, isAnimating, skySwap } from './render/compose.js';
-import { computeFocus, updateHover, clearWidthCache, setForceFocus, setMouseHover, setSelIdx, lab } from './model/placement.js';
+import { computeFocus, updateHover, clearWidthCache, setForceFocus, setMouseHover, setSelIdx, selIdx, lab } from './model/placement.js';
 import { updatePastHover, rebuildPast, resetPastHover, setPointerGrain, setPastSkip } from './sky/past.js';
 import { notifyUrgent, notifyMissed, isTauri, loadStore, saveStore } from './platform.js';
 import { moonSt } from './sky/moon.js';
@@ -104,10 +105,13 @@ function announce(msg) {
 function loop(ts) {
   raf = requestAnimationFrame(loop);
   if (!lastTs) lastTs = ts;
-  const dt = Math.min(.05, (ts - lastTs) / 1000); lastTs = ts;
+  const raw = Math.max(0, ts - lastTs);
+  const dt = Math.min(.05, raw / 1000); lastTs = ts;
   setT(T + dt);
+  useTick(raw);
   if (resyncClock()) checkRollover();
   morningTick(ts);
+  thoughtTick(ts);
   computeFocus();
   const hm = updateHover(dt), pm = updatePastHover(dt);
   const active = isAnimating() || barAnimating() || hm || pm || ts - lastInput < INPUT_ACTIVE_MS;
@@ -170,6 +174,10 @@ const api = {
   finishAt(pxUnit, pyUnit) {
     const i = hitStar(pxUnit, pyUnit, false);
     if (i >= 0) { setSelIdx(i); doFinish(i, T, true); setSelIdx(-1); renderNow(false); }
+  },
+  askNow() {                                                    // dev: run the pick and deliver, ignoring presence
+    const id = pickDue(store.thoughts, wall(T), store.useMs, store.lastAskUse);
+    return id ? deliverThought(id) : null;
   }
 };
 
@@ -295,6 +303,40 @@ function morningTick(ts) {
   if (go) startRealMorning(store.morningDue);
 }
 
+/* app use = real time while the tab is visible and focused; each step is capped in the store */
+function useTick(ms) {
+  if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  advanceUseMs(ms);
+}
+
+/* thoughts coming back: only while the user is here and free, never during the morning, never as a notification.
+   An unanswered coming back ends as `ignored` after askIdleMs. */
+function canComeBack(ts) {
+  if (FLAGS.freeze || FLAGS.scene || FLAGS.morning) return false;
+  const visible = document.visibilityState === 'visible', focused = document.hasFocus();
+  if (!thoughtMayCome({ morning: !!morningScene(), busy: isAnimating(), barText: bar.focus || bar.text !== '', when: !!bar.thought, selected: selIdx >= 0, visible, focused })) return false;
+  return isPresent({ visible, focused, busy: false, barText: false, sinceInput: ts - lastInput, sinceShown: ts - shownAt });
+}
+function deliverThought(id) {
+  const th = findThought(id);
+  if (!th || th.saidAt || th.goneAt) return null;
+  const now = wall(T);
+  th.askedAt = now; th.askUse = store.useMs;
+  if (Number.isFinite(th.remindAt) && now >= th.remindAt) th.remindAt = null;     // the reminder was delivered
+  store.lastAskUse = store.useMs;
+  enterThoughtWhen(id, false, true);                                               // no focus: no keyboard on touch, no stolen keys
+  bar.backAt = T;
+  announce('a thought came back: ' + th.text);
+  saveSoon();
+  return id;
+}
+function thoughtTick(ts) {
+  if (bar.thoughtBack && T - bar.backAt >= TIME.thought.askIdleMs / 1000) { leaveThoughtWhen('ignored'); return; }
+  if (!canComeBack(ts)) return;
+  const id = pickDue(store.thoughts, wall(T), store.useMs, store.lastAskUse);
+  if (id) deliverThought(id);
+}
+
 async function boot() {
   const canvas = document.getElementById('c');
   initCanvas(canvas);
@@ -306,6 +348,7 @@ async function boot() {
   if (!FLAGS.freeze && !FLAGS.scene && !DEMO_ON && !THOUGHTS_DEMO) setPersistence({ load: loadStore, save: saveStore });
   else setPersistence(null);
   await loadModel();
+  if (FLAGS.useMs !== null) store.useMs = Math.max(0, FLAGS.useMs);
   setReducedPref(FLAGS.reduced ? 'on' : (store.prefs.reducedMotion || 'system'));
   clearWidthCache();
   const wk = isoWeekKey(wall(0));
@@ -343,9 +386,9 @@ async function boot() {
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { stopLoop(); flushSave(); }
-    else if (!FLAGS.freeze) { lastTs = 0; shownAt = performance.now(); startLoop(); }
+    else if (!FLAGS.freeze) { lastTs = 0; shownAt = performance.now(); startLoop(); thoughtTick(performance.now()); }
   });
-  window.addEventListener('focus', () => { shownAt = performance.now(); });
+  window.addEventListener('focus', () => { shownAt = performance.now(); if (!FLAGS.freeze) thoughtTick(performance.now()); });
   window.addEventListener('pagehide', flushSave);
 
   shownAt = performance.now();

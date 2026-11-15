@@ -1,7 +1,7 @@
 /* components.js — background star types: open clusters, binaries, giants, the variable star,
    diffraction crosses. Everything here is seeded; nothing is random at render time. */
 import { hex } from '../math.js';
-import { C } from '../tokens.js';
+import { C, SIZE } from '../tokens.js';
 
 /* Add the special types to a freshly built layer set. Same stream and same removals as v10,
    so the plain field is unchanged. */
@@ -37,13 +37,13 @@ export function extendLayers({ layers, W, SH, r2, pal, seed }) {
 
 /* star sprites: grain positions, distance class, Chebyshev class */
 export function buildSprite(big) {
-  const r = big ? 5 : 3, I = [0], J = [0], DD = [0], CH = [0];
+  const r = big ? SIZE.starRBig : SIZE.starR, rc = big ? SIZE.starCoreBig : SIZE.starCore, I = [0], J = [0], DD = [0], CH = [0];
   for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) {
     if (!i && !j) continue;
-    const m = Math.abs(i) + Math.abs(j), core = big ? m <= 2 : (Math.abs(i) <= 1 && Math.abs(j) <= 1);
+    const m = Math.abs(i) + Math.abs(j), core = big ? m <= rc : (Math.abs(i) <= rc && Math.abs(j) <= rc);
     if (core || i === 0 || j === 0) { I.push(i); J.push(j); DD.push(core ? 0 : Math.max(Math.abs(i), Math.abs(j))); CH.push(Math.max(Math.abs(i), Math.abs(j))); }
   }
-  if (big) [[-4, -4], [4, -4], [-4, 4], [4, 4]].forEach(([i, j]) => { I.push(i); J.push(j); DD.push(-1); CH.push(5); });
+  if (big) { const g = r - 1; [[-g, -g], [g, -g], [-g, g], [g, g]].forEach(([i, j]) => { I.push(i); J.push(j); DD.push(-1); CH.push(r); }); }
   return { n: I.length, I, J, DD, CH };
 }
 export const SPR = [buildSprite(0), buildSprite(1)];

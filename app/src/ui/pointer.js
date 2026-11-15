@@ -141,7 +141,7 @@ export function bindPointer() {
     if (thId) { enterThoughtWhen(thId, true); wake(); return; }        // a thought: "when?" with the bar focused
     if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
     setBarFocus(false);
-    leaveThoughtWhen();
+    leaveThoughtWhen('ignored');
     setTapSelected(false);
     const hr = hitRow(px, py);
     if (hr) { clickRow(hr); return; }
@@ -195,13 +195,13 @@ export function bindPointer() {
       tp.t = setTimeout(() => {
         const th = findThought(held);
         tpClear();
-        if (th) { doLetGo(th, T); leaveThoughtWhen(); wake(); }
+        if (th) { doLetGo(th, T); leaveThoughtWhen('gone'); wake(); }
       }, STEPS.longPress);
       return;
     }
     if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
     setBarFocus(false);
-    leaveThoughtWhen();
+    leaveThoughtWhen('ignored');
     const hr = hitRow(px, py, true);
     if (hr) { lpStart(hr, e); return; }
     const i = hitStar(px, py, true);

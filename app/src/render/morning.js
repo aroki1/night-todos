@@ -2,7 +2,7 @@
    The hold is the M1 frame, drawn exactly as it was. The sunrise and the sunset (M2b) layer, back to front: the night (its stars, specials, past week and alive
    stars fade by their own factors, see morningNight), the horizon glow, the day or dusk sky, the sun, the far ridges and the hills + meadow
    (cached once as premultiplied layers), the flowers. M2c: nothing slides and nothing fades as a whole except the sun: the sky, the land's silhouette and its light arrive and leave grain by grain, each at its own moment (order arrays, built once per scene and geometry). Reduced motion crossfades the whole night and the whole hold. */
-import { MORNING, TIME, FONT, C } from '../tokens.js';
+import { MORNING, TIME, FONT, C, SIZE } from '../tokens.js';
 import { GW, SH, N, BR, BG, BB, P, ctx, setGap, over, splat, halo, geometryListeners } from '../framebuffer.js';
 import { T } from '../sky/clock.js';
 import { SPR } from '../sky/components.js';
@@ -564,7 +564,7 @@ export function drawMorningNight() {
     const x = Math.round(o.x), y = Math.round(o.y);
     if (o.done) {
       if (dk <= 0) continue;
-      halo(x, y, C.cold, .26 * dk * hb, o.big ? 7.5 : 5.5, o.big ? 22 : 16); halo(x, y, C.core, .45 * dk * hb, 1.5, 4);
+      halo(x, y, C.cold, .26 * dk * hb * (o.big ? SIZE.bigGain : 1), o.big ? SIZE.haloColdSigBig : SIZE.haloColdSig, o.big ? SIZE.haloColdRadBig : SIZE.haloColdRad); halo(x, y, C.core, .45 * dk * hb, 1.5, 4);
       const SP = SPR[o.big];
       for (let m = 0; m < SP.n; m++) over(x + SP.I[m], y + SP.J[m], SP.I[m] === 0 && SP.J[m] === 0 ? C.core : SP.DD[m] === -1 ? C.glint : C.done, dk);
     } else {

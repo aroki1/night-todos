@@ -237,7 +237,7 @@ let moonClearFn = () => true;
 export function setMoonClear(fn) { moonClearFn = fn; }
 export function placeNew(title, ctr, big) {
   const rr = rng((hstr(title) ^ Math.imul(ctr + 1, 0x9E3779B1)) >>> 0);
-  const r = big ? 5 : 3, w = Math.max(wg(title), 8), th = 12, segs = [], placed = [];
+  const r = big ? SIZE.starRBig : SIZE.starR, w = Math.max(wg(title), 8), th = 12, segs = [], placed = [];
   for (let i = 0; i < NS; i++) {
     const s = stars[i];
     if (s.on && s.done && s.link !== null) { const f = stars[s.link]; segs.push(f.gx, f.gy, s.gx, s.gy); }

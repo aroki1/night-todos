@@ -162,7 +162,7 @@ export function installHooks(a) {
     now() { return T; },
     /* dev: add a thought in memory without saving; select the i-th live thought (negative = from the end) */
     thought(text, tag) {
-      const th = newThought(String(text || 'a thought'), tag || null, wall(T), newId());
+      const th = newThought(String(text || 'a thought'), tag || null, wall(T), newId(), store.useMs);
       addThought(th); api.render(true); return th.id;
     },
     selectThought(i) {
@@ -181,6 +181,13 @@ export function installHooks(a) {
     },
     noThought() { leaveThoughtWhen(); api.render(true); return true; },
     thoughts() { return store.thoughts.map(t => ({ id: t.id, text: t.text, saidAt: t.saidAt, goneAt: t.goneAt, remindAt: t.remindAt })); },
+    /* dev (L2): the app-use clock, the pick + delivery ignoring presence, and the full thought fields */
+    useMs(ms) { store.useMs = Math.max(0, Number(ms) || 0); api.render(true); return store.useMs; },
+    askNow() { return api.askNow(); },
+    thoughtState() {
+      return store.thoughts.map(t => ({ id: t.id, text: t.text, tag: t.tag, step: t.step, askedAt: t.askedAt, askUse: t.askUse,
+        remindAt: t.remindAt, saidAt: t.saidAt, goneAt: t.goneAt, usedMs: t.usedMs, taskId: t.taskId }));
+    },
     gl: { active: glActive, lose: glLose },
     selfTest() { return selfTest(); },
     typeTrace(str) {

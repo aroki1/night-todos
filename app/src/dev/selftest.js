@@ -1,12 +1,13 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
 import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
-import { newThought, hazeSlots, ageText, reviveSaid } from '../model/thoughts.js';
+import { newThought, hazeSlots, ageText, reviveSaid, thoughtDue, pickDue, afterAsk, thoughtMayCome } from '../model/thoughts.js';
 import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
-import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
-import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
+import { sanitize, isUrgent, stepsDoneBy, R, CORE } from '../model/store.js';
+import { SPR } from '../sky/components.js';
+import { shouldStartMorning, isPresent, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
-import { MORNING, THOUGHT } from '../tokens.js';
+import { MORNING, THOUGHT, SIZE } from '../tokens.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { condenseState, condenseMs } from '../choreo/condense.js';
@@ -163,6 +164,17 @@ export function selfTest() {
   ok(splitBar('x, fri 18:00 / a 20/11 / b').steps.join('|') === 'a 20/11|b' && splitBar('a, b, fri / c, d').title === 'a, b' && splitBar('a, b, fri / c, d').steps[0] === 'c, d', 'bar: commas in steps and titles');
   ok(splitBar('a / b, fri').steps.length === 0 && splitBar('a / b, fri').title === 'a / b' && splitBar('x, fri /').steps.length === 0 && splitBar('x, fri /').dls.trim() === 'fri', 'bar: a slash in the title or a trailing slash makes no steps');
   ok(splitBar('x, fri / a !').big && splitBar('x, fri / a !').steps.join() === 'a' && splitBar('no deadline yet').steps.length === 0, 'bar: ! still makes it big');
+  const bgE = splitBar('make a course, today !'), bgL = splitBar('! make a course, today'), bgN = splitBar('!make a course, today'), bgP = splitBar('make a course, today');
+  ok(bgE.big === true && bgE.title === 'make a course' && bgL.big === true && bgL.title === 'make a course' && bgL.dls.trim() === 'today' && bgN.big === true && bgN.title === 'make a course' && bgP.big === false, 'bar: ! at the start or the end makes it big and leaves the title');
+  const bgS = splitBar('! x, fri / a / b');
+  ok(bgS.big && bgS.title === 'x' && bgS.steps.join() === 'a,b' && splitBar('!').title === '' && barKind('! learn x', 5) === 'thought' && barKind('! make a course, today', now.getTime()) === 'task' && splitBar('wow! x, fri').big === false, 'bar: leading ! with steps, a lone !, a ! inside a word');
+  ok(parseWhen('! fri', now.getTime()).big === true && parseWhen('fri !', now.getTime()).big === true && parseWhen('!fri', now.getTime()).big === true && parseWhen('fri', now.getTime()).big === false && parseWhen('! fri / a', now.getTime()).steps.join() === 'a', 'when: ! at the start or the end');
+  const bigTh = newThought('learn x', null, 5, 'b1', 0, true), smTh = newThought('learn x', null, 5, 'b2', 0, false);
+  ok(bigTh.big === 1 && !('big' in smTh) && sanitize({ version: 1, tasks: [], thoughts: [bigTh, smTh] }).thoughts.map(t => t.big || 0).join() === '1,0', 'thought: big survives the store, absent when not big');
+  const bigTask = { id: 'bg', title: 'make a course', createdAt: nowMs - D, deadline: nowMs + D, big: 1, x: .2, y: .3, doneAt: null, link: null, week: null, steps: [] };
+  const bigRt = sanitize(JSON.parse(JSON.stringify({ version: 1, tasks: [bigTask, Object.assign({}, bigTask, { id: 'sm', big: 0 })] })));
+  ok(bigRt.tasks[0].big === 1 && bigRt.tasks[1].big === 0, 'store: big round-trips through save and sanitize');
+  ok(R({ big: 1 }) === SIZE.starRBig && R({ big: 0 }) === 3 && CORE({ big: 1 }) === SIZE.starCoreBig && CORE({ big: 0 }) === 1 && SIZE.starRBig === 7 && SPR[1].n > SPR[0].n && Math.max(...SPR[1].I) === 7 && Math.max(...SPR[0].I) === 3 && SPR[1].CH.every(c => c <= 7) && SPR[1].DD.filter(d => d === -1).length === 4, 'star: big is 7 grains (normal 3), the sprite follows the tokens');
 
   /* steps: loading an old store (golden fixture): tasks saved before steps existed load with steps: [] and lose nothing */
   const OLD = '{"version":1,"tasks":[{"id":"t1","title":"read ch. 7","createdAt":1783000000000,"deadline":1784000000000,"big":1,"x":0.2,"y":0.3,"doneAt":null,"link":null,"week":null},' +
@@ -322,7 +334,7 @@ export function selfTest() {
     { id: 'q', createdAt: 9 },
     { id: 'r', text: 'ok', tag: 'bad tag!', createdAt: 7, step: 3 }
   ] }).thoughts;
-  ok(ths.length === 2 && ths[0].text === 'learn x' && ths[0].tag === 'study' && ths[0].step === 5, 'thought: sanitize keeps a good one, clamps step, cleans the tag');
+  ok(ths.length === 2 && ths[0].text === 'learn x' && ths[0].tag === 'study' && ths[0].step === 4, 'thought: sanitize keeps a good one, clamps step, cleans the tag');
   ok(ths[1].id === 'r' && ths[1].tag === null && ths[1].step === 3 && ths[1].saidAt === null, 'thought: no tag becomes null, timestamps default to null');
   const tagged = sanitize({ version: 1, tasks: [Object.assign({}, good.tasks[0], { tag: 'Study' })] }).tasks[0];
   ok(tagged.tag === 'study' && sanitize(JSON.parse(JSON.stringify({ version: 1, tasks: [tagged] }))).tasks[0].tag === 'study', 'store: task.tag survives a round trip');
@@ -340,5 +352,34 @@ export function selfTest() {
   const cc = { x0: 100, y0: 150, x1: 160, y1: 40, reduced: false }, c0 = condenseState(cc, 0), c1 = condenseState(cc, THOUGHT.condenseMs), c9 = condenseState(cc, THOUGHT.condenseMs + THOUGHT.holdMs);
   ok(c0.scale === 1 && !c0.on && Math.abs(c1.px - 160) < 1e-6 && Math.abs(c1.py - 40) < 1e-6 && !c9.on, 'condense: starts at the haze, lands on the star, ends');
   ok(condenseMs(false) >= 900 && condenseMs(false) <= 1300 && condenseMs(true) === 250 && condenseState({ ...cc, reduced: true }, 250).hazeA === 0, 'condense: 900-1300 ms, 250 ms when reduced');
+
+  /* thoughts coming back (L2): the app-use clock, the calendar gaps, the gate, the picks and the outcomes */
+  const tb = (id, o) => Object.assign({ id, text: id, tag: null, createdAt: nw - 30 * D, saidAt: null, taskId: null, goneAt: null,
+    remindAt: null, askedAt: null, askUse: 0, step: 0, usedMs: 0 }, o);
+  const HU = 36e5, U2 = 2 * HU;
+  ok(pickDue([tb('a')], nw, U2 - 1, 0) === null && pickDue([tb('a')], nw, U2, 0) === 'a', 'back: nothing before 2 h of use, due at 2 h');
+  ok(pickDue([tb('a'), tb('b')], nw, U2 + HU - 1, U2) === null && pickDue([tb('a'), tb('b')], nw, U2 + HU, U2) === 'a', 'back: at most one per hour of use (the oldest due)');
+  ok(pickDue([tb('r', { remindAt: nw - 1 })], nw, 0, 0) === 'r', 'back: a due reminder ignores the gate');
+  ok(pickDue([tb('r1', { remindAt: nw - 100 }), tb('r2', { remindAt: nw - 200 })], nw, 0, 0) === 'r2', 'back: the earliest reminder wins');
+  ok(pickDue([tb('a'), tb('b')], nw, 1e9, 0) === 'a', 'back: then the oldest createdAt');
+  ok(pickDue([tb('s1', { step: 1, askedAt: nw - D })], nw, 1e9, 0) === 's1' && pickDue([tb('s1', { step: 1, askedAt: nw - D + 1 })], nw, 1e9, 0) === null, 'back: step 1 after 1 day');
+  ok(pickDue([tb('s2', { step: 2, askedAt: nw - 3 * D })], nw, 1e9, 0) === 's2' && pickDue([tb('s2', { step: 2, askedAt: nw - 3 * D + 1 })], nw, 1e9, 0) === null, 'back: step 2 after 3 days');
+  ok(pickDue([tb('s4', { step: 4, askedAt: nw - 14 * D })], nw, 1e9, 0) === 's4' && pickDue([tb('s4', { step: 4, askedAt: nw - 14 * D + 1 })], nw, 1e9, 0) === null, 'back: step 4 repeats every 14 days');
+  const aLast = tb('old', { step: 2, askedAt: nw - 5 * D }), bLast = tb('last', { step: 2, askedAt: nw - 3 * D });
+  ok(pickDue([aLast, bLast], nw, 1e9, 0) === 'old' && pickDue([bLast], nw, 1e9, 0) === 'last', 'back: never the last one asked while another is due');
+  ok(afterAsk(tb('x', { step: 0 }), nw, 0, 'later').step === 1 && afterAsk(tb('x', { step: 4 }), nw, 0, 'ignored').step === 4, 'back: later and ignored advance the step, capped at 4');
+  const rem = afterAsk(tb('x', { step: 2, remindAt: nw + 5 }), nw, 0, 'remind');
+  ok(rem.step === 2 && rem.remindAt === nw + 5 && rem.saidAt === null && rem.goneAt === null, 'back: remind keeps the step and its remindAt');
+  ok(afterAsk(tb('x'), nw, 0, 'said').saidAt === nw && afterAsk(tb('x'), nw, 0, 'gone').goneAt === nw, 'back: said and gone end it');
+  const us = sanitize({ version: 1, tasks: [], useMs: 1234, lastAskUse: 99, thoughts: [{ id: 'x', text: 't', createdAt: 5, askedAt: 7, askUse: 3, step: 9, remindAt: 'x' }] });
+  ok(us.useMs === 1234 && us.lastAskUse === 99 && us.thoughts[0].askedAt === 7 && us.thoughts[0].askUse === 3 && us.thoughts[0].step === 4 && us.thoughts[0].remindAt === null, 'store: useMs, lastAskUse and the thought ask fields survive');
+  const ub = sanitize({ version: 1, tasks: [], useMs: -1, lastAskUse: 'x', thoughts: [{ id: 'y', text: 't', createdAt: 5, askedAt: 'x', askUse: -5 }] });
+  ok(ub.useMs === 0 && ub.lastAskUse === 0 && ub.thoughts[0].askedAt === null && ub.thoughts[0].askUse === 0, 'store: bad app-use values become defaults');
+  const okS = { morning: false, busy: false, barText: false, when: false, selected: false, visible: true, focused: true };
+  ok(thoughtMayCome(okS) && ['morning', 'busy', 'barText', 'when', 'selected'].every(k => !thoughtMayCome(Object.assign({}, okS, { [k]: true })))
+    && !thoughtMayCome(Object.assign({}, okS, { visible: false })) && !thoughtMayCome(Object.assign({}, okS, { focused: false })), 'back: no coming back in the morning, while busy, typing, answering, or with a star selected');
+  const okP = { visible: true, focused: true, busy: false, barText: false, sinceInput: 5000, sinceShown: 99999 };
+  ok(isPresent(okP) && !isPresent(Object.assign({}, okP, { barText: true })) && !isPresent(Object.assign({}, okP, { busy: true })), 'presence: shared idle/shown rule; text or busy blocks it');
+  ok(thoughtDue(tb('d', { remindAt: nw }), nw, 0) && !thoughtDue(tb('d', { saidAt: nw - 1 }), nw, 1e9), 'back: said thoughts are never due');
   return { pass, fail, total: pass + fail, failed };
 }

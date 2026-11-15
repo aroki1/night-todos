@@ -185,7 +185,14 @@ export const TIME = {
     reducedRise: 800, reducedSet: 800, reducedWeek: 1500
   },
   clockTick: .25, cloudChunk: .0625, auroraTick: .25,
-  barOut: .08, previewDelay: [.15, .27]
+  barOut: .08, previewDelay: [.15, .27],
+  /* thoughts coming back: the first interval counts app use (firstUseMs); the later ones are calendar gaps from the last
+     coming back (gapMs, step 4 repeats the last); at most one coming back per perUseMs of app use (a due reminder ignores it);
+     an unanswered coming back ends as `ignored` after askIdleMs. */
+  thought: {
+    firstUseMs: 2 * 36e5, perUseMs: 36e5, askIdleMs: 60e3,
+    gapMs: [864e5, 3 * 864e5, 7 * 864e5, 14 * 864e5]
+  }
 };
 
 /* frame pacing (fps): active = something is moving or the user just touched it; idle = a calm sky drifting. Sky time T still advances every RAF. */
@@ -199,7 +206,8 @@ export const URGENT = { life: .25, leftMs: 60 * 60 * 1000 };
 
 export const SIZE = {
   labelFont: 12, caretW: 6, caretH: 18,
-  starR: 3, starRBig: 5, starCore: 1, starCoreBig: 2,
+  starR: 3, starRBig: 7, starCore: 1, starCoreBig: 3,   // arm radius and core radius (grains); a big star reads about twice a normal one
+  haloSig: 5, haloSigBig: 10, haloColdSig: 5.5, haloColdSigBig: 10.5, haloColdRad: 16, haloColdRadBig: 30, bigGain: 1.2,   // halo sigma/radius per size; bigGain = big halo brightness
   maxStars: 48, maxTitle: 80, maxBar: 240, ellipsisAt: 22,
   labelHysteresis: 20, labelGap: 4,
   moonClearStars: 14, moonClearEdges: 6,
@@ -236,7 +244,9 @@ export const GUIDE = {
   finishTouch: 'tap twice to finish',
   when: 'when? · fri makes it a star · remind +2h · esc: later',
   whenTouch: 'when? · fri · remind +2h',
+  whenBack: 'when? · {age} · fri makes it a star · esc: later',
   letGo: 'let go? enter · esc keeps it',
+  firstStep: 'first step? · esc to skip',
   open: 'help · esc to close',
   helpDesktop: [
     'help',
@@ -286,6 +296,7 @@ export const FLAGS = {
   devSeed: Q.get('seed2') ? +Q.get('seed2') : null,
   steps: Q.get('steps'),                      // dev: steps=1 puts steps on the demo tasks
   thoughts: Q.has('thoughts') ? +Q.get('thoughts') : null,   // dev: ?thoughts=n adds n synthetic thoughts in memory
+  useMs: Q.has('useMs') ? +Q.get('useMs') : null,             // dev: the app-use clock, in ms
   morning: Q.get('morning') === '1',          // dev: show the morning hold frame (M1)
   season: Q.get('season'),                     // dev: winter | spring | summer | autumn
   gap: Q.get('gap'),                           // dev: paper | mosaic
@@ -323,7 +334,7 @@ export const STEPS = {
   panelFrac: .4, panelRows: 6, hintPad: 5,        // list panel: max height as a share of the sky; on desktop also at most 6 rows (done header + 5 open); gutter for the scroll hints
   dragPx: 8, scrollEase: 16,                       // a touch move of more than 8 css px is a scroll, not a tap; wheel scroll eases at 1/16 s
   collapse: 400, longPress: 500,                   // ms: the orbit folding into the core on finish; long-press to delete a row
-  rx: 11, rxBig: 13, ratio: .42, tilt: -16,        // degrees
+  rx: 11, rxBig: 19, ratio: .42, tilt: -16,        // degrees
   sampPerGrain: 3, dust: .09, jit: .45, behind: .7, rev: 240,
   shimmer: [6, 11],                                // seconds
   openCore: .55, doneCore: .85, nb: .4, halo: .09, haloSig: 1.3,

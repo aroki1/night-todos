@@ -129,7 +129,7 @@ function drawEdge(g, es, phase, si) {
     if (pp > g.sA && pp < g.sB) halo(ax + ux * pp, ay + uy * pp, C.pulse, .45 * Math.sin(Math.PI * ph) * es.pulseK, 1.4, 4);
   }
   if (es.bump > 0) bump[es.src] = Math.max(bump[es.src], es.bump);
-  if (es.arrHalo > 0) { const sg = owner.big ? 7.5 : 5.5; halo(owner.gx, owner.gy, C.cold, es.arrHalo, sg, sg * 3); }
+  if (es.arrHalo > 0) { const sg = owner.big ? SIZE.haloColdSigBig : SIZE.haloColdSig; halo(owner.gx, owner.gy, C.cold, es.arrHalo, sg, sg * 3); }
   if (es.miniOn) ring(owner.gx, owner.gy, es.miniR, es.miniB, C.done);
 }
 export function drawEdges() {
@@ -149,7 +149,7 @@ export function drawEdges() {
 }
 export function drawHalos(si) {
   const s = stars[si]; if (!pres(s)) return;
-  if (s.gh) { if (s.ghA > .01) { const rr = s.big ? 7 : 5; halo(s.gx, s.gy, C.warm, .03 * s.ghA, rr, rr * 3); } return; }
+  if (s.gh) { if (s.ghA > .01) { const rr = s.big ? SIZE.haloSigBig : SIZE.haloSig; halo(s.gx, s.gy, C.warm, .03 * s.ghA, rr, rr * 3); } return; }
   const ex = s.miss && s.mT >= 0 && s.mT < 1700;
   if (s.miss && !ex) { halo(s.gx, s.gy, C.ash, .06, 2, 5); return; }
   const fs = FS[si], us = US[si], b0 = s.big, cms = s.cr && s.on ? (T - s.cr.t0) * 1000 : 1e9;
@@ -162,9 +162,9 @@ export function drawHalos(si) {
   if (cold < 1) {
     const w = (1 - cold) * mul * hv;
     if (urgent) { halo(s.gx, s.gy, C.amb, .2 * b * w, 4.5, 13); halo(s.gx, s.gy, C.ambC, .38 * b * w, 1.4, 4); }
-    else { const rr = (b0 ? 7 : 5) * (.6 + .4 * s.life); halo(s.gx, s.gy, C.warm, (.08 + .12 * s.life) * w, rr, rr * 3); halo(s.gx, s.gy, C.warmC, .38 * w, 1.4, 4); }
+    else { const rr = (b0 ? SIZE.haloSigBig : SIZE.haloSig) * (.6 + .4 * s.life); halo(s.gx, s.gy, C.warm, (.08 + .12 * s.life) * w * (b0 ? SIZE.bigGain : 1), rr, rr * 3); halo(s.gx, s.gy, C.warmC, .38 * w, 1.4, 4); }
   }
-  if (cold > 0) { halo(s.gx, s.gy, C.cold, .26 * cold, b0 ? 7.5 : 5.5, b0 ? 22 : 16); halo(s.gx, s.gy, C.core, .45 * cold, 1.5, 4); }
+  if (cold > 0) { halo(s.gx, s.gy, C.cold, .26 * cold * (b0 ? SIZE.bigGain : 1), b0 ? SIZE.haloColdSigBig : SIZE.haloColdSig, b0 ? SIZE.haloColdRadBig : SIZE.haloColdRad); halo(s.gx, s.gy, C.core, .45 * cold, 1.5, 4); }
   if (ex) halo(s.gx, s.gy, C.ash, .06 * ease.inOut(seg(s.mT, 900, 1600)), 2, 5);
   if (fs && !fs.reduced) { if (fs.ringOn) ring(s.gx, s.gy, fs.ringR, fs.ringB, C.done); if (fs.flashPeak > 0) halo(s.gx, s.gy, C.core, fs.flashPeak, fs.flashSig, fs.flashRad); }
 }
@@ -182,7 +182,7 @@ function drawMotes(s, si, ms) {
   }
 }
 function drawExhale(s, ms) {
-  const SP = SPR[s.big ? 1 : 0], r = s.big ? 5 : 3, core = s.big ? 2 : 1, urgent = isUrgent(s, wall(T));
+  const SP = SPR[s.big ? 1 : 0], r = R(s), core = CORE(s), urgent = isUrgent(s, wall(T));
   const v = Math.min(s.life * r, r - core);
   const kin = ease.out(seg(ms, 0, 300)), kdr = ease.inOut(seg(ms, 300, 1300)), ksh = ease.inOut(seg(ms, 900, 1600));
   const bmp = .2 * Math.sin(Math.PI * seg(ms, 0, 600));

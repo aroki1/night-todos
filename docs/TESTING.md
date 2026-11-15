@@ -39,6 +39,9 @@ Reset: `localStorage.clear()` on any page.
 ## 2. Tasks and parser
 Bar syntax: `title, deadline / step / step`, `!` at the end = big star, `#tag` anywhere (removed from the title). Deadlines: `tomorrow 18:00`, `fri`, `20.11`, `2026-12-01`, `+3d`, `+5h`. Bad input shows "can't read that" / "that's already gone". Keys: `n` focus bar, Enter create, Tab, `z` undo.
 - Text without a deadline becomes a thought (a dim patch above the bar): the bar asks `when?` — a deadline says it (a star), `remind +2h` sets a reminder, Esc keeps it as a thought. Click/tap a patch (or Tab to it) to answer again; Delete/Backspace on an empty answer lets it go (`z` restores). Dev: `?thoughts=5` adds synthetic thoughts in memory, and `ns.selectThought(1)` opens "when?" for one.
+- A thought comes back after 2 h of app use: `?thoughts=3`, then in the console `ns.useMs(7.3e6)`. One haze is asked (`when? · <age> ago · …`, the others dim), the bar is not focused; click the bar and answer, or wait 60 s for `ignored`. `ns.askNow()` forces the pick; `ns.thoughtState()` shows `step`, `askedAt`, `askUse`.
+- `remind +2h`: write a thought, answer `remind +2h`; at that wall time it comes back even inside the 1 h gate. Early answers step forward by the calendar gaps (`1 d, 3 d, 7 d, 14 d`).
+- After saying a thought, its star is selected in step mode when the condense ends: the bar says `first step? · esc to skip` (focused on desktop, not on touch).
 - Create, finish (second tap), undo, add/finish steps, drag steps (`?scene=steps`, `&live=1`).
 - Reload after creating: tasks stay.
 - Corrupt storage: `localStorage.setItem('night-sky:v1','{bad')` and reload: app starts empty, a `:corrupt:` backup key appears.

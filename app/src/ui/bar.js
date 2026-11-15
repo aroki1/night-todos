@@ -1,22 +1,24 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
-import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, THOUGHT, setReducedPref, getReducedPref } from '../tokens.js';
+import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, THOUGHT, isReduced, setReducedPref, getReducedPref } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, UH, GW, dpr, geometryListeners } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtDay, fmtLeft, WDN, two } from '../sky/clock.js';
 import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
 import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce, liveThoughts, findThought, addThought, newId } from '../model/store.js';
 import { undoTarget, externalUndo, doCreate, doCondense, doStepAdd, doLetGo, applyImport } from '../model/timeline.js';
-import { newThought, hazeSlots, ageText } from '../model/thoughts.js';
+import { newThought, hazeSlots, ageText, afterAsk } from '../model/thoughts.js';
 import { placeNew, selIdx, setSelIdx, setMouseHover } from '../model/placement.js';
 import { setThoughtSel } from '../render/compose.js';
+import { condenseMs } from '../choreo/condense.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
 import { onboardingHint, helpLines, enterGate } from './guide.js';
 
 export const bar = {
   text: '', caret: 0, focus: false, last: -9, title: '', tag: null, big: false, res: null, pv: '', pvWarn: false,
   gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: [], help: false,
-  thought: null, letGo: false, thoughtHover: null
+  thought: null, letGo: false, thoughtHover: null, thoughtBack: false, backAt: -9e9,
+  firstStep: null, firstStepSi: -1
 };
 /* step mode: a selected live star turns the bar into "step for <title>"; Enter adds a step to it */
 export function stepTarget() {
@@ -57,6 +59,7 @@ function syncFromInput() {
   bar.text = input.value.slice(0, SIZE.maxBar);
   bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.text.length, input.selectionStart);
   if (bar.text !== '') bar.letGo = false;
+  if (bar.thoughtBack) bar.backAt = T;                            // typing counts as doing something
   bar.last = T;
 }
 function fireEnter(ts) {
@@ -98,6 +101,7 @@ export function setBarFocus(v) {
   if (!input) return;
   if (v) {
     bar.help = false;
+    if (bar.thoughtBack) bar.backAt = T;
     input.value = bar.text;
     try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
     try { input.setSelectionRange(bar.caret, bar.caret); } catch (_) { }
@@ -119,7 +123,7 @@ function onInputKey(e) {
       else { setBarFocus(false); morningCtl.leave(''); }
       wake(); return;
     }
-    if (bar.thought) { leaveThoughtWhen(); setBarFocus(false); wake(); return; }                   // "when?" esc: later, the thought stays
+    if (bar.thought) { leaveThoughtWhen('later'); setBarFocus(false); wake(); return; }           // "when?" esc: later, the thought stays
     if (stepTarget() >= 0) { bar.text = ''; bar.caret = 0; input.value = ''; setSelIdx(-1); }     // step mode: Esc deselects, the bar returns to normal
     setBarFocus(false); wake(); return;
   }
@@ -166,6 +170,17 @@ export function ghostAlphaNow() {
 }
 export function barTick() {
   barParse();
+  /* a said thought's condense has ended: its new star is selected in step mode and the bar offers its first step */
+  if (bar.firstStep && T >= bar.firstStep.at) {
+    const si = bar.firstStep.si, s = stars[si];
+    bar.firstStep = null;
+    if (s && !s.done && !s.miss) {                                 // the create event replays in this same frame
+      setSelIdx(si); bar.firstStepSi = si; bar.text = ''; bar.caret = 0; if (input) input.value = '';
+      if (!touchLayout()) setBarFocus(true);
+      wake();
+    }
+  }
+  if (bar.firstStepSi >= 0 && (selIdx !== bar.firstStepSi || bar.thought)) bar.firstStepSi = -1;
   const want = bar.gCommit < 0 && bar.title !== '' && !!(bar.res && bar.res.ok) && stars.length < MAXS;
   if (bar.text === '' && bar.gCommit < 0) bar.gpos = null;
   if (bar.gCommit >= 0 && T - bar.gCommit > .95) { bar.gCommit = -1; bar.gOn = false; bar.gA0 = 0; bar.gT0 = T; bar.gpos = null; }
@@ -198,7 +213,7 @@ async function runCommand(cmd) {
 }
 
 function exportStore() {
-  const data = { version: 1, tasks: store.tasks, thoughts: store.thoughts, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs, exportedAt: new Date(wall(T)).toISOString() };
+  const data = { version: 1, tasks: store.tasks, thoughts: store.thoughts, useMs: store.useMs, lastAskUse: store.lastAskUse, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs, exportedAt: new Date(wall(T)).toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   const d = new Date(wall(T));
@@ -229,19 +244,33 @@ function pickImport() {
 
 function clearBar() { bar.text = ''; bar.caret = 0; bar.letGo = false; if (input) input.value = ''; }
 
-/* enter "when?" for a thought: the bar asks the question; `focus` false (Tab) leaves the input closed until Enter */
-export function enterThoughtWhen(id, focus) {
-  bar.thought = id; bar.letGo = false; bar.thoughtHover = null;
+/* a coming back ended with `outcome`: record it on the thought (only thoughts that actually came back advance a step) */
+function settleThought(id, outcome) {
+  const th = findThought(id);
+  if (!th) return;
+  Object.assign(th, afterAsk(th, wall(T), store.useMs, outcome));
+  saveSoon();
+}
+/* enter "when?" for a thought: the bar asks the question; `focus` false leaves the input closed until Enter.
+   `back` marks a thought that came back by itself: leaving it unanswered is `ignored`, Esc is `later`. */
+export function enterThoughtWhen(id, focus, back) {
+  if (bar.thought && bar.thought !== id) leaveThoughtWhen('ignored');
+  const same = bar.thought === id;
+  bar.thought = id;
+  if (!same || back) { bar.thoughtBack = !!back; bar.backAt = back ? T : -9e9; }
+  bar.letGo = false; bar.thoughtHover = null; bar.firstStepSi = -1;
   setSelIdx(-1); setMouseHover(-1); setThoughtSel(id);
   clearBar();
   bar.last = T;
   if (focus) setBarFocus(true);
   wake();
 }
-export function leaveThoughtWhen() {
+export function leaveThoughtWhen(outcome) {
   if (!bar.thought) return false;
-  bar.thought = null; bar.letGo = false; setThoughtSel(null);
+  const id = bar.thought, wasBack = bar.thoughtBack;
+  bar.thought = null; bar.thoughtBack = false; bar.backAt = -9e9; bar.letGo = false; bar.firstStepSi = -1; setThoughtSel(null);
   clearBar();
+  if (wasBack && outcome) settleThought(id, outcome);
   wake();
   return true;
 }
@@ -249,7 +278,7 @@ export function leaveThoughtWhen() {
 function keepThought() {
   const text = bar.title.slice(0, SIZE.maxTitle);
   if (!text) return false;
-  const th = newThought(text, bar.tag, wall(T), newId());
+  const th = newThought(text, bar.tag, wall(T), newId(), store.useMs, bar.big);
   addThought(th);
   bar.out = { text: bar.text, t0: T };
   enterThoughtWhen(th.id, true);
@@ -263,24 +292,27 @@ function submitWhen() {
   if (w.kind === 'bad') return false;
   const th = findThought(bar.thought);
   if (!th) { leaveThoughtWhen(); return false; }
-  if (w.kind === 'later') { leaveThoughtWhen(); setBarFocus(false); return true; }
+  if (w.kind === 'later') { leaveThoughtWhen('later'); setBarFocus(false); return true; }
   if (w.kind === 'remind') {
     th.remindAt = w.date.getTime(); th.usedMs = Math.max(0, now - th.createdAt);
     saveSoon();
     announce('remind ' + shortWhen(th.remindAt));
-    leaveThoughtWhen(); setBarFocus(false);
+    leaveThoughtWhen('remind'); setBarFocus(false);
     return true;
   }
-  const pos = placeNew(th.text, bar.ctr, w.big);
+  const big = w.big || !!th.big;                                                    // a `!` on the thought or on the answer
+  const pos = placeNew(th.text, bar.ctr, big);
   const slot = hazeSlots(liveThoughts(), GW).find(p => p.id === th.id);            // where its haze is now: the condense starts there
-  const si = doCreate(th.text, pos.gx, pos.gy, w.big, w.date.getTime(), T, w.steps, th.tag);
+  const si = doCreate(th.text, pos.gx, pos.gy, big, w.date.getTime(), T, w.steps, th.tag);
   if (si < 0) return false;
   if (slot) doCondense(th.id, si, slot.x, SH - THOUGHT.bandY + THOUGHT.bandH / 2, T);
   th.saidAt = now; th.taskId = stars[si] ? stars[si].id : null; th.usedMs = Math.max(0, now - th.createdAt);
   saveSoon();
   bar.ctr++; bar.out = { text: bar.text, t0: T }; bar.gpos = pos;
+  bar.firstStepSi = -1;
+  bar.firstStep = { si, at: T + condenseMs(isReduced()) / 1000 };                  // when the condense ends: offer its first step
   announce('said: ' + th.text);
-  leaveThoughtWhen(); setBarFocus(false);
+  leaveThoughtWhen('said'); setBarFocus(false);
   return true;
 }
 function letGoNow() {
@@ -289,7 +321,7 @@ function letGoNow() {
   if (!th) { leaveThoughtWhen(); return false; }
   doLetGo(th, T);
   bar.out = { text: th.text, t0: T };
-  leaveThoughtWhen(); setBarFocus(false);
+  leaveThoughtWhen('gone'); setBarFocus(false);
   return true;
 }
 
@@ -297,11 +329,12 @@ export function submitBar() {
   barParse();
   const mp = morningPhase();
   if (mp && mp !== 'end') return submitMorning(mp);
-  if (bar.text.trim().startsWith('/')) { const r = runCommand(bar.text.trim()); leaveThoughtWhen(); return r; }
+  if (bar.text.trim().startsWith('/')) { bar.firstStepSi = -1; const r = runCommand(bar.text.trim()); leaveThoughtWhen(); return r; }
   const sel = stepTarget();
   if (sel >= 0) {                                                  // step mode: the whole text is one step; a full list quietly refuses
     const tx = bar.text.trim(); if (!tx) return false;
     if (!doStepAdd(sel, tx, T)) return false;
+    bar.firstStepSi = -1;
     bar.out = { text: bar.text, t0: T }; bar.text = ''; bar.caret = 0; if (input) input.value = '';
     bar.last = T; wake(); return true;
   }
@@ -357,9 +390,19 @@ export function fitText(t, maxW) {
 export function barPlaceholder() {
   if (morningPhase() === 'hold') return MORNING.text.name;
   if (bar.help) return GUIDE.open;
-  if (bar.thought) return bar.letGo && bar.text === '' ? GUIDE.letGo : touchLayout() ? GUIDE.whenTouch : GUIDE.when;
+  if (bar.thought) {
+    if (bar.letGo && bar.text === '') return GUIDE.letGo;
+    if (bar.thoughtBack) {
+      const th = findThought(bar.thought), age = th ? ageText(th.createdAt, wall(T)) : 'today';
+      return GUIDE.whenBack.replace('{age}', age === 'today' ? 'today' : age + ' ago');
+    }
+    return touchLayout() ? GUIDE.whenTouch : GUIDE.when;
+  }
   const st = stepTarget();
-  if (st >= 0) { const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n); }
+  if (st >= 0) {
+    if (bar.firstStepSi === st) return GUIDE.firstStep;
+    const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n);
+  }
   return onboardingHint({
     taskCount: store.tasks.length,
     hasLive: stars.some(s => s.on && !s.done && !s.miss && !s.gh),

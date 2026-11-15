@@ -69,8 +69,11 @@ export function parseDeadline(str, now) {
    The separator counts only after a comma, so a title may contain " / ". Commas inside steps are fine.
    -> { title, big, dls (the deadline text or null), steps: [text] } */
 const SEP = /\s\/(?=\s|$)/g;
+/* a leading `!` (`! x` or `!x`) makes a star big and is removed; a trailing ` !` is handled by each caller */
+const LEAD = /^\s*!\s*/;
 export function splitBar(text) {
   let t = text, big = false, steps = [];
+  if (LEAD.test(t)) { t = t.replace(LEAD, ''); big = true; }
   if (/\s!$/.test(t)) { t = t.replace(/\s*!$/, ''); big = true; }
   SEP.lastIndex = 0;
   for (let m = SEP.exec(t); m; m = SEP.exec(t)) {
@@ -121,6 +124,7 @@ export function parseWhen(text, nowMs) {
     return r.ok ? { kind: 'remind', date: r.date } : { kind: 'bad', err: r.err };
   }
   let t = tx, big = false;
+  if (LEAD.test(t)) { t = t.replace(LEAD, ''); big = true; }
   if (/\s!$/.test(t)) { t = t.replace(/\s*!$/, ''); big = true; }
   const parts = t.split(WHENSEP);
   const r = parseDeadline(parts[0].trim(), now);

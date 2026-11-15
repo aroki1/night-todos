@@ -13,12 +13,16 @@ export function nextDue(prevWeek, nowMs, due) {
   return previousWeekKey(nowKey);
 }
 
-/* the morning may start now. s: { due, visible, focused, busy, barText, sinceInput, sinceShown } (ms on one clock).
-   The user must be here (visible + focused), nothing else may be playing, the bar must not hold text,
-   and either they paused (no input for idleMs) or the page was just shown (less than shownMs ago). */
-export function shouldStartMorning(s) {
-  if (!s.due || !s.visible || !s.focused || s.busy || s.barText) return false;
+/* is the user here and free? s: { visible, focused, busy, barText, sinceInput, sinceShown } (ms on one clock).
+   Visible + focused, nothing else playing, the bar not holding text, and either a pause (no input for idleMs) or the page
+   was just shown (less than shownMs ago). Shared by the weekly morning and thoughts coming back. */
+export function isPresent(s) {
+  if (!s || !s.visible || !s.focused || s.busy || s.barText) return false;
   return s.sinceInput >= TIME.morning.idleMs || s.sinceShown <= TIME.morning.shownMs;
+}
+/* the morning may start now; `due` is the unseen week. */
+export function shouldStartMorning(s) {
+  return !!s.due && isPresent(s);
 }
 
 /* season by the month of the wall date (northern hemisphere) */

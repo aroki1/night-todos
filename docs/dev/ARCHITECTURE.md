@@ -33,7 +33,7 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 - `app/src/model/store.js` — durable data and task projections.
 - `app/src/model/timeline.js` — in-memory events and undo.
 - `app/src/model/parser.js` — deadlines, bar syntax, tags, and the "when?" answer.
-- `app/src/model/thoughts.js` — thoughts, their haze slots, and their age.
+- `app/src/model/thoughts.js` — thoughts, their haze slots, age, and when they are due to come back.
 - `app/src/model/placement.js` — star and label placement.
 - `app/src/model/steps.js` — step progress, rows, and orbit geometry.
 - `app/src/model/week.js` — ISO-week membership and archives.
