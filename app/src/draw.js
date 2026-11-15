@@ -57,6 +57,28 @@ export function shade(area, fn, mode = OVER, colour) {
   }
 }
 
+/* shadeLayers(area, fn): a FIELD with several layers per grain. Same area as shade(); for every grain fn(i, j, paint) runs once and calls
+   paint(colour, alpha, mode = OVER) as often as it likes; the layers land on that grain in call order (alpha <= 0 skips a layer).
+   One callback describes the whole grain ("water, then ice, then the wet edge") where shade() would need one pass per layer.
+   Unlike shade() the colour is passed in (an array of 3, read at once, may be reused), not written to a scratch. */
+let layerK = 0; // the grain being painted
+function paint(colour, alpha, mode = OVER) {
+  if (alpha > 0) put(layerK, colour, alpha, mode);
+}
+export function shadeLayers(area, fn) {
+  const y0 = Math.max(0, area.y0),
+    y1 = Math.min(SH, area.y1),
+    rows = typeof area.x0 === 'function';
+  for (let j = y0; j < y1; j++) {
+    const x0 = Math.max(0, rows ? area.x0(j) : area.x0),
+      x1 = Math.min(GW, rows ? area.x1(j) : area.x1);
+    for (let i = x0; i < x1; i++) {
+      layerK = j * GW + i;
+      fn(i, j, paint);
+    }
+  }
+}
+
 /* fillBelow(top, bottom, fn, mode, lead): RELIEF. Per column i the grains from the outline top[i] down to bottom (a number, or one
    per column; exclusive) get fn(i, j, depth, out) -> alpha, depth = j - top[i]. lead = grains above the outline offered to fn too
    (a soft edge). A column with bottom <= top is empty. */

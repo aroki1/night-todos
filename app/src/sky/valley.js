@@ -5,7 +5,7 @@
 import { lerp, vn, H, rng, sm } from '../math.js';
 import { MORNING } from '../tokens.js';
 import { GW, SH } from '../framebuffer.js';
-import { OVER, SET, shade, fillBelow, points } from '../draw.js';
+import { OVER, SET, shade, shadeLayers, fillBelow, points } from '../draw.js';
 import { skyColor } from './day.js';
 
 /* ridges: peak height (share of SH, capped by a share of GW on phones), bump width (share of GW), blue share, base lift */
@@ -320,52 +320,35 @@ export function drawRiver(sc, nearLine) {
     return !iced(i, j, din) && din > 0.5 && din < 2.6 && H(i * 1.7 + seedOff, j * 0.9) < 0.1 * (1 - din / 2.6);
   };
 
-  /* water (or, just outside the bank, the dark rim fading out) */
-  shade(rows, (i, j, col) => {
-    if (rise(i, j) <= 0) return 0;
+  /* one description per grain: water (or, just outside the bank, the dark rim fading out), then in winter the ice, then the thin darker wet edge, then a grass tip */
+  const colour = [0, 0, 0];
+  shadeLayers(rows, (i, j, paint) => {
+    const near = rise(i, j);
+    if (near <= 0) return;
     const din = depthIn(i, j),
-      cov = clamp(din + 0.5, 0, 1) * rise(i, j);
+      cov = clamp(din + 0.5, 0, 1) * near;
     if (cov <= 0) {
-      if (-din < BANK) {
-        col[0] = rim[0];
-        col[1] = rim[1];
-        col[2] = rim[2];
-        return 0.45 * rise(i, j) * (1 - -din / BANK);
-      }
-      return 0;
+      if (-din < BANK) paint(rim, 0.45 * near * (1 - -din / BANK));
+      return;
     }
     const t = (j - (sc.horizon - 2)) / (SH - sc.horizon + 2),
-      rip = 1 + (vn(i * 0.09, j * 0.8, seedOff) - 0.5) * 0.12 + (H(i, j) - 0.5) * 0.03;
-    col[0] = lerp(topColour[0], bottomColour[0], t) * rip;
-    col[1] = lerp(topColour[1], bottomColour[1], t) * rip;
-    col[2] = lerp(topColour[2], bottomColour[2], t) * rip;
-    return cov;
-  });
-  if (snow)
-    shade(rows, (i, j, col) => {
-      const cov = cover(i, j);
-      if (cov <= 0) return 0;
-      const din = depthIn(i, j),
-        iw = iceWidth(i, j);
-      if (din >= iw) return 0;
+      ripple = 1 + (vn(i * 0.09, j * 0.8, seedOff) - 0.5) * 0.12 + (H(i, j) - 0.5) * 0.03;
+    colour[0] = lerp(topColour[0], bottomColour[0], t) * ripple;
+    colour[1] = lerp(topColour[1], bottomColour[1], t) * ripple;
+    colour[2] = lerp(topColour[2], bottomColour[2], t) * ripple;
+    paint(colour, cov);
+    const iw = snow ? iceWidth(i, j) : 0;
+    if (snow && din < iw) {
       const v = 1 + (H(i, j * 1.7) - 0.5) * 0.12;
-      col[0] = SN.ice.color[0] * v;
-      col[1] = SN.ice.color[1] * v;
-      col[2] = SN.ice.color[2] * v;
-      return SN.ice.a * cov * Math.min(1, (iw - din) * 1.5);
-    });
-  shade(
-    rows,
-    (i, j) => {
-      if (cover(i, j) <= 0) return 0;
-      const din = depthIn(i, j);
-      if (iced(i, j, din) || !(din > 0.3 && din < 2.2)) return 0;
-      return 0.4 * (1 - Math.abs(din - 1) / 1.2);
-    },
-    OVER,
-    rim
-  ); // thin darker wet edge
-  shade(rows, (i, j) => (tipAt(i, j) ? 0.8 : 0), OVER, g[2]);
+      colour[0] = SN.ice.color[0] * v;
+      colour[1] = SN.ice.color[1] * v;
+      colour[2] = SN.ice.color[2] * v;
+      paint(colour, SN.ice.a * cov * Math.min(1, (iw - din) * 1.5));
+    } else {
+      if (din > 0.3 && din < 2.2) paint(rim, 0.4 * (1 - Math.abs(din - 1) / 1.2));
+      if (tipAt(i, j)) paint(g[2], 0.8);
+    }
+  });
   shade({ y0: y0 - 1, y1: SH - 1, x0: j => span(j + 1).x0, x1: j => span(j + 1).x1 }, (i, j) => (tipAt(i, j + 1) ? 0.7 : 0), OVER, g[2]);
 
   /* reeds on the banks: thin blades, some with a cattail head */

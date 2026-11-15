@@ -360,7 +360,9 @@ function holdFrame(live, k, label) {
   const W = k > 0 ? windStep(sc, T, k) : null;
   sc.hov = label && hoverI >= 0 ? { i: hoverI, k: hoverAlpha() } : null;
   drawGrass(sc, W);
+  if (pf.on) pf.lap('m.hold.pre');
   drawFlora(sc, null, W);
+  if (pf.on) pf.lap('m.hold.flora');
   if (k > 0) drawLife(sc, T, k, base.top);
   if (sc.hov && sc.hov.k > 0.01) drawPlate(sc);
 }

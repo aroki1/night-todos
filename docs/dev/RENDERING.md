@@ -49,13 +49,21 @@ The plan is a small API over the grain grid, in the spirit of a fantasy console 
 
 Each takes a blend mode, `ADD` (light) or `OVER` (paint). Rules for scene code once a module is moved to the API: no loops over grains, no direct `BR[...]` writes, no shared scratch objects to pass parameters; the speed tricks (caches, row passes, precomputed values) live inside the API.
 
-It lives in `app/src/draw.js`, next to `framebuffer.js` (layer 1). Modules move to it one at a time and every move must leave the golden screenshots identical (section 5). **Built so far** (the rest of the table is still planned): `sky/valley.js` is the first module on it.
+It lives in `app/src/draw.js`, next to `framebuffer.js` (layer 1). Modules move to it one at a time and every move must leave the golden screenshots identical (section 5). **Built so far** (the rest of the table is still planned): `sky/valley.js` is the first module on it, `sky/flora.js` the second.
 
 - Modes: `ADD` (`B += c * a`), `OVER` (`B += (c - B) * a`, a clamped to 1: the arithmetic of `over()`), `SET` (`B = c`; `a` only means "draw this grain", and `OVER` with `a = 1` is not bit-identical).
 - `shade(area, fn, mode = OVER, colour)`: a field. `fn(i, j, out)` writes the colour into `out` and returns alpha (<= 0 skips). `area` is a rectangle `{x0, y0, x1, y1}` or row spans `{y0, y1, x0: j => .., x1: j => ..}` (end columns exclusive).
 - `fillBelow(top, bottom, fn, mode = OVER, lead = 0)`: relief. Per column, from `top[i]` down to `bottom` (a number or per column, exclusive); `fn(i, j, depth, out)`; `lead` grains above the outline are offered too (soft edge).
+- `shadeLayers(area, fn)`: a field with several layers per grain. `fn(i, j, paint)` calls `paint(colour, alpha, mode = OVER)` as often as it likes; the layers land on that grain in call order. One description per grain (the river: water, ice, wet edge, grass tip) instead of one pass per layer. The colour is passed in, not written to `out`.
 - `points(list, fn, mode = OVER, colour)`: single grains `{i, j}`; `fn(item, out)`, or without `fn` the item's own `c` and `a`.
 - `out` is one scratch array inside `draw.js`; `colour` presets it once for a constant colour.
+
+## Readable first, fast where measured
+
+- Code is readable by default. Nothing is optimised without a measurement.
+- A **hot path** is code that runs every frame over many grains (today: the sky base, clouds, the per-frame morning reveal, task stars). Code that runs once or is cached (scene build, the morning land layers, the valley) is never optimised at the cost of reading.
+- The judge is the frame budget (`scripts/goldens.json`, 7.5 ms desktop) and the per-stage timer (`?prof=1`, `ns.profRun`): if the readable version stays inside the budget with margin, it stays.
+- A speed trick that is needed lives inside `draw.js` or a named kernel, with a comment that cites the measurement. Scene code stays plain.
 
 ## 4. Fields on the GPU
 
