@@ -263,7 +263,7 @@ function leaveMorning(at, name) {
   if (nm) setMorningName(nm);
   if (c.write) {
     if (nm) store.weeks[c.weekKey] = withName(store.weeks[c.weekKey], nm);
-    store.morningDue = null; store.morningAway = 0; flushSave();
+    store.morningDue = null; store.morningAway = 0; saveSoon(); flushSave();
   }
   pushMorning('leave', at, !!nm);
   skySwap(c.newSeed, at, TIME.crossfadeMorning);
