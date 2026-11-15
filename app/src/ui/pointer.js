@@ -1,9 +1,10 @@
 /* ui/pointer.js — mouse and touch. The first tap selects a star; a second tap within 4 s finishes it. */
-import { T } from '../sky/clock.js';
+import { T, wall } from '../sky/clock.js';
 import { SIZE, STEPS } from '../tokens.js';
 import { UW, UH, GW, SH, BARY, cv } from '../framebuffer.js';
 import { stars, NS, Rb, liveThoughts, findThought } from '../model/store.js';
-import { doFinish, doUndo, doStepToggle, doStepDelete, doLetGo, undoTarget, externalUndo } from '../model/timeline.js';
+import { dayKey } from '../model/practices.js';
+import { doFinish, doUndo, doStepToggle, doStepDelete, doLetGo, doPracticeToggle, undoTarget, externalUndo } from '../model/timeline.js';
 import { hazeHit } from '../model/thoughts.js';
 import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } from '../model/placement.js';
 import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo, closeHelp, enterThoughtWhen, leaveThoughtWhen } from './bar.js';
@@ -51,7 +52,8 @@ export function hitRow(px, py, wide) {                                  // wide 
 }
 function clickRow(h) {
   const s = stars[h.si];
-  if (h.row.k === 'hdr') toggleDoneRows(s);
+  if (h.row.k === 'practice') { if (s && s.pdata) doPracticeToggle(s.pdata, h.row.day, T); }
+  else if (h.row.k === 'hdr') toggleDoneRows(s);
   else if (h.row.sid) doStepToggle(h.si, h.row.sid, T);
   wake();
 }
@@ -146,6 +148,11 @@ export function bindPointer() {
     const hr = hitRow(px, py);
     if (hr) { clickRow(hr); return; }
     const i = hitStar(px, py, false);
+    if (i >= 0 && stars[i].practice) {                                                       // a practice: a click marks today, it never finishes
+      setSelIdx(i);
+      if (stars[i].pdata) doPracticeToggle(stars[i].pdata, dayKey(wall(T)), T);
+      wake(); return;
+    }
     if (i >= 0 && stepsLive(stars[i])) {                                                    // a star with steps: the first click selects, its steps finish it; clicking it again finishes the task
       if (selIdx === i) { if (doFinish(i, T, true)) setSelIdx(-1); } else setSelIdx(i);
       wake(); return;
@@ -206,6 +213,11 @@ export function bindPointer() {
     if (hr) { lpStart(hr, e); return; }
     const i = hitStar(px, py, true);
     if (i < 0) { setSelIdx(-1); setTapSelected(false); wake(); return; }
+    if (stars[i].practice) {                                                                  // first tap selects and shows the rows; a second marks today
+      if (selIdx === i) { if (stars[i].pdata) doPracticeToggle(stars[i].pdata, dayKey(wall(T)), T); }
+      else selectStar(i);
+      wake(); return;
+    }
     if (stepsLive(stars[i])) {                                                              // first tap selects (the list opens); the second tap on the star finishes the task
       if (selIdx === i) { if (doFinish(i, T, true)) { setSelIdx(-1); setTapSelected(false); } } else selectStar(i);
       wake(); return;

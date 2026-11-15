@@ -9,6 +9,7 @@ import { specialsNow, setForceShower, satTime, setMoonShow, cometHead, satNow } 
 import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, UH, dpr, P, D, N, dotPixel, glActive, glLose } from '../framebuffer.js';
 import { stars, NS, GHI, rebuildStars, store, liveThoughts, addThought, newId } from '../model/store.js';
 import { newThought } from '../model/thoughts.js';
+import { dayKey, prevDayKey, canMark, weekDots, weekCount } from '../model/practices.js';
 import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDelete, mkSteps, pipTotal } from '../model/timeline.js';
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
 import { bar, submitBar, barParse, barPlaceholder, msAvg, enterThoughtWhen, leaveThoughtWhen } from '../ui/bar.js';
@@ -20,6 +21,7 @@ import { seasonOf } from '../model/morning.js';
 import { selfTest } from './selftest.js';
 import { skySwap, setFrozen, frozen } from '../render/compose.js';
 import { isReduced } from '../tokens.js';
+import { doPracticeToggle, doPracticeStop } from '../model/timeline.js';
 import { doneCount, nextIdx, sui } from '../model/steps.js';
 import { stepsBack, stepsFront } from '../render/steps.js';
 import * as pf from '../stageprof.js';
@@ -188,6 +190,26 @@ export function installHooks(a) {
     },
     noThought() { leaveThoughtWhen(); api.render(true); return true; },
     thoughts() { return store.thoughts.map(t => ({ id: t.id, text: t.text, saidAt: t.saidAt, goneAt: t.goneAt, remindAt: t.remindAt })); },
+    /* dev (L4a): a live practice's state; `i` counts the live ones, negative from the end */
+    practice(i) {
+      const list = store.practices.filter(p => !p.archivedAt), p = list[i < 0 ? list.length + i : i];
+      if (!p) return null;
+      const now = wall(T), y = prevDayKey(now);
+      return { id: p.id, title: p.title, tag: p.tag, days: p.days.slice(), today: dayKey(now), yesterday: y,
+        canYesterday: canMark(p, y, now), dots: weekDots(p, now), week: weekCount(p, isoWeekKey(now)) };
+    },
+    /* dev (L4b): mark (or unmark) today of a practice and show the frame `ms` into its flash; stop it and show `ms` into the thinning (frozen shots) */
+    practiceMark(name, ms = 0) {
+      const s = stars[findStar(name)]; if (!s || !s.pdata) return null;
+      const t0 = T; doPracticeToggle(s.pdata, dayKey(wall(t0)), t0);
+      setT(t0 + ms / 1000); resetClockCache(); api.render(true); return true;
+    },
+    practiceStopAt(name, ms = 0) {
+      const s = stars[findStar(name)]; if (!s || !s.pdata) return null;
+      const t0 = T; doPracticeStop(s.pdata, t0);
+      setT(t0 + ms / 1000); resetClockCache(); api.render(true); return true;
+    },
+    practices() { return store.practices.map(p => ({ id: p.id, title: p.title, tag: p.tag, days: p.days.slice(), archivedAt: p.archivedAt })); },
     /* dev (L2): the app-use clock, the pick + delivery ignoring presence, and the full thought fields */
     useMs(ms) { store.useMs = Math.max(0, Number(ms) || 0); api.render(true); return store.useMs; },
     askNow() { return api.askNow(); },

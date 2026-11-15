@@ -43,6 +43,10 @@ Bar syntax: `title, deadline / step / step`, `!` at the end = big star, `#tag` a
 - `remind +2h`: write a thought, answer `remind +2h`; at that wall time it comes back even inside the 1 h gate. Early answers step forward by the calendar gaps (`1 d, 3 d, 7 d, 14 d`).
 - After saying a thought, its star is selected in step mode when the condense ends: the bar says `first step? · esc to skip` (focused on desktop, not on touch).
 - Tags group and link: write `essay #study, fri`; a finished tagged star links only to finished stars of its tag, and a new `#study` star lands near the study group. Hover a tagged star to see `#study` at the group's centre. Demo: `?scene=labels&demo=1&tags=1&hover=hm%20one-pager`. Finish 2+ tags in a week: the morning adds a line like `study 5 · work 1 · other 2`.
+- Practices: `/practice read 20 min` creates a dim star with seven week grains; click it to mark today, hover for `N of 7 this week` and, before 12:00, the `yesterday` row. Keys: a selected practice — Enter/Space today, `y` yesterday. Every mark shows the undo row (`z`, 5 s).
+- Yesterday's cutoff: mark a practice just before noon, then after 12:00 the `yesterday` row is gone (the day can no longer be toggled). Sunday can be marked on Monday morning.
+- Practise limits and stopping: `/practice` lists them, `/practice stop <name>` archives one (undo row for 5 s), `/practice limit <n>` (1..20) sets the cap; the create command says `N practices · /practice limit <n> for more` when full.
+- Practice demo: `?practices=3` adds three synthetic practices with days over the last 20 weeks (no store write).
 - Create, finish (second tap), undo, add/finish steps, drag steps (`?scene=steps`, `&live=1`).
 - Reload after creating: tasks stay.
 - Corrupt storage: `localStorage.setItem('night-sky:v1','{bad')` and reload: app starts empty, a `:corrupt:` backup key appears.

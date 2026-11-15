@@ -55,7 +55,7 @@ export function drawLabels() {
         if (ry < pt - p || ry > pt + L.listH + p) continue;
         const ef = Math.min(1, Math.max(0, Math.min(ry - pt, pt + L.listH - ry) / (p * .5)));         // a row sliding past an edge fades out instead of being cut
         ctx.globalAlpha = L.listK * ef * (row.k === 'done' ? .75 : 1);
-        ctx.fillStyle = row.k === 'hdr' || row.k === 'done' ? TXT.done : row.k === 'next' ? TXT.ink : row.k === 'open' ? TXT.ink2 : TXT.dim;
+        ctx.fillStyle = row.k === 'practice' ? (row.on ? TXT.ink : TXT.dim) : row.k === 'hdr' || row.k === 'done' ? TXT.done : row.k === 'next' ? TXT.ink : row.k === 'open' ? TXT.ink2 : TXT.dim;
         ctx.fillText(row.text, (L.dx + STEPS.indent) * 3, ry * 3 + 1);
       }
       ctx.restore();

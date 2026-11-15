@@ -6,7 +6,7 @@ import { archivePast } from './model/week.js';
 import { setMorningScene, clearMorningScene, morningScene, morningNow, morningPhase, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
-import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, THOUGHTS_DEMO, advanceUseMs, findThought, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
+import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, THOUGHTS_DEMO, PRACTICES_DEMO, advanceUseMs, findThought, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
 import { shouldStartMorning, isPresent, nextDue, nextAway, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
 import { pickDue, thoughtMayCome } from './model/thoughts.js';
 import { doFinish, doUndo, pushMorning, clearMorning } from './model/timeline.js';
@@ -85,7 +85,7 @@ function updateAria() {
   let done = 0, total = 0;
   for (let i = 0; i < NS; i++) {
     const s = stars[i];
-    if (s.gh) continue;
+    if (s.gh || s.practice) continue;
     if (!s.on) continue;
     if (s.on && !s.miss) total++;
     if (s.done) done++;
@@ -260,7 +260,7 @@ function beginMorning(cfg) {
 function startRealMorning(key) {
   const now = wall(T), nowKey = isoWeekKey(now);
   const w = store.weeks[key] || { seed: seedForWeek(key), archivedAt: now };
-  store.weeks[key] = withSummary(w, weekSummary(store.tasks, key, now)); saveSoon();
+  store.weeks[key] = withSummary(w, weekSummary(store.tasks, key, now, store.practices)); saveSoon();
   makeSky(seedForWeek(key)); cloudsForce(); rebuildPast();
   beginMorning({ tasks: store.tasks, weekKey: key, nowMs: now, season: seasonOf(now), gapMode: 'mosaic', seed: seedForWeek(key),
     name: store.weeks[key].name || '', summary: store.weeks[key].summary, away: store.morningAway || 0, t0: T, reduced: isReduced(), newSeed: seedForWeek(nowKey), newWeek: weekLabel(nowKey), write: true });
@@ -346,7 +346,7 @@ async function boot() {
     Promise.all([document.fonts.load('400 12px "IBM Plex Mono"'), document.fonts.load('500 12px "IBM Plex Mono"')]),
     new Promise(r => setTimeout(r, 3000))
   ]);
-  if (!FLAGS.freeze && !FLAGS.scene && !DEMO_ON && !THOUGHTS_DEMO) setPersistence({ load: loadStore, save: saveStore });
+  if (!FLAGS.freeze && !FLAGS.scene && !DEMO_ON && !THOUGHTS_DEMO && !PRACTICES_DEMO) setPersistence({ load: loadStore, save: saveStore });
   else setPersistence(null);
   await loadModel();
   if (FLAGS.useMs !== null) store.useMs = Math.max(0, FLAGS.useMs);

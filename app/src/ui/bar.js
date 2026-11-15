@@ -1,12 +1,13 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
-import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, THOUGHT, isReduced, setReducedPref, getReducedPref } from '../tokens.js';
+import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, THOUGHT, PRACTICE, isReduced, setReducedPref, getReducedPref } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, UH, GW, dpr, geometryListeners } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtDay, fmtLeft, WDN, two } from '../sky/clock.js';
 import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
-import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce, liveThoughts, findThought, addThought, newId } from '../model/store.js';
-import { undoTarget, externalUndo, doCreate, doCondense, doStepAdd, doLetGo, applyImport } from '../model/timeline.js';
+import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce, liveThoughts, findThought, addThought, newId, findPractice } from '../model/store.js';
+import { undoTarget, externalUndo, doCreate, doCondense, doStepAdd, doLetGo, doPracticeStop, applyImport } from '../model/timeline.js';
+import { canCreate, clampLimit, livePractices, dayKey } from '../model/practices.js';
 import { newThought, hazeSlots, ageText, afterAsk } from '../model/thoughts.js';
 import { placeNew, selIdx, setSelIdx, setMouseHover } from '../model/placement.js';
 import { setThoughtSel } from '../render/compose.js';
@@ -16,14 +17,14 @@ import { onboardingHint, helpLines, enterGate } from './guide.js';
 
 export const bar = {
   text: '', caret: 0, focus: false, last: -9, title: '', tag: null, big: false, res: null, pv: '', pvWarn: false,
-  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: [], help: false,
+  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: [], help: false, helpLines: null,
   thought: null, letGo: false, thoughtHover: null, thoughtBack: false, backAt: -9e9,
   firstStep: null, firstStepSi: -1
 };
 /* step mode: a selected live star turns the bar into "step for <title>"; Enter adds a step to it */
 export function stepTarget() {
   const s = selIdx >= 0 ? stars[selIdx] : null;
-  return s && s.on && !s.done && !s.miss && !s.gh ? selIdx : -1;
+  return s && s.on && !s.done && !s.miss && !s.gh && !s.practice ? selIdx : -1;
 }
 export let undoHit = null, skyBtn = null, msAvg = 0;
 export let wake = () => {};
@@ -33,7 +34,7 @@ let input = null, composing = false;
 function touchLayout() {
   return typeof window !== 'undefined' && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || window.innerWidth < 700);
 }
-export function closeHelp() { if (!bar.help) return false; bar.help = false; wake(); return true; }
+export function closeHelp() { if (!bar.help) return false; bar.help = false; bar.helpLines = null; wake(); return true; }
 
 /* the input lies over the bar on touch devices, so a tap lands on it natively (Firefox Android won't raise the keyboard for a programmatic focus) */
 function overlayWanted() {
@@ -196,7 +197,7 @@ async function runCommand(cmd) {
   const [name, ...rest] = cmd.slice(1).trim().split(/\s+/);
   const arg = rest.join(' ');
   if (name === 'help') {
-    bar.help = true; bar.text = ''; bar.caret = 0; if (input) { input.value = ''; input.blur(); }
+    bar.help = true; bar.helpLines = null; bar.text = ''; bar.caret = 0; if (input) { input.value = ''; input.blur(); }
     bar.focus = false; announce(helpLines(touchLayout()).join('. ')); wake(); return true;
   }
   if (name === 'motion') {
@@ -209,11 +210,52 @@ async function runCommand(cmd) {
   }
   if (name === 'export') { exportStore(); bar.text = ''; if (input) input.value = ''; bar.focus = false; if (input) input.blur(); wake(); return true; }
   if (name === 'import') { pickImport(); bar.text = ''; if (input) input.value = ''; bar.focus = false; if (input) input.blur(); wake(); return true; }
+  if (name === 'practice') return practiceCommand(arg);
   bar.out = { text: 'unknown command', t0: T }; bar.text = ''; if (input) input.value = ''; wake(); return true;
 }
 
+/* /practice <title> [#tag] | /practice (the list) | /practice stop <name> | /practice limit <n> */
+function practiceCommand(arg) {
+  const end = () => { bar.text = ''; bar.caret = 0; if (input) { input.value = ''; input.blur(); } bar.focus = false; wake(); };
+  const out = text => { bar.out = { text, t0: T }; };
+  const a = String(arg || '').trim();
+  if (!a) {
+    const live = livePractices(store.practices), names = live.map(p => p.title);
+    bar.help = true;
+    bar.helpLines = ['practices', names.length ? names.join(' · ') : 'none yet',
+      'mark: click the star', 'stop: /practice stop <name>', 'limit: /practice limit <n>'];
+    announce((names.length ? names.join('. ') : 'no practices yet') + '. mark: click the star. stop: slash practice stop. limit: slash practice limit.');
+    end(); return true;
+  }
+  const [sub, ...rest] = a.split(/\s+/), tail = rest.join(' ');
+  if (sub.toLowerCase() === 'stop') {
+    const q = tail.trim().toLowerCase(), live = livePractices(store.practices);
+    if (!q) { out('/practice stop <name>'); end(); return true; }
+    const m = live.filter(p => p.title.toLowerCase().startsWith(q));
+    if (m.length === 1) { doPracticeStop(m[0], T); out('stopped ' + m[0].title); }
+    else if (!m.length) out('no practice named ' + tail.trim());
+    else out('which? ' + m.map(p => p.title).join(' · '));
+    end(); return true;
+  }
+  if (sub.toLowerCase() === 'limit') {
+    const n = Number(tail.trim());
+    if (Number.isInteger(n) && n >= 1 && n <= 20) { store.prefs.practiceLimit = clampLimit(n); saveSoon(); out('practice limit ' + store.prefs.practiceLimit); }
+    else out('practice limit 1..20');
+    end(); return true;
+  }
+  const ex = extractTag(a), title = ex.text.slice(0, SIZE.maxTitle), limit = clampLimit(store.prefs.practiceLimit);
+  if (!title) { out('/practice <title>'); end(); return true; }
+  if (!canCreate(store.practices, limit)) { out(PRACTICE.full.replace('{n}', String(limit))); end(); return true; }
+  const pos = placeNew(title, bar.ctr, false, ex.tag);
+  store.practices.push({ id: newId(), title, tag: ex.tag, x: pos.gx / (GW - 1), y: pos.gy / (SH - 1), createdAt: wall(T), days: [], archivedAt: null });
+  saveSoon(); rebuildStars(); bar.ctr++;
+  announce('practice: ' + title);
+  out('practice: ' + title);
+  end(); return true;
+}
+
 function exportStore() {
-  const data = { version: 1, tasks: store.tasks, thoughts: store.thoughts, useMs: store.useMs, lastAskUse: store.lastAskUse, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs, exportedAt: new Date(wall(T)).toISOString() };
+  const data = { version: 1, tasks: store.tasks, thoughts: store.thoughts, practices: store.practices, useMs: store.useMs, lastAskUse: store.lastAskUse, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs, exportedAt: new Date(wall(T)).toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   const d = new Date(wall(T));
@@ -414,7 +456,7 @@ export function barPlaceholder() {
 
 function drawHelpPanel() {
   if (!bar.help) return;
-  const lines = helpLines(touchLayout()), o = GUIDE.panel;
+  const lines = bar.helpLines || helpLines(touchLayout()), o = GUIDE.panel;
   ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
   ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   let textW = 0;
@@ -500,6 +542,13 @@ export function drawBar() {
     let t, label;
     if (ext) { t = ext.n + ' stars'; label = 'imported · '; }
     else if (u.type === 'thought') { t = u.th.text; if (t.length > 28) t = t.slice(0, 27) + '…'; label = 'let go · '; }
+    else if (u.type === 'practice') {
+      const p = findPractice(u.pid), day = u.day === dayKey(wall(T)) ? 'today' : 'yesterday';
+      t = (p ? p.title : 'practice') + ' · ' + day + ' ' + (u.on ? '✓' : '·');
+      if (t.length > 28) t = t.slice(0, 27) + '…';
+      label = '';
+    }
+    else if (u.type === 'practiceStop') { t = u.name; if (t.length > 28) t = t.slice(0, 27) + '…'; label = 'stopped · '; }
     else if (u.type === 'step') { t = u.ev.text; if (t.length > 28) t = t.slice(0, 27) + '…'; label = { fin: 'step done · ', reopen: 'step reopened · ', add: 'step added · ', del: 'step removed · ' }[u.ev.kind]; }
     else { t = stars[u.si].n; if (t.length > 28) t = t.slice(0, 27) + '…'; label = u.type === 'add' ? 'added · ' : 'finished · '; }
     ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace'; ctx.globalAlpha = ua;

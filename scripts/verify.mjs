@@ -119,6 +119,9 @@ const SCENES = {
   thoughts: 'freeze=1&t=12&thoughts=5',                 // the haze: five thoughts along the horizon
   thoughtAsk: { q: 'freeze=1&t=12&thoughts=5', eval: 'ns.selectThought(1);ns.render(true)' },   // one asked: gathered, brighter, named
   condense: { q: 'freeze=1&t=12&thoughts=5', eval: 'ns.condenseAt(700)' },   // a thought said, 700 ms in: the point on its way up
+  practices: 'freeze=1&t=12&practices=3',               // the practice stars: a core in a thin ring, the week's seven grains under it
+  practiceRing: { q: 'freeze=1&t=12&practices=3', eval: "ns.select('gym');ns.render(true)" },   // the long one selected: the year ring, two rings
+  practiceFlash: { q: 'freeze=1&t=12&practices=3', eval: "ns.practiceMark('read 20 min',60)" },   // a day marked, 60 ms in: the grain flashes, the core lifts
   barhint: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.finish('task 1',ns.now()-10,true);ns.render()" }   // after the first finish, task count 2 mod 3 shows the step syntax
 };
 const PERF = { size: '1917x933', dpr: 2, frames: 300 };

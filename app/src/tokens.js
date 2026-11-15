@@ -204,6 +204,23 @@ export const FPS = { active: 60, idle: 15, morning: 30 };
    an hour is the point where "later today" becomes "now" for a deadline todo. */
 export const URGENT = { life: .25, leftMs: 60 * 60 * 1000 };
 
+/* practices: a repeating act, marked by day. limit = how many live practices fit; a day may be marked until yesterdayUntil
+   (local hour) for yesterday; the drawing is described at PRACTICE. */
+export const PRACTICE = {
+  limit: 5, yesterdayUntil: 12,
+  /* the star: a core (centre + 4 arms) inside a thin ring of `haloN` grains at `haloR`; pale gold, its own colour (not alive / amber / done / ash).
+     week: 7 grains `dotStep` apart, `dotY` below; a lit day, an open one, today's open slot a touch brighter. */
+  ink: hex('#f4e3b4'), dim: hex('#c9b886'),
+  coreA: .85, armA: .5, haloA: .42, haloR: 3, haloN: 12,
+  dotA: 1, dotOffA: .22, dotTodayA: .36, dotY: 6, dotStep: 2,
+  /* the year ring: 52 slots clockwise from the top, ring 1 at ring1 grains, each further ring ringGap outside; a slot shows days/7 from slotOffA to slotA;
+     at rest only every hintEvery-th slot of ring 1 is drawn, at hintA. */
+  ring1: 10, ringGap: 3.5, slotOffA: .14, slotA: .85, hintEvery: 13, hintA: .2,
+  /* motion (ms): a mark flashes (flashGain extra white) and lifts the core by liftGain; reduced = a plain fade; archive thins the star out */
+  flashMs: 250, flashGain: .6, liftGain: .15, reducedMs: 150, thinMs: 600,
+  full: '{n} practices · /practice limit <n> for more'
+};
+
 /* placing a new tagged star: the pull toward the tag's centroid. tagRadius is a share of GW; tagPull is the cost per grain
    outside that radius (same units as rectScore, so a far candidate pays roughly one star-label overlap). */
 export const PLACE = { tagPull: 40, tagRadius: .16 };
@@ -259,6 +276,7 @@ export const GUIDE = {
     'finish · click a star',
     'n or / write · tab move · enter finish · z undo',
     '/export · /import · /motion on|off|system',
+    '/practice <title> · stop <name> · limit <n>',
     'esc closes help'
   ],
   helpTouch: [
@@ -271,6 +289,8 @@ export const GUIDE = {
     'enter finish · z undo',
     '/export · /import',
     '/motion on|off|system',
+    '/practice <title> · stop <name>',
+    '/practice limit <n>',
     'esc closes help'
   ],
   panel: { margin: 5, padX: 4, padY: 3, row: 5, alpha: .96 }
@@ -302,6 +322,7 @@ export const FLAGS = {
   thoughts: Q.has('thoughts') ? +Q.get('thoughts') : null,   // dev: ?thoughts=n adds n synthetic thoughts in memory
   useMs: Q.has('useMs') ? +Q.get('useMs') : null,             // dev: the app-use clock, in ms
   tags: Q.get('tags') === '1',                                // dev: give the demo stars tags (ns.tagDemo)
+  practices: Q.has('practices') ? +Q.get('practices') : null, // dev: ?practices=n adds n synthetic practices in memory
   morning: Q.get('morning') === '1',          // dev: show the morning hold frame (M1)
   season: Q.get('season'),                     // dev: winter | spring | summer | autumn
   gap: Q.get('gap'),                           // dev: paper | mosaic

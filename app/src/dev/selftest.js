@@ -8,10 +8,12 @@ import { tagPullScore, tagSuffix } from '../model/placement.js';
 import { SPR } from '../sky/components.js';
 import { shouldStartMorning, isPresent, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
-import { MORNING, THOUGHT, SIZE, PLACE } from '../tokens.js';
+import { MORNING, THOUGHT, SIZE, PLACE, PRACTICE } from '../tokens.js';
+import { dayKey, prevDayKey, canMark, toggleDay, weekDots, weekCount, ringWeeks, practiceLine, practiceRows, canCreate } from '../model/practices.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { condenseState, condenseMs } from '../choreo/condense.js';
+import { markState, stopState } from '../choreo/practice.js';
 import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
 import { onboardingHint, helpLines, enterGate } from '../ui/guide.js';
 
@@ -414,5 +416,46 @@ export function selfTest() {
   const wbt = sanitize({ version: 1, tasks: [], weeks: { '2026-W45': { summary: { done: 1, missed: 0, carried: 0, steps: 0, tags: { 'bad tag': 1 } } } } });
   const wbt2 = sanitize({ version: 1, tasks: [], weeks: { '2026-W45': { summary: { done: 1, missed: 0, carried: 0, steps: 0, tags: { study: -1 } } } } });
   ok(!('tags' in wbt.weeks['2026-W45'].summary) && !('tags' in wbt2.weeks['2026-W45'].summary) && wbt.weeks['2026-W45'].summary.done === 1, 'store: bad tag counts are dropped, the summary stays');
+
+  /* practices (L4a): day keys, the noon rule, toggles, the week, the ring, the line, rows, sanitize and the limit */
+  ok(dayKey(new Date(2026, 10, 16, 23, 59).getTime()) === '2026-11-16' && dayKey(new Date(2026, 10, 17, 0, 1).getTime()) === '2026-11-17'
+    && prevDayKey(new Date(2026, 10, 16, 0, 1).getTime()) === '2026-11-15', 'practice: day keys across midnight');
+  const mon11 = new Date(2026, 10, 16, 11, 59).getTime(), mon12 = new Date(2026, 10, 16, 12, 0).getTime();
+  const pp = { days: [] };
+  ok(canMark(pp, '2026-11-16', mon11) && canMark(pp, '2026-11-15', mon11) && !canMark(pp, '2026-11-15', mon12)
+    && !canMark(pp, '2026-11-14', mon11) && canMark(pp, '2026-11-16', mon12), 'practice: today any time, yesterday until noon only');
+  const tgg = toggleDay({ id: 'p', days: ['2026-11-16'] }, '2026-11-18');
+  ok(tgg.days.join() === '2026-11-16,2026-11-18' && toggleDay(tgg, '2026-11-16').days.join() === '2026-11-18', 'practice: toggle adds and removes, sorted');
+  const pwed = new Date(2026, 10, 18, 12).getTime();
+  const pw = { id: 'p', title: 'read', createdAt: new Date(2026, 10, 16, 12).getTime(), days: ['2026-11-16', '2026-11-18', '2026-11-22'] };
+  ok(weekDots(pw, pwed).join() === 'true,false,true,false,false,false,true' && weekCount(pw, '2026-W47') === 3, 'practice: week dots Monday..Sunday and the week count');
+  const r3 = ringWeeks(Object.assign({}, pw, { createdAt: new Date(2026, 10, 2, 12).getTime() }), pwed);
+  ok(r3.length === 1 && r3[0].length === 3 && r3[0][2].key === '2026-W47' && Math.abs(r3[0][2].k - 3 / 7) < 1e-9, 'practice: 3 weeks, current week included');
+  const start60 = new Date(2026, 10, 16, 12); start60.setDate(start60.getDate() - 58 * 7);   // 60 weeks inclusive
+  const r60 = ringWeeks(Object.assign({}, pw, { createdAt: start60.getTime() }), pwed);
+  ok(r60.length === 2 && r60[0].length === 52 && r60[1].length === 8, 'practice: 60 weeks split into 52 + 8');
+  ok(practiceLine(pw, '2026-W47') === 'read · 3 of 7' && practiceLine({ title: 'x'.repeat(25) }, '2026-W47') === 'x'.repeat(19) + '… · 0 of 7', 'practice: the line, title cut to 20');
+  ok(practiceRows(pw, mon11, true).map(r => r.text).join() === 'today,yesterday' && practiceRows(pw, mon12, true).map(r => r.text).join() === 'today'
+    && practiceRows(pw, mon11, false).map(r => r.text).join() === 'yesterday' && practiceRows(pw, mon12, false).length === 0, 'practice: touch today + yesterday, desktop yesterday until noon');
+  const mk0 = markState(0, true, false), mk1 = markState(250, true, false), um = markState(0, false, false), mr = markState(75, true, true);
+  ok(mk0.flash > .9 && mk0.lift > .9 && mk0.lit === 0 && mk1.flash === 0 && mk1.lit === 1 && um.lift < -.9 && um.flash === 0 && mr.flash === 0 && mr.lift === 0 && Math.abs(mr.lit - .5) < 1e-9,
+    'practice choreo: a mark flashes and lifts, an unmark reverses, reduced motion is a plain 150 ms fade');
+  const sp0 = stopState(0, -1, false), sp1 = stopState(600, -1, false), su = stopState(0, 1, false), sr = stopState(75, -1, true);
+  ok(sp0.p === 0 && sp1.p === 1 && su.p === 1 && stopState(600, 1, false).p === 0 && sr.p === 0 && Math.abs(sr.a - .5) < 1e-9, 'practice choreo: the stop thins grain by grain in 600 ms, undo reverses, reduced fades');
+  ok(canCreate([{ archivedAt: null }], 5) && !canCreate(Array.from({ length: 5 }, () => ({ archivedAt: null })), 5) && canCreate([{ archivedAt: 1 }, { archivedAt: 1 }], 1), 'practice: the limit counts live practices only');
+  const psan = sanitize({ version: 1, tasks: [], prefs: { practiceLimit: 99 }, practices: [
+    { id: 'p1', title: ' read ', tag: 'Study', x: -1, y: 2, createdAt: 5, days: ['2026-11-16', '2026-02-30', '2026-11-16', '2026-11-18'], archivedAt: null }
+  ] });
+  ok(psan.practices.length === 1 && psan.practices[0].title === 'read' && psan.practices[0].tag === 'study' && psan.practices[0].x === 0 && psan.practices[0].y === 1
+    && psan.practices[0].days.join() === '2026-11-16,2026-11-18' && psan.prefs.practiceLimit === 20, 'practice: sanitize keeps valid days, drops junk, clamps the limit');
+  ok(sanitize({ version: 1, tasks: [], prefs: { practiceLimit: 'x' } }).prefs.practiceLimit === PRACTICE.limit
+    && sanitize({ version: 1, tasks: [], prefs: { practiceLimit: 0 } }).prefs.practiceLimit === 1, 'practice: a bad limit becomes the default, 0 clamps to 1');
+  const P2 = [{ id: 'q', title: 'read', createdAt: 1, days: ['2026-11-02', '2026-11-04', '2026-11-06', '2026-11-08'], archivedAt: null },
+    { id: 'g', title: 'gym', createdAt: 1, days: [], archivedAt: null }];
+  const wpr = weekSummary([], '2026-W45', new Date(2026, 10, 9, 12).getTime(), P2);
+  ok(wpr.practice.join('|') === 'read · 4 of 7|gym · 0 of 7' && summaryLines(wpr, '2026-W45').slice(-2).join('|') === 'read · 4 of 7|gym · 0 of 7', 'practice: the morning adds a line per live practice');
+  const P6 = Array.from({ length: 6 }, (_, i) => ({ id: 's' + i, title: 'p' + i, createdAt: 1, days: [], archivedAt: null }));
+  const w6 = weekSummary([], '2026-W45', new Date(2026, 10, 9, 12).getTime(), P6);
+  ok(w6.practice.length === 5 && w6.practice[4].endsWith('+1 practices') && summaryLines(w6, '2026-W45', '', 3).join('|') === 'week 45|3 weeks away', 'practice: five lines then +N, none in an away week');
   return { pass, fail, total: pass + fail, failed };
 }

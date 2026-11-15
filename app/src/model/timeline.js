@@ -6,9 +6,10 @@ import { GW, SH } from '../framebuffer.js';
 import { reviveSaid } from './thoughts.js';
 import {
   store, stars, NS, setNS, MAXS, DEMO_ON, mkStar, expAt, lifeAt, isUrgent, isBehind, stepsDoneBy, touchSave, timeStr, nearestDone,
-  addTask, removeTask, markDone, clearDone, announce, newId,
+  addTask, removeTask, markDone, clearDone, announce, newId, findPractice,
   snapshotData, restoreData, replaceData, onRebuild, rebuildStars
 } from './store.js';
+import { toggleDay, dayKey } from './practices.js';
 import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
 import { slotCount, slotFill } from '../choreo/step.js';
@@ -61,6 +62,7 @@ export function replay(t) {
     const s = stars[i];
     s.done = s.initDone; s.link = s.initLink; s.fin = null; s.und = null; s.stamp = s.initStamp;
     s.on = s.base ? 1 : 0; s.cr = null; s.rm = null; s.miss = s.baseMiss; s.mT = -1; s.sev = null;
+    if (s.practice) { s.pmk = null; s.pfx = null; }                   // the last mark / stop of a practice, for its choreography
   }
   undoTarget = null; thFx.clear();
   for (let e = 0; e < events.length; e++) {
@@ -79,8 +81,20 @@ export function replay(t) {
       thFx.set(ev.th.id, { kind: 'go', t0: ev.at, dir: -1 });
     } else if (ev.type === 'condense') {                                 // a thought is said: its haze condenses and travels to the star
       thFx.set(ev.id, { kind: 'say', t0: ev.at, si: ev.si, x: ev.x, y: ev.y, reduced: ev.reduced });
+    } else if (ev.type === 'practice') {
+      undoTarget = { type: 'practice', at: ev.at, pid: ev.pid, day: ev.day, on: ev.on, reduced: ev.reduced };
+      const s = stars.find(x => x.practice === ev.pid); if (s) s.pmk = { t0: ev.at, day: ev.day, on: ev.on, reduced: ev.reduced };
+    } else if (ev.type === 'practiceStop') {
+      const s = stars.find(x => x.practice === ev.pid); if (s) { s.on = 0; s.pfx = { t0: ev.at, dir: -1, reduced: ev.reduced }; }
+      undoTarget = { type: 'practiceStop', at: ev.at, pid: ev.pid, name: ev.name, reduced: ev.reduced };
     } else if (ev.type === 'undo') {
       if (!undoTarget || ev.at - undoTarget.at > 5) continue;
+      if (undoTarget.type === 'practice' || undoTarget.type === 'practiceStop') {
+        const s = stars.find(x => x.practice === undoTarget.pid);
+        if (undoTarget.type === 'practiceStop') { if (s) { s.on = 1; s.pfx = { t0: ev.at, dir: 1, reduced: ev.reduced }; } }
+        else if (s) s.pmk = { t0: ev.at, day: undoTarget.day, on: !undoTarget.on, reduced: ev.reduced };
+        undoTarget = null; continue;                                     // the data was restored by doUndo
+      }
       if (undoTarget.type === 'thought') { thFx.set(undoTarget.th.id, { kind: 'go', t0: ev.at, dir: 1 }); undoTarget = null; continue; }     // the thought's data was restored by doUndo
       const s = stars[undoTarget.si];
       if (undoTarget.type === 'step') { const u = undoTarget.ev; if (u.dir) s.sev = { t0: ev.at, dir: -u.dir, reduced: isReduced(), slot: u.slot, lo: u.lo, hi: u.hi }; }
@@ -112,7 +126,7 @@ export function clearMorning() { mev = []; }
 
 export function doFinish(si, at, hov) {
   const s = stars[si];
-  if (!s || !s.on || s.done || s.miss || at >= expAt(s)) return false;
+  if (!s || s.practice || !s.on || s.done || s.miss || at >= expAt(s)) return false;
   const linkIdx = nearestDone(si);
   pushEvent({ type: 'finish', at, si, hov: !!hov });
   if (s.task) markDone(s.task, wall(at), linkIdx !== null && linkIdx >= 0 && stars[linkIdx].task ? stars[linkIdx].task.id : null);
@@ -125,6 +139,20 @@ export function doUndo(at) {
   }
   const u = undoTarget;
   if (!u || at - u.at > 5) return false;
+  if (u.type === 'practice') {                                  // unmark / mark back the day
+    pushEvent({ type: 'undo', at, reduced: isReduced() });
+    const p = findPractice(u.pid);
+    if (p) { p.days = toggleDay(p, u.day).days; touchSave(); }
+    undoTarget = null; announce('undone');
+    return true;
+  }
+  if (u.type === 'practiceStop') {                              // the practice is live again
+    pushEvent({ type: 'undo', at, reduced: isReduced() });
+    const p = findPractice(u.pid);
+    if (p) { p.archivedAt = null; touchSave(); }
+    undoTarget = null; announce('undone');
+    return true;
+  }
   if (u.type === 'thought') {                                   // let go: the thought comes back
     pushEvent({ type: 'undo', at });
     if (u.th) { u.th.goneAt = null; u.th.usedMs = 0; }
@@ -161,6 +189,23 @@ export function doCreate(title, gx, gy, big, dlMs, at, stepTexts, tag) {
   return NS - 1;
 }
 /* let a thought go: it leaves the haze now, and the undo row can bring it back for 5 s */
+/* mark or unmark a day of a practice: the data is committed here, the event gives the undo row its 5 s */
+export function doPracticeToggle(p, day, at) {
+  if (!p || p.archivedAt || !day) return false;
+  const on = !(p.days || []).includes(day);
+  p.days = toggleDay(p, day).days; touchSave();
+  pushEvent({ type: 'practice', at, pid: p.id, day, on, reduced: isReduced() });
+  announce((on ? 'marked ' : 'unmarked ') + p.title + ' · ' + (day === dayKey(wall(at)) ? 'today' : 'yesterday'));
+  return true;
+}
+/* stop a practice: archived data stays for the Atlas, the star leaves now; undo brings it back for 5 s */
+export function doPracticeStop(p, at) {
+  if (!p || p.archivedAt) return false;
+  p.archivedAt = wall(at); touchSave();
+  pushEvent({ type: 'practiceStop', at, pid: p.id, name: p.title, reduced: isReduced() });
+  announce('stopped ' + p.title);
+  return true;
+}
 export function doLetGo(th, at) {
   if (!th || th.goneAt) return false;
   th.goneAt = wall(at); th.usedMs = Math.max(0, wall(at) - th.createdAt);
@@ -185,7 +230,7 @@ export function applyImport(raw, atT) {
 }
 
 /* ---------- steps: finish / reopen / add / delete are events; the data change is committed here, the choreography is derived in replay ---------- */
-const stepLive = s => !!s && s.on && !s.done && !s.miss && !s.gh && !!s.steps;
+const stepLive = s => !!s && s.on && !s.done && !s.miss && !s.gh && !s.practice && !!s.steps;
 export function mkSteps(texts) {
   const out = [];
   for (const x of texts || []) { const text = String(x).trim().slice(0, STEPS.maxText); if (text && out.length < STEPS.maxSteps) out.push({ id: newId(), text, doneAt: null }); }

@@ -7,8 +7,9 @@ import { stars, NS, GHI, pres, Rb, edgeGeom as geom, isUrgent, starTag } from '.
 import { FS, US } from './timeline.js';
 import { edgeState } from '../choreo/finish.js';
 import { undoEdge } from '../choreo/undo.js';
-import { T, wall } from '../sky/clock.js';
-import { stepsLive, stepsHint, stepsLine2, stepRows, stepExtent, rowPitch, doneCount, panelMax, clampScroll, sui } from './steps.js';
+import { T, wall, isoWeekKey } from '../sky/clock.js';
+import { stepsLive, stepsHint, stepsLine2, stepRows, stepExtent, rowPitch, doneCount, panelMax, clampScroll, sui, isTouchLayout } from './steps.js';
+import { weekCount, practiceRows, ringReach } from './practices.js';
 
 /* the expire label swap is a pure timeline; kept here so model never imports choreo */
 function expireSwap(ms) {
@@ -36,7 +37,8 @@ export function updateHover(dt) {
     hk[i] = ease.out(hp[i]);
     const ft = (focus === i && !stars[i].done && !stars[i].miss) ? 1 : 0;
     frK[i] = ft > frK[i] ? Math.min(1, frK[i] + dt / .15) : Math.max(0, frK[i] - dt / .2);
-    const lt = selIdx === i && (stepsLive(stars[i]) || stepsHint(stars[i])) ? 1 : 0;                      // the step list under the label
+    const pr = !!stars[i].practice && focus === i;                                                        // a practice's day rows fade with the hover
+    const lt = (selIdx === i && (stepsLive(stars[i]) || stepsHint(stars[i]))) || pr ? 1 : 0;              // the list under the label
     lk[i] = lt > lk[i] ? Math.min(1, lk[i] + dt / .15) : Math.max(0, lk[i] - dt / .15);
     const d = sui.st[i] - sui.sy[i];                                              // smooth scroll of the list: eases towards its target
     if (d !== 0) sui.sy[i] = Math.abs(d) < .02 ? sui.st[i] : sui.sy[i] + d * (1 - Math.exp(-dt * STEPS.scrollEase));
@@ -83,6 +85,9 @@ export function labelInfo(si) {
       t2 = sw.leftGone ? '' : left; a2 = vis * sw.leftA; place2 = left;
       t3 = sw.missedOn ? 'missed' : ''; a3 = vis * sw.missedA;
     } else { t2 = s.stamp; place2 = s.stamp; }
+  } else if (s.practice) {
+    const cnt = s.pdata ? weekCount(s.pdata, isoWeekKey(wall(T))) : 0;
+    t2 = cnt + ' of 7 this week'; place2 = t2; c2 = K.dim;
   } else if (s.done) {
     const fin = s.fin, fs = FS[si], ms = fin ? (T - fin.t0) * 1000 : 1e9;
     c1 = mixTo([0, 0, 0], cInk, K.done, fs ? fs.titleK : 1);
@@ -113,7 +118,7 @@ export function labelInfo(si) {
   // on the sky, long titles are ellipsised; the hover/selection state keeps the full one
   if (!foc && title.length > SIZE.ellipsisAt) title = title.slice(0, SIZE.ellipsisAt - 1) + '…';
   // touch selection: same look as hover, plus a second row that says how to finish
-  if (tapSelected && selIdx === si && !s.done && !s.miss && !s.gh && s.on) {
+  if (tapSelected && selIdx === si && !s.done && !s.miss && !s.gh && s.on && !s.practice) {
     t2 = stepsLive(s) ? doneCount(s) + '/' + s.steps.length + ' · tap again to finish' : 'tap again to finish'; c2 = K.dim; place2 = t2; l2vis = 1; a2 = 1;
   }
   const crTyping = s.cr && (s.cr.reduced ? (T - s.cr.t0) * 1000 < 300 : (T - s.cr.t0) * 1000 < (TIME.createLabelStart + (s.n.length + place2.length) * TIME.createLabelStep) * 1000);
@@ -143,6 +148,18 @@ export function labelInfo(si) {
     if (selIdx === si) { L.wPlace = Math.max(L.wPlace, SIZE_INDENT + wg(L.hint, 400)); L.rowsPlace += Math.ceil(p / 6); }
     if (lk[si] > .5) L.wDisp = Math.max(L.wDisp, SIZE_INDENT + wg(L.hint, 400));
     L.rows2h += Math.round(p * lk[si]);
+  }
+  if (s.practice && s.pdata && (lk[si] > .01 || focus === si)) {                  // the practice's day rows: today on touch, yesterday until noon
+    const prk = lk[si] > .01 ? lk[si] : 1;                                        // a frozen hover/selection still shows them
+    const rows = practiceRows(s.pdata, wall(T), isTouchLayout());
+    if (rows.length) {
+      let w = 0; for (const r of rows) w = Math.max(w, SIZE_INDENT + wg(r.text, 400));
+      const p = rowPitch(), content = rows.length * p;
+      L.list = rows; L.nList = rows.length; L.listK = prk; L.listH = content; L.scrollMax = 0; L.scrolling = false;
+      if (focus === si) { L.wPlace = Math.max(L.wPlace, w); L.rowsPlace += Math.ceil(content / 6); }
+      if (prk > .5) L.wDisp = Math.max(L.wDisp, w);
+      L.rows2h += Math.round(content * prk);
+    }
   }
 }
 
@@ -197,7 +214,7 @@ export function placeLabels() {
   for (let oi = 0; oi < NS; oi++) {
     const si = order[oi], s = stars[si], L = lab[si];
     if (!L.shown) { L.init = false; continue; }
-    const r = Rb(s), w = L.wPlace, rows = L.rowsPlace, th = 6 * rows;
+    const r = s.practice && s.pdata ? ringReach(s.pdata, wall(T)) : Rb(s), w = L.wPlace, rows = L.rowsPlace, th = 6 * rows;
     const ex = stepExtent(s), rR = ex ? Math.max(r, ex.extR) : r, rL = ex ? Math.max(r, ex.extL) : r, rV = ex ? Math.max(r, ex.extV) : r;
     let best = -1, bestScore = 1e18, prevScore = 1e18, prev = L.pick;
     const px = [0, 0, 0, 0], py = [0, 0, 0, 0];
@@ -224,7 +241,7 @@ export function placeLabels() {
       L.pt = pt; L.pb = pb;
       L.rr = L.list.map((q, r2) => {                                                // rows scrolled out of the panel are clipped to it (or unreachable)
         const y0 = pt + p * r2 - sy, y1 = y0 + p, c0 = Math.max(y0, pt), c1 = Math.min(y1, pb), ok = c1 > c0;
-        return { x0: L.dx - 1, y0: ok ? c0 : -1e9, x1: L.dx + SIZE_INDENT + wg(q.text, 400) + 2, y1: ok ? c1 : -1e9, sid: q.sid, k: q.k, num: q.num };
+        return { x0: L.dx - 1, y0: ok ? c0 : -1e9, x1: L.dx + SIZE_INDENT + wg(q.text, 400) + 2, y1: ok ? c1 : -1e9, sid: q.sid, k: q.k, num: q.num, day: q.day, on: q.on };
       });
     } else L.rr = null;
     placed.push([L.ax - 1, L.y0 - 1, L.ax + L.wPlace + 1, L.y0 + th + 1]);

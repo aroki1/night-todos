@@ -4,6 +4,7 @@ import { clamp01, hstr } from '../math.js';
 import { isoWeekKey, weekDistance, weekLabel, WDN } from '../sky/clock.js';
 import { previousWeekKey } from './week.js';
 import { splitBar, parseDeadline } from './parser.js';
+import { practiceLine } from './practices.js';
 
 /* the week whose morning is still unseen, after the app learns it is now `nowMs` and the last week it saw was `prevWeek`.
    A new week makes the most recent finished week due (an older unseen one is replaced). Same week: keep what was due. */
@@ -38,7 +39,7 @@ function carries(t, weekKey, nowMs) {
 
 /* the numbers of the morning: done and missed in that week, alive tasks carrying over, steps finished during that week,
    and the done tasks by tag (untagged is ''). */
-export function weekSummary(tasks, weekKey, nowMs) {
+export function weekSummary(tasks, weekKey, nowMs, practices) {
   let done = 0, missed = 0, carried = 0, steps = 0; const tags = {};
   for (const t of tasks) {
     if (t.week === weekKey) {
@@ -48,7 +49,14 @@ export function weekSummary(tasks, weekKey, nowMs) {
     else if (carries(t, weekKey, nowMs)) carried++;
     for (const s of t.steps || []) if (s && s.doneAt && isoWeekKey(s.doneAt) === weekKey) steps++;
   }
-  return { done, missed, carried, steps, tags };
+  const out = { done, missed, carried, steps, tags };
+  const live = (practices || []).filter(p => p && !p.archivedAt);
+  if (live.length) {                                          // one line per live practice, at most 5, the 5th carries `· +N`
+    const lines = live.slice(0, 5).map(p => practiceLine(p, weekKey));
+    if (live.length > 5) lines[4] += ' · +' + (live.length - 5) + ' practices';
+    out.practice = lines;
+  }
+  return out;
 }
 
 /* the tag line: only for 2+ tags; the tags by count, highest first, untagged as `other` last, at most 4 entries then +N */
@@ -79,14 +87,17 @@ export function nextAway(prevWeek, nowMs, away) {
 export function summaryLines(sum, weekKey, name = '', away = 0) {
   const out = [weekTitle(weekKey, name)];
   if (away >= 2) { out.push(away + ' weeks away'); return out; }
-  if (!sum.done && !sum.missed && !sum.carried) { out.push('a quiet week'); return out; }
-  const parts = [sum.done ? sum.done + ' done' : 'nothing finished'];
-  if (sum.missed) parts.push(sum.missed + ' missed');
-  if (sum.carried) parts.push(sum.carried + ' carry over');
-  out.push(parts.join(' · '));
-  if (sum.steps) out.push(sum.steps + (sum.steps === 1 ? ' step' : ' steps'));
-  const tl = tagLine(sum.tags);
-  if (tl) out.push(tl);
+  if (!sum.done && !sum.missed && !sum.carried) out.push('a quiet week');
+  else {
+    const parts = [sum.done ? sum.done + ' done' : 'nothing finished'];
+    if (sum.missed) parts.push(sum.missed + ' missed');
+    if (sum.carried) parts.push(sum.carried + ' carry over');
+    out.push(parts.join(' · '));
+    if (sum.steps) out.push(sum.steps + (sum.steps === 1 ? ' step' : ' steps'));
+    const tl = tagLine(sum.tags);
+    if (tl) out.push(tl);
+  }
+  if (sum.practice) for (const l of sum.practice) out.push(l);
   return out;
 }
 

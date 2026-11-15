@@ -1,12 +1,13 @@
 /* model/store.js — persistent data (tasks, weeks, prefs) and the week's sky view.
    This module never imports sky generation, render, ui or choreography. */
-import { clamp01 } from '../math.js';
-import { FLAGS, URGENT, PACE, STEPS, SIZE } from '../tokens.js';
-import { CLOCK0, wall, fmtDate, fmtDay, fmtLeft, isoWeekKey } from '../sky/clock.js';
+import { clamp01, rng } from '../math.js';
+import { FLAGS, URGENT, PACE, STEPS, SIZE, PRACTICE } from '../tokens.js';
+import { CLOCK0, wall, fmtDate, fmtDay, fmtLeft, isoWeekKey, mkDate } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
 import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
 import { nextDue, nextAway } from './morning.js';
 import { newThought } from './thoughts.js';
+import { dayKey, isDayKey } from './practices.js';
 
 /* persistence is injected by main; the default is in-memory so tests/scenes never touch storage */
 let persistence = { load: async () => null, save: async () => { } };
@@ -15,11 +16,13 @@ export function setPersistence(p) { persistence = p || { load: async () => null,
 export const STEPS_SCENE = FLAGS.scene === 'steps' && FLAGS.dev;   // dev scene for the step visuals
 export const DEMO_ON = (FLAGS.demo || STEPS_SCENE) && FLAGS.dev;   // demo tasks never exist in the product
 export const THOUGHTS_DEMO = FLAGS.dev && FLAGS.thoughts !== null && FLAGS.thoughts > 0;   // synthetic thoughts, in memory only
+export const PRACTICES_DEMO = FLAGS.dev && FLAGS.practices !== null && FLAGS.practices > 0; // synthetic practices, in memory only
 export const MAXS = 48;
 const HR = 36e5;
 
 export const store = {
-  version: 1, tasks: [], thoughts: [], useMs: 0, lastAskUse: 0, weeks: {}, lastSeenWeek: null, morningDue: null, morningAway: 0, prefs: { reducedMotion: 'system' }
+  version: 1, tasks: [], thoughts: [], practices: [], useMs: 0, lastAskUse: 0, weeks: {}, lastSeenWeek: null, morningDue: null, morningAway: 0,
+  prefs: { reducedMotion: 'system', practiceLimit: PRACTICE.limit }
 };
 
 const DEF = [
@@ -69,6 +72,26 @@ function demoThoughts() {
     store.thoughts.push(newThought(t, i % 4 === 0 ? 'study' : null, now - i * 30 * HR, 'd' + i, store.useMs));
   }
 }
+
+/* dev: ?practices=n adds n synthetic practices in memory (no save) with seeded days over the last 20 weeks */
+const DEMO_PRACTICES = ['read 20 min', 'gym', 'meditate', 'practice scales', 'walk', 'journal', 'stretch'];
+function demoPractices() {
+  if (!PRACTICES_DEMO) return;
+  const now = wall(0), n = Math.min(20, FLAGS.practices | 0);
+  store.practices = [];
+  for (let i = 0; i < n; i++) {
+    const r = rng(4242 + i), days = [];
+    const span = i === 1 ? 420 : 140;                    // the second is a year and a half old, so the ring shows two rings
+    for (let k = 0; k < span; k++) if (r() < .45) days.push(dayKey(now - k * 864e5));
+    store.practices.push({
+      id: 'p' + i, title: DEMO_PRACTICES[i % DEMO_PRACTICES.length], tag: i % 3 === 0 ? 'study' : null,
+      x: .10 + r() * .80, y: .16 + r() * .56, createdAt: now - span * 864e5,
+      days: [...new Set(days)].sort(), archivedAt: null
+    });
+  }
+}
+export function addPractice(p) { store.practices.push(p); saveSoon(); return p; }
+export function findPractice(id) { return store.practices.find(p => p.id === id) || null; }
 
 const rebuildHooks = [];
 export function onRebuild(fn) { rebuildHooks.push(fn); }
@@ -120,11 +143,20 @@ function taskIdStar(t) {
   return s;
 }
 
+/* a live practice joins the star list: no deadline, never done, never missed, never urgent */
+export function practiceStar(p) {
+  const s = mkStar({ n: p.title, gx: Math.round(p.x * (GW - 1)), gy: Math.round(p.y * (SH - 1)), big: 0 });
+  s.id = p.id; s.practice = p.id; s.pdata = p; s.dl = null; s.life = 1; s.nx = p.x; s.ny = p.y;
+  return s;
+}
+function addPracticeStars() { for (const p of store.practices) if (!p.archivedAt) stars.push(practiceStar(p)); }
+
 export function rebuildStars(nowMs) {
   if (DEMO_ON) {
     const defs = STEPS_SCENE ? STEP_DEF.map(d => Object.assign({}, d, { gx: Math.round(d.nx * (GW - 1)), gy: Math.round(d.ny * (SH - 1)) })) : DEF;
     if (!STEPS_SCENE && FLAGS.steps === '1') for (const d of defs) if (!d.done && !d.miss && !d.steps) d.steps = named(d.n === 'os linux hw 3' ? ['read ch. 4', 'set up the vm', 'cron task', 'shell scripts', 'write report', 'submit'] : d.n === 'hm one-pager' ? ['outline', 'draft intro', 'tables and figures', 'proofread'] : ['skim', 'problems', 'review'], 1);
     stars = defs.map(d => { const s = mkStar(d); if (d.off !== undefined) { s.dl = CLOCK0 + d.off; s.rem0 = d.off; s.life0 = d.life === undefined ? 1 : d.life; } return s; });
+    addPracticeStars();
     GHI = stars.length; stars.push(mkStar({ n: '', gx: 0, gy: 0, gh: 1, on: 0, base: 0 })); NS = stars.length;
     for (const fn of rebuildHooks) fn();
     return;
@@ -138,6 +170,7 @@ export function rebuildStars(nowMs) {
     s.initLink = lid && byId.has(lid) ? byId.get(lid) : null;
     s.link = s.initLink;
   }
+  addPracticeStars();
   GHI = stars.length; stars.push(mkStar({ n: '', gx: 0, gy: 0, gh: 1, on: 0, base: 0 })); NS = stars.length;
   for (const fn of rebuildHooks) fn();
 }
@@ -145,12 +178,13 @@ export function rebuildStars(nowMs) {
 export function syncStarPositions() {
   for (const s of stars) {
     if (s.task) { s.gx = Math.round(s.task.x * (GW - 1)); s.gy = Math.round(s.task.y * (SH - 1)); }
+    else if (s.pdata) { s.gx = Math.round(s.pdata.x * (GW - 1)); s.gy = Math.round(s.pdata.y * (SH - 1)); }
     else if (STEPS_SCENE && s.nx !== null && !s.gh) { s.gx = Math.round(s.nx * (GW - 1)); s.gy = Math.round(s.ny * (SH - 1)); }
   }
 }
 
 /* a star's area of life: the task's tag; a dev demo star may carry its own. Missing / null / '' = untagged. */
-export const starTag = s => (s && s.task && s.task.tag) || (s && s.tag) || '';
+export const starTag = s => (s && s.task && s.task.tag) || (s && s.pdata && s.pdata.tag) || (s && s.tag) || '';
 export const sameTag = (a, b) => (a || '') === (b || '');
 /* the nearest done star of the same tag. Untagged stars still link only to untagged ones. -> index | null */
 export function nearestDoneIn(list, si) {
@@ -189,7 +223,7 @@ export function flushSave() {
   if (!dirty) return;
   dirty = false;
   persistence.save({
-    version: 1, tasks: store.tasks, thoughts: store.thoughts, useMs: store.useMs, lastAskUse: store.lastAskUse,
+    version: 1, tasks: store.tasks, thoughts: store.thoughts, practices: store.practices, useMs: store.useMs, lastAskUse: store.lastAskUse,
     weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, morningDue: store.morningDue, morningAway: store.morningAway, prefs: store.prefs
   });
 }
@@ -234,6 +268,28 @@ export function sanitizeThoughts(a) {
     };
     if (t.big) th.big = 1;                         // absent when the thought was not written big, so old stores round-trip as they were
     out.push(th);
+  }
+  return out;
+}
+/* practices: a title and a valid creation time are required; days are valid local keys, unique and sorted; tag per the tag rule */
+export function sanitizePractices(a) {
+  if (!Array.isArray(a)) return [];
+  const out = [];
+  for (const p of a) {
+    if (!p || typeof p !== 'object' || typeof p.title !== 'string' || !p.title.trim()) continue;
+    const days = [];
+    if (Array.isArray(p.days)) for (const k of p.days) if (isDayKey(k) && !days.includes(k)) days.push(k);
+    days.sort();
+    out.push({
+      id: typeof p.id === 'string' && p.id ? p.id : newId(),
+      title: p.title.trim().slice(0, SIZE.maxTitle),
+      tag: cleanTag(p.tag),
+      x: clamp01(Number.isFinite(p.x) ? p.x : .5),
+      y: clamp01(Number.isFinite(p.y) ? p.y : .4),
+      createdAt: Number.isFinite(p.createdAt) ? p.createdAt : wall(0),
+      days,
+      archivedAt: numOrNull(p.archivedAt)
+    });
   }
   return out;
 }
@@ -291,14 +347,17 @@ export function sanitize(raw) {
     return o;
   });
   return {
-    version: 1, tasks, thoughts: sanitizeThoughts(raw.thoughts),
+    version: 1, tasks, thoughts: sanitizeThoughts(raw.thoughts), practices: sanitizePractices(raw.practices),
     useMs: Number.isFinite(raw.useMs) && raw.useMs >= 0 ? raw.useMs : 0,
     lastAskUse: Number.isFinite(raw.lastAskUse) && raw.lastAskUse >= 0 ? raw.lastAskUse : 0,
     weeks: sanitizeWeeks(raw.weeks),
     lastSeenWeek: typeof raw.lastSeenWeek === 'string' ? raw.lastSeenWeek : null,
     morningDue: typeof raw.morningDue === 'string' && /^\d{4}-W\d{2}$/.test(raw.morningDue) ? raw.morningDue : null,
     morningAway: Number.isInteger(raw.morningAway) && raw.morningAway >= 0 && raw.morningAway <= 520 ? raw.morningAway : 0,
-    prefs: { reducedMotion: (raw.prefs && ['on', 'off', 'system'].includes(raw.prefs.reducedMotion)) ? raw.prefs.reducedMotion : 'system' }
+    prefs: {
+      reducedMotion: (raw.prefs && ['on', 'off', 'system'].includes(raw.prefs.reducedMotion)) ? raw.prefs.reducedMotion : 'system',
+      practiceLimit: Number.isInteger(raw.prefs && raw.prefs.practiceLimit) ? Math.max(1, Math.min(20, raw.prefs.practiceLimit)) : PRACTICE.limit
+    }
   };
 }
 
@@ -319,15 +378,16 @@ export async function loadModel() {
     saveSoon();
   } else ensureWeeks(store, wall(0));
   demoThoughts();
+  demoPractices();
   rebuildStars();
   return store;
 }
 
 export function snapshotData() {
-  return JSON.parse(JSON.stringify({ tasks: store.tasks, thoughts: store.thoughts, useMs: store.useMs, lastAskUse: store.lastAskUse, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs }));
+  return JSON.parse(JSON.stringify({ tasks: store.tasks, thoughts: store.thoughts, practices: store.practices, useMs: store.useMs, lastAskUse: store.lastAskUse, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs }));
 }
 export function restoreData(snap) {
-  store.tasks = snap.tasks; store.thoughts = snap.thoughts || [];
+  store.tasks = snap.tasks; store.thoughts = snap.thoughts || []; store.practices = snap.practices || [];
   store.useMs = Number.isFinite(snap.useMs) ? snap.useMs : 0; store.lastAskUse = Number.isFinite(snap.lastAskUse) ? snap.lastAskUse : 0;
   store.weeks = snap.weeks; store.lastSeenWeek = snap.lastSeenWeek; store.prefs = snap.prefs;
   saveSoon();

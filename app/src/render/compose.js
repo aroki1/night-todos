@@ -10,6 +10,7 @@ import { drawAurora, auroraUpdate, drawComet, drawSats, drawMeteor } from '../sk
 import { drawPast } from '../sky/past.js';
 import { stars, NS, GHI, edgeGeom, expAt, R, CORE, Rb, pres, lifeAt, timeStr, isUrgent, liveThoughts } from '../model/store.js';
 import { drawHaze, hazeAnimating } from './haze.js';
+import { drawPractice, practiceFxMs } from './practice.js';
 import { FS, US, undoTarget, replay, setPipTotals } from '../model/timeline.js';
 import { hk, computeFocus, placeLabels, lab } from '../model/placement.js';
 import { finishState, edgeState } from '../choreo/finish.js';
@@ -42,6 +43,7 @@ export function prepare() {
   for (let si = 0; si < NS; si++) {
     const s = stars[si];
     FS[si] = null; US[si] = null;
+    if (s.practice) { if (practiceFxMs(s) > 0) animating = true; continue; }   // a practice is never done, missed, urgent or counted
     if (s.gh) continue;
     s.rmMs = s.rm ? (T - s.rm.t0) * 1000 : -1;
     if (s.rmMs >= 0 && s.rmMs < 500) animating = true;
@@ -148,7 +150,7 @@ export function drawEdges() {
   }
 }
 export function drawHalos(si) {
-  const s = stars[si]; if (!pres(s)) return;
+  const s = stars[si]; if (!pres(s) || s.practice) return;      // a practice has no halo: it is never done or urgent
   if (s.gh) { if (s.ghA > .01) { const rr = s.big ? SIZE.haloSigBig : SIZE.haloSig; halo(s.gx, s.gy, C.warm, .03 * s.ghA, rr, rr * 3); } return; }
   const ex = s.miss && s.mT >= 0 && s.mT < 1700;
   if (s.miss && !ex) { halo(s.gx, s.gy, C.ash, .06, 2, 5); return; }
@@ -213,7 +215,9 @@ function drawGhost(s) {
   for (let q = 0; q < SP.n; q++) over(s.gx + SP.I[q], s.gy + SP.J[q], C.ink2, ga);
 }
 export function drawSprite(si) {
-  const s = stars[si]; if (!pres(s)) return;
+  const s = stars[si];
+  if (s.practice) { drawPractice(si); return; }             // a practice thins out while it leaves, so it is drawn before the presence test
+  if (!pres(s)) return;
   if (s.gh) { drawGhost(s); return; }
   if (s.miss && s.mT >= 0 && s.mT < 1700) { drawExhale(s, s.mT); return; }
   if (s.miss) {
