@@ -177,7 +177,7 @@ there are no images in Night Sky. only dots.
 
 Everything is drawn into one grain framebuffer, a grid of small dots, and presented through WebGL with a 2D canvas fallback. Only the labels are canvas text. Each moment in the app, such as a finish, an undo, a deadline passing or the weekly morning, is a pure function of time and its inputs, so a frame depends only on the sky time `T`. That makes it possible to step the app frame by frame, which is how the clips above were rendered. There is no framework and no build step: the files in `app/` are the files that run. `npm run verify` checks the result against golden screenshot hashes and a frame-time budget.
 
-See [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) for the module map and rules, and [docs/DESIGN.md](docs/DESIGN.md) for the visual system.
+See [docs/dev/RENDERING.md](docs/dev/RENDERING.md) for how a frame is drawn, [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) for the module map and rules, and [docs/DESIGN.md](docs/DESIGN.md) for the visual system.
 
 ## Development
 

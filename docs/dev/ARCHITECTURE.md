@@ -1,6 +1,6 @@
 # Architecture
 
-Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shell in `desktop/` serves the same files. Rendering uses one grain framebuffer, with canvas text as the only off-grain layer.
+Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shell in `desktop/` serves the same files. Rendering uses one grain framebuffer, with canvas text as the only off-grain layer; [RENDERING.md](RENDERING.md) explains how a frame is drawn.
 
 ## Commands
 
