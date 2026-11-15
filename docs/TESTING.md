@@ -23,6 +23,7 @@ localStorage.setItem('night-sky:v1',JSON.stringify({version:1,weeks:{},lastSeenW
 | Same week reopen | `?clock=2026-11-18T09:00` after seeding W47 | no morning |
 | Live Sunday to Monday | `?clock=2026-11-15T23:59:50` and wait ~40 s | morning starts by itself (check runs every 30 s) |
 | Morning frame by frame | `?morning=1&at=3000` (change `at`; `&leave=9500&at=14000` for the sunset) | frozen frame; `&at=0&live=1` plays it with working controls |
+| Smart frame cap | `?dev=1&demo=1&cap=on` (or `off`; `&slow=8` makes each render cost 8 ms) | `ns.renders()` over 1 s while something animates; `ns.pace()` shows the pacer state |
 | Past weeks as constellations | `?weeks=6&t=12` | faint archived shapes at the top |
 | Reload while the morning plays | reload during the sunrise or the hold | it plays again (morningDue survives until the sunset starts) |
 | Background tab | open the URL in a background tab, wait 10 s, switch to it | nothing plays while hidden; it plays right after you switch |

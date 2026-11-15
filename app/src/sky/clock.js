@@ -1,6 +1,6 @@
 /* clock.js — sky time, wall clock, time-of-day mood, lunar phase, ISO weeks. */
 import { clamp01, sm } from '../math.js';
-import { C, FLAGS, TIME } from '../tokens.js';
+import { C, FLAGS, TIME, FRAMECAP } from '../tokens.js';
 import { GW, SH, LM, SR, SG, SB, SBR, SBG, SBB, AGR, AGG, AGB, PROF, onSkyReset } from '../framebuffer.js';
 
 export let T = 0;                                        // sky time, seconds
@@ -125,3 +125,29 @@ export function moodUpdate() {
 }
 export function resetClockCache() { wc.T = -99; moodKey = ''; }
 onSkyReset(() => { resetClockCache(); });
+
+/* smart frame cap: a pure pacer. Fed one active frame at a time (rafMs = gap since the last RAF, workMs = render cost, or -1 when the frame was skipped).
+   interval follows the display (quick down, very slow up, so a struggling device does not look like a slow display); load and slow are smoothed over FRAMECAP.window frames. */
+export const PACE0 = { interval: 0, load: 0, slow: 0, capped: false, calm: 0, n: 0 };
+export function pace(s, rafMs, workMs) {
+  if (!(rafMs > 0) || rafMs > 250) return s;                       // first frame or a stall (tab switch): not a sample
+  const a = 1 / FRAMECAP.window;
+  const first = s.interval === 0;
+  const interval = first ? rafMs : s.interval + (rafMs - s.interval) * (rafMs < s.interval ? .2 : .01);
+  const late = !first && rafMs > interval * 1.5 ? 1 : 0;
+  const load = workMs < 0 ? s.load : (s.n === 0 ? workMs : s.load + (workMs - s.load) * a);
+  const slow = s.slow + (late - s.slow) * a;
+  const n = s.n + 1;
+  const fast = interval < FRAMECAP.fastMs;
+  let capped = s.capped, calm = s.calm;
+  if (!fast) { capped = false; calm = 0; }
+  else if (!capped) {
+    calm = 0;
+    if (n >= FRAMECAP.window && (load > FRAMECAP.busy * interval || slow > FRAMECAP.lateShare)) { capped = true; }
+  } else {
+    const easy = !late && load < FRAMECAP.free * interval && slow < FRAMECAP.lateShare / 2;
+    calm = easy ? calm + rafMs : 0;
+    if (calm >= FRAMECAP.calmMs) return { interval, load: 0, slow: 0, capped: false, calm: 0, n: 0 };
+  }
+  return { interval, load, slow, capped, calm, n };
+}

@@ -219,6 +219,8 @@ export function installHooks(a) {
     },
     gl: { active: glActive, lose: glLose },
     selfTest() { return selfTest(); },
+    pace() { return api.pace(); },                                  // the smart frame cap state (sky/clock.js pace)
+    renders() { return window.__nsRenders || 0; },
     typeTrace(str) {
       const out = []; ns.key('n');
       for (const ch of str) { ns.key(ch === ' ' ? 'Space' : ch); ns.advance(170); const g = stars[GHI]; out.push([bar.text.length, +g.ghA.toFixed(2), g.gx, g.gy].join(':')); }

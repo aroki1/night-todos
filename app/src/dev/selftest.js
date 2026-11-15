@@ -1,14 +1,14 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
 import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
 import { newThought, hazeSlots, ageText, reviveSaid, thoughtDue, pickDue, afterAsk, thoughtMayCome } from '../model/thoughts.js';
-import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
+import { pace, PACE0, fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize, isUrgent, stepsDoneBy, R, CORE, sameTag, starTag, nearestDoneIn } from '../model/store.js';
 import { tagPullScore, tagSuffix } from '../model/placement.js';
 import { SPR } from '../sky/components.js';
 import { shouldStartMorning, isPresent, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
-import { MORNING, THOUGHT, SIZE, PLACE, PRACTICE } from '../tokens.js';
+import { FRAMECAP, MORNING, THOUGHT, SIZE, PLACE, PRACTICE } from '../tokens.js';
 import { dayKey, prevDayKey, canMark, toggleDay, weekDots, weekCount, ringWeeks, practiceLine, practiceRows, canCreate } from '../model/practices.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
@@ -228,6 +228,19 @@ export function selfTest() {
   const rs1 = resyncClock(1e12 + 60000), w1 = wall(T), rs2 = resyncClock(1e12 + 61000);
   setClockBase(cb0);
   ok(rs1 && Math.abs(w1 - (1e12 + 60000)) < 1 && !rs2, 'clock: resync after a 60 s gap, not within 2 s');
+  /* smart frame cap: pace() */
+  const runPace = (st, ms, work, frames, lateEvery = 0) => { for (let i = 0; i < frames; i++) st = pace(st, lateEvery && i % lateEvery === lateEvery - 1 ? ms * 2 : ms, work); return st; };
+  ok(!runPace(PACE0, 16.7, 40, 600).capped, 'pace: a 60 Hz display never caps, however slow');
+  ok(!runPace(PACE0, 8.33, 2, 600).capped, 'pace: 120 Hz with light work stays uncapped');
+  const pcap = runPace(PACE0, 8.33, 12, FRAMECAP.window + 5);
+  ok(pcap.capped, 'pace: 120 Hz with heavy work caps within the window');
+  ok(runPace(PACE0, 8.33, 2, 400, 3).capped, 'pace: late frames alone cap');
+  const p1 = pace(runPace(PACE0, 8.33, 2, 200), 8.33, 60);
+  ok(!p1.capped && !pace(p1, 60, 2).capped, 'pace: a single slow frame does not flip it');
+  const pc1 = runPace(pcap, 8.33, 2, Math.floor(FRAMECAP.calmMs / 8.33) - 40);
+  ok(pc1.capped, 'pace: calm for less than calmMs stays capped');
+  ok(!runPace(pcap, 8.33, 2, Math.ceil(FRAMECAP.calmMs / 8.33) + 120).capped, 'pace: calm for calmMs uncaps');
+  ok(runPace(pcap, 8.33, 12, 2000).capped, 'pace: stays capped while the work stays heavy');
 
   /* morning M5: every season has every field the drawing reads, its species have colours and labels, its life kinds have odds */
   { const S = MORNING.seasons, names = ['autumn', 'summer', 'spring', 'winter'], num = ['sunY', 'snow', 'bladeH', 'patchy', 'roll', 'mist', 'mistDy', 'glint', 'dew', 'blossom', 'sunR', 'halo'];

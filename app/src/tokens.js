@@ -197,6 +197,10 @@ export const TIME = {
 
 /* frame pacing (fps): active = something is moving or the user just touched it; idle = a calm sky drifting. Sky time T still advances every RAF. */
 export const FPS = { active: 60, idle: 15, morning: 30 };
+/* smart frame cap (sky/clock.js pace): on a display faster than fastMs^-1 (12.5 ms = 80 Hz) that cannot keep up, active rendering drops to FPS.active.
+   window: active frames judged (one smoothing window); busy: render work above this share of the display interval = not keeping up (0.8 x 8.3 ms = 6.7 ms at 120 Hz);
+   lateShare: share of late frames (RAF gap > 1.5 x interval) that also means it; free: work below this share of the interval = calm; calmMs: calm time before uncapping. */
+export const FRAMECAP = { fastMs: 12.5, window: 40, busy: 0.8, lateShare: 0.25, free: 0.45, calmMs: 8000 };
 
 /* sizes and budgets */
 /* urgency: a star goes amber when its remaining life fraction is low OR the absolute time left is short.
@@ -311,6 +315,8 @@ export const FLAGS = {
   at: Q.has('at') ? +Q.get('at') : null,
   t: Q.has('t') ? +Q.get('t') : 0,
   freeze: Q.get('freeze') === '1',
+  cap: Q.get('cap'),                          // dev: cap=on|off forces the smart frame cap (memory only)
+  slow: Q.has('slow') ? +Q.get('slow') : 0,   // dev: busy-wait this many ms inside each render
   reduced: Q.get('reduced') === '1',
   bench: Q.get('bench') === '1',
   frames: Q.has('frames') ? +Q.get('frames') : 120,

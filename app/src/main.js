@@ -1,7 +1,7 @@
 /* main.js — boot, geometry, the loop, resize and visibility. */
 import { FLAGS, FPS, TIME, isReduced, setReducedPref, LAYOUT, SIZE } from './tokens.js';
 import { initCanvas, configure, cv, GW, SH, ROWS, dpr, blit } from './framebuffer.js';
-import { setT, T, wall, clockTick, isoWeekKey, seedForWeek, weekLabel, resyncClock } from './sky/clock.js';
+import { setT, T, wall, clockTick, isoWeekKey, seedForWeek, weekLabel, resyncClock, pace, PACE0 } from './sky/clock.js';
 import { archivePast } from './model/week.js';
 import { setMorningScene, clearMorningScene, morningScene, morningNow, morningPhase, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
 import { makeSky } from './sky/sky.js';
@@ -22,7 +22,7 @@ import { notifyUrgent, notifyMissed, isTauri, loadStore, saveStore } from './pla
 import { moonSt } from './sky/moon.js';
 import * as pf from './stageprof.js';
 
-let raf = 0, lastTs = 0, lastRenderTs = -1e9, lastInput = -1e9, textReady = true, running = false, booted = false, sceneFrozen = false;
+let pacer = PACE0, raf = 0, lastTs = 0, lastRenderTs = -1e9, lastInput = -1e9, textReady = true, running = false, booted = false, sceneFrozen = false;
 const missedAnnounced = new Set();
 const INPUT_ACTIVE_MS = 300;   // after a pointer move or key press the loop renders at the active rate for this long
 
@@ -49,7 +49,10 @@ function applyGeometry() {
 }
 
 function renderNow(force) {
-  if (FLAGS.dev) window.__nsRenders = (window.__nsRenders || 0) + 1;     // dev only: render counter for perf checks
+  if (FLAGS.dev) {
+    window.__nsRenders = (window.__nsRenders || 0) + 1;     // dev only: render counter for perf checks
+    if (FLAGS.slow > 0) { const e = performance.now() + FLAGS.slow; while (performance.now() < e); }   // dev only: ?slow=ms makes every render cost that much
+  }
   if (pf.on) pf.begin();
   setFrozenForce(!!force);
   barTick();
@@ -118,16 +121,21 @@ function loop(ts) {
   /* active: every RAF (the display rate). idle: at most FPS.idle renders/s; the still morning hold runs at FPS.morning unless reduced motion.
      3 ms of slack so a 60 Hz display gets 4 frames, not 5 */
   const fps = morningPhase() === 'hold' && !isReduced() ? FPS.morning : FPS.idle;
+  const pacing = active && !isReduced();
+  const capped = FLAGS.dev && FLAGS.cap ? FLAGS.cap === 'on' : pacer.capped;
   if (!active && ts - lastRenderTs < 1000 / fps - 3) return;
+  if (pacing && capped && ts - lastRenderTs < 1000 / FPS.active - 3) { pacer = pace(pacer, raw, -1); return; }   // capped: a steady 60, not an uneven 70-110
   lastRenderTs = ts;
   setCloudPace(active ? 0 : 2);
+  const w0 = performance.now();
   renderNow(false);
+  if (pacing) pacer = pace(pacer, raw, performance.now() - w0);
   desktopNotify();
 }
 
 function startLoop() {
   if (running) return;
-  running = true; lastTs = 0; lastRenderTs = -1e9;
+  running = true; lastTs = 0; lastRenderTs = -1e9; pacer = PACE0;
   raf = requestAnimationFrame(loop);
 }
 function stopLoop() { running = false; cancelAnimationFrame(raf); }
@@ -155,6 +163,7 @@ const api = {
     if (doRender) renderNow(true);
   },
   stop() { stopLoop(); },
+  pace() { return pacer; },
   frame() { setCloudPace(0); renderNow(false); },                       // dev: one active-rate frame (what the loop does when not idle), for ns.profRun
   prepareCompose() { prepare(); compose(); },
   showMorning(cfg, o = {}) {
@@ -380,13 +389,13 @@ async function boot() {
   window.addEventListener('resize', () => {
     clearTimeout(window.__nsResize);
     window.__nsResize = setTimeout(() => {
-      applyGeometry();
+      applyGeometry(); pacer = PACE0;
       if (!FLAGS.freeze) startLoop();
       renderNow(true);
     }, 150);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { stopLoop(); flushSave(); }
+    if (document.hidden) { pacer = PACE0; stopLoop(); flushSave(); }
     else if (!FLAGS.freeze) { lastTs = 0; shownAt = performance.now(); startLoop(); thoughtTick(performance.now()); }
   });
   window.addEventListener('focus', () => { shownAt = performance.now(); if (!FLAGS.freeze) thoughtTick(performance.now()); });
