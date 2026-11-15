@@ -77,7 +77,7 @@ On touch devices `#bar-input` lies over the bar (rect set in `ui/bar.js`). Deskt
 `finish`, `urgent`, `overlap`, `undo`, `labels&demo=1&hover=hm%20one-pager`, `occlusion`, `expire`, `steps`, `crossfade`. Without `at` some start at 0 and look empty; scrub `at=500…6000`.
 
 ## 5. Sky
-`?demo=1&freeze=1&t=12&clock=2026-11-13T03:00` (also 07:00, 12:00, 18:30, 22:00): mood by time of day. Moon: `clock=2026-11-09T23:00` (new) vs `2026-11-24T23:00` (full). `seed=N` for other skies. `gl=0` = 2D canvas path.
+`?demo=1&freeze=1&t=12&clock=2026-11-13T03:00` (also 07:00, 12:00, 18:30, 22:00): mood by time of day. Moon: `clock=2026-11-09T23:00` (new) vs `2026-11-24T23:00` (full). `seed=N` for other skies. `gl=0` = 2D canvas path. `gpuclouds=0` = the cloud field on the CPU (default is the GPU when WebGL2 + float target allow; `ns.cloudsPath()` says which).
 
 ## 6. Sizes
 Resize the window or DevTools device mode: 390x800 (phone), 320x480, 1900x600. Check label clipping at the right edge and the bar.

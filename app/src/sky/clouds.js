@@ -12,7 +12,7 @@ const TW = 96, TH = 48;
 const mkTabs = () => [0, 1, 2, 3].map(() => ({ d: new Float32Array(TW * TH), x0: 0, y0: 0 }));
 const ctabs = [0, 1, 2].map(mkTabs);
 let cloudT = -9, cycT = 0, cycRow = HH, upRow = 0;
-let gst = 0, gup = 0, gcyc = 0;      // ?gpuclouds=1 live state: 0 idle, 1 read in flight, 2 upsampling hr into CRn
+let gst = 0, gup = 0, gcyc = 0;      // GPU path live state: 0 idle, 1 read in flight, 2 upsampling hr into CRn
 
 /* live path only (the exact path above stays as it was): the slow layers w (scale 420) and m (scale 600) are keyframed every KP s of sky time and
    interpolated; keyframe C (the next one, tC = tB + KP) is computed ahead over the slices, so nothing lags. CRn/CGn/CBn double-buffer the upsample. */

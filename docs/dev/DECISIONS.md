@@ -11,3 +11,4 @@
 - 2026-11-14: The selftest count is 136, not 139 (the earlier number was a miscount).
 - 2026-11-14: The ritual dev scene is frozen by default, so a shot is a pure function of T.
 - 2026-11-14: Goldens store SHA-256 hashes, not PNGs. 5 old import-direction violations are allowlisted (`KNOWN` in `scripts/verify.mjs`); fix or remove an entry when you touch the edge.
+- 2026-11-15: The cloud field runs on the GPU (WebGL2 + float target; CPU fallback, ?gpuclouds=0). Clouds 3.2 -> 0.9 ms desktop, 4.0 -> 1.1 ms phone (CPU x4). The CPU makes the noise lattice, so the look matches to 1/255.

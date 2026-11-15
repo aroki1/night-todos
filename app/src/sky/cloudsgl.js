@@ -1,4 +1,4 @@
-/* sky/cloudsgl.js — the cloud field on the GPU (experiment, ?gpuclouds=1). Same formula as cloudRows in clouds.js, one half-res grid per refresh.
+/* sky/cloudsgl.js — the cloud field on the GPU (default; ?gpuclouds=0 forces the CPU path). Same formula as cloudRows in clouds.js, one half-res grid per refresh.
    The noise hash stays in JS doubles: the CPU fills one lattice table per field and octave (12 tables, one R32F atlas), the shader only interpolates.
    Nothing here sees absolute coordinates: the table origin and the fraction of cell 0 are computed in doubles and passed as uniforms.
    Uses the WebGL2 context of framebuffer.js (never a second canvas) and restores every GL state it touches. Any failure is permanent: ok() turns false and clouds.js uses the CPU. */
@@ -26,8 +26,9 @@ let tabs = [], org = new Float32Array(2 * NT), dd = new Float32Array(2 * NT), tb
 export const stats = { tableBuilds: 0, tableTexels: 0, tableMs: 0, renders: 0 };
 
 export const why = () => dead;
-export function resize(hw, hh) { HW = Math.max(1, hw); HH = Math.max(1, hh); dirty = true; gen++; fence = null; }     // sync objects die with the old buffers
-export function drop() { gen++; fence = null; }
+export function resize(hw, hh) { HW = Math.max(1, hw); HH = Math.max(1, hh); dirty = true; gen++; dropFence(); }     // sync objects die with the old buffers
+export function drop() { gen++; dropFence(); }
+function dropFence() { if (fence && gl) { try { gl.deleteSync(fence); } catch (e) { /* context gone */ } } fence = null; }
 
 function fail(msg) { dead = msg; gl = null; return false; }
 function sh(type, src) { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; }
@@ -143,12 +144,12 @@ export function readStart() {
   const p = bindFb();
   gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.readPixels(0, 0, HW, HH, gl.RGBA, gl.FLOAT, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
   gl.bindFramebuffer(gl.FRAMEBUFFER, p);
-  fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); fenceGen = gen; gl.flush();
+  dropFence(); fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); fenceGen = gen; gl.flush();
   return !!fence;
 }
 /* 0 = not ready, 1 = packed into dst, -1 = nothing in flight or failed (caller restarts) */
 export function readPoll(dst) {
-  if (!ok() || !fence || fenceGen !== gen) { fence = null; return -1; }
+  if (!ok() || !fence || fenceGen !== gen) { dropFence(); return -1; }
   const r = gl.clientWaitSync(fence, 0, 0);
   if (r === gl.TIMEOUT_EXPIRED) return 0;
   gl.deleteSync(fence); fence = null;

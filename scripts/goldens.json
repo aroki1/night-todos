@@ -1,7 +1,7 @@
 {
   "note": "Written by `npm run verify -- --update-goldens` (hashes) and `--update-perf` (budget). SHA-256 of PNG screenshots (dev scenes, clock pinned, GPU on) and the perf budget in ms (1.5x the measured median CPU frame of ns.profRun at d2).",
   "hashes": {
-    "steps@d125": "431727cd6bf79bfffe94259a2d636e97c128778042bd3f89736d9a2c185a3ef5",
+    "steps@d125": "2a590c199737f5624b9fcbd445a59d85a9078b45df3e1a899843e9301767c20e",
     "finish@d125": "0ab89791ec6774cfe8cfcd534db4fceedef2c5e8d5b6707cf0e62b0ba6d1a8f0",
     "labels@d125": "56eafb84a29f2f054360edff5942bfb4ecee12ff4eb6af32917689ab5ac678f4",
     "groups@d125": "dd69036b461b78b80e004a0df406e45dc7ab41c9d95da22346e0fdecff584e65",
@@ -28,10 +28,10 @@
     "finish@ph": "76f1c0d83b52ba90818fa4a5ce6e7f684f27024dc439caa25e8b78ac169cd051",
     "labels@ph": "17fecaa108045db5cae7f0931def2b9afda2a5ac95a43fd26b285795b457745e",
     "groups@ph": "4b3d91e05f0008c0b2900f82c943529c54fe1e28d2f1765133b4ae898395bacf",
-    "ambient@ph": "bbc881942b4ecb0f0165f6a9181f8a44ec180061bde60ccc7d7a6c2cea9ce7cd",
-    "onboarding@ph": "cb8457ad1112a31be95831797b59b378c9e5d4c23e7165e095c344e3d28f47d2",
-    "help@ph": "e3868ffb98de1c1340f849cb6cb66ef33049e65b5d9a972577aeaa4b9dbb4c49",
-    "hints@ph": "d20e223d09f67c52e4490f78059ea7e88eb5c3c190f535699594686da95c7dfa",
+    "ambient@ph": "6029fdfeceb01279815ac3888e6bfb78e66a7627c53221e6dd0b77a72b76e4d7",
+    "onboarding@ph": "e2d6712bb67cf6306363fdb0ccbfbbd1c60e220aec821951ab782a7a411c8f9f",
+    "help@ph": "58146456ac08be0d7fc4706f62985a4ea91f2e9b6ddf7372c82a3f20fdbac80e",
+    "hints@ph": "91856f602ada43f0c244a26775318615521d674c415cc2aae1fd28620a45fd01",
     "morning@ph": "8bd57e412655a2d02cb2356bebce6316990c44817da0e3b17367ffc706da0ba0",
     "morningSummer@ph": "e57e4188127304b6c986a83e6a24bb8d1342ac4a5b73519f7d68609b76081cc2",
     "morningWinter@ph": "ce6d42d6191fce386992e2083574247fb4a208c4d6377d34bda706bbb28dbeb0",
@@ -40,13 +40,13 @@
     "morningRise@ph": "5c1ec6cbb7855a1ee7a36ef2bbe6db2b0fbfe49fe9c5d1fce9850cc53f9eacbd",
     "morningSet@ph": "73102fd2dbf272f6c792b7db66e1e0d92fe57e4520c03d5b936a4667e773eee8",
     "morningLabel@ph": "e17f6fb2a3a339a346d6fd3bd21f1c25b11f330681499730c8b6b25b560d0ef0",
-    "thoughts@ph": "a3119a7862036125ed6fcc56656a5d836c137b41e924701ebc092190a2e58556",
-    "thoughtAsk@ph": "a4d627fc7ba0843ea523c77e76f314d535e9a1b07cafe931dc1f591c879cb85e",
+    "thoughts@ph": "a318d5bf5f3fbf5a263c563353b87b96e18a3361032d2f90fff2878fdf7fdfdb",
+    "thoughtAsk@ph": "05362db25408196c708d5d634cb0ac0e52c43ddaf315ab4ef622feb1715b256c",
     "condense@ph": "fa8a1a814f675a72478161e89e0d46ba237eddc9171913776e2b601d1f73436c",
-    "practices@ph": "f9d09999d763aac7045699f34b7c7a36724c1ceffe361fba29a6dd483919261c",
-    "practiceRing@ph": "fe40d53a7bbb3fdf406204a781caf0efbc400ee2d64ba3206c0d3dbfae29db62",
+    "practices@ph": "4acd68032044c0e0879bff4f9a9cd6a38628d130c5deae94b49e11f979cdbb6e",
+    "practiceRing@ph": "62f5e70b175860cd84715342071f7797dbda819184475bc16c8eb0af8efa8a65",
     "practiceFlash@ph": "53652a315dd8f22f3ba15fcda2fe7169e50fe2fdeb0871938653705f36201257",
-    "barhint@ph": "8fb86e940a2030fec6069963df733f7403521cec7ae4c5608ef67a8d4e271613"
+    "barhint@ph": "8268fc768b7419575bfd043a090d9d9004ec18faaa5148399833f1093f381cba"
   },
   "perf": {
     "measuredMedianMs": 5,
