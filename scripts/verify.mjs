@@ -33,7 +33,7 @@ function runNode(script, args = []) {
 /* layer of a file under app/src, (a module may only import from its own layer or below; lower number = lower layer) */
 function layer(rel) {
   if (rel === 'tokens.js' || rel === 'math.js' || rel === 'stageprof.js') return 0;
-  if (rel === 'framebuffer.js' || rel === 'sky/clock.js') return 1;
+  if (rel === 'framebuffer.js' || rel === 'draw.js' || rel === 'sky/clock.js') return 1;
   if (rel === 'model/timeline.js') return 4;
   if (rel.startsWith('sky/') || rel.startsWith('model/')) return 2;
   if (rel.startsWith('choreo/')) return 3;

@@ -26,6 +26,7 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 - `app/src/tokens.js` — colours, sizes, timings, and URL flags.
 - `app/src/math.js` — deterministic helpers, easing, noise, and colour math.
 - `app/src/framebuffer.js` — grain buffers, drawing primitives, and presentation.
+- `app/src/draw.js` — the drawing API over the grain grid: `shade`, `fillBelow`, `points` with `ADD`/`OVER`/`SET`.
 - `app/src/platform.js` — browser/Tauri persistence and notifications.
 - `app/src/stageprof.js` — development-only stage timings.
 
