@@ -17,7 +17,7 @@ const GOLDENS = path.join(ROOT, 'scripts', 'goldens.json');
 const UPDATE = process.argv.includes('--update-goldens');   // rewrites the hashes only; the perf budget is kept
 const UPDATE_PERF = process.argv.includes('--update-perf');   // re-measures the perf budget (also writes hashes)
 const T0 = Date.now();
-const PORT = 5173;
+const PORT = +process.env.NS_PORT || 5173;
 
 function fail(lines) {
   console.log('verify FAILED\n' + [].concat(lines).join('\n'));

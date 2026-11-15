@@ -53,6 +53,7 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 - `app/src/sky/clock.js` — wall and sky time, formatting, ISO weeks, and `pace` (the smart frame cap).
 - `app/src/sky/sky.js` — seeded palettes, layers, and sky crossfades.
 - `app/src/sky/clouds.js` — cached cloud layers.
+- `app/src/sky/cloudsgl.js` — the cloud field on the GPU (`?gpuclouds=1`, experiment).
 - `app/src/sky/components.js` — background star types.
 - `app/src/sky/events.js` — aurora, comet, satellites, and meteors.
 - `app/src/sky/moon.js` — real-phase moon.

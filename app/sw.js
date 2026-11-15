@@ -3,7 +3,7 @@
    and falls back to the network on a miss; individual responses are never written into the cache, so old and new modules can never mix.
    Updates come from the browser re-checking sw.js: VERSION changes whenever any shell file changes, the new worker precaches a complete new set, and the next open uses it.
    The page is never reloaded. All paths relative (works under a subpath). */
-const VERSION = 'ns-7b0d3c385f';
+const VERSION = 'ns-d85ea63c76';
 const SHELL = [
   './',
   './fonts/IBMPlexMono-Medium.woff2',
@@ -45,6 +45,7 @@ const SHELL = [
   './src/render/text.js',
   './src/sky/clock.js',
   './src/sky/clouds.js',
+  './src/sky/cloudsgl.js',
   './src/sky/components.js',
   './src/sky/day.js',
   './src/sky/events.js',
