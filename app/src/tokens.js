@@ -204,6 +204,10 @@ export const FPS = { active: 60, idle: 15, morning: 30 };
    an hour is the point where "later today" becomes "now" for a deadline todo. */
 export const URGENT = { life: .25, leftMs: 60 * 60 * 1000 };
 
+/* placing a new tagged star: the pull toward the tag's centroid. tagRadius is a share of GW; tagPull is the cost per grain
+   outside that radius (same units as rectScore, so a far candidate pays roughly one star-label overlap). */
+export const PLACE = { tagPull: 40, tagRadius: .16 };
+
 export const SIZE = {
   labelFont: 12, caretW: 6, caretH: 18,
   starR: 3, starRBig: 7, starCore: 1, starCoreBig: 3,   // arm radius and core radius (grains); a big star reads about twice a normal one
@@ -297,6 +301,7 @@ export const FLAGS = {
   steps: Q.get('steps'),                      // dev: steps=1 puts steps on the demo tasks
   thoughts: Q.has('thoughts') ? +Q.get('thoughts') : null,   // dev: ?thoughts=n adds n synthetic thoughts in memory
   useMs: Q.has('useMs') ? +Q.get('useMs') : null,             // dev: the app-use clock, in ms
+  tags: Q.get('tags') === '1',                                // dev: give the demo stars tags (ns.tagDemo)
   morning: Q.get('morning') === '1',          // dev: show the morning hold frame (M1)
   season: Q.get('season'),                     // dev: winter | spring | summer | autumn
   gap: Q.get('gap'),                           // dev: paper | mosaic

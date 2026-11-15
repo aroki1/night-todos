@@ -185,7 +185,7 @@ export function barTick() {
   if (bar.text === '' && bar.gCommit < 0) bar.gpos = null;
   if (bar.gCommit >= 0 && T - bar.gCommit > .95) { bar.gCommit = -1; bar.gOn = false; bar.gA0 = 0; bar.gT0 = T; bar.gpos = null; }
   if (bar.gCommit < 0 && want !== bar.gOn) { bar.gA0 = ghostAlphaNow(); bar.gOn = want; bar.gT0 = T; }
-  if (want && !bar.gpos) bar.gpos = placeNew(bar.title, bar.ctr, bar.big);
+  if (want && !bar.gpos) bar.gpos = placeNew(bar.title, bar.ctr, bar.big, bar.tag);
   const g = stars[GHI]; g.ghA = ghostAlphaNow(); g.n = bar.title; g.big = bar.big ? 1 : 0; g.life = 1;
   if (bar.gpos) { g.gx = bar.gpos.gx; g.gy = bar.gpos.gy; }
 }
@@ -301,7 +301,7 @@ function submitWhen() {
     return true;
   }
   const big = w.big || !!th.big;                                                    // a `!` on the thought or on the answer
-  const pos = placeNew(th.text, bar.ctr, big);
+  const pos = placeNew(th.text, bar.ctr, big, th.tag);
   const slot = hazeSlots(liveThoughts(), GW).find(p => p.id === th.id);            // where its haze is now: the condense starts there
   const si = doCreate(th.text, pos.gx, pos.gy, big, w.date.getTime(), T, w.steps, th.tag);
   if (si < 0) return false;
@@ -342,7 +342,7 @@ export function submitBar() {
   if (barKind(bar.text, wall(T)) === 'thought') return keepThought();
   const r = bar.res;
   if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
-  const pos = bar.gpos || placeNew(bar.title, bar.ctr, bar.big);
+  const pos = bar.gpos || placeNew(bar.title, bar.ctr, bar.big, bar.tag);
   doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps, bar.tag);
   bar.ctr++; bar.out = { text: bar.text, t0: T }; bar.gpos = pos; bar.gCommit = T; bar.gOn = true;
   bar.text = ''; bar.caret = 0; if (input) input.value = '';
@@ -359,8 +359,8 @@ function submitMorning(mp) {
     const r = bar.res;
     if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
     morningCtl.leave('');
-    const pos = placeNew(bar.title, bar.ctr, bar.big);
-    doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T + TIME.morning.createAt / 1000, bar.steps);
+    const pos = placeNew(bar.title, bar.ctr, bar.big, bar.tag);
+    doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T + TIME.morning.createAt / 1000, bar.steps, bar.tag);
     bar.ctr++;
   } else morningCtl.leave(m.kind === 'name' ? m.name : '');
   bar.out = { text: bar.text, t0: T }; bar.text = ''; bar.caret = 0; if (input) input.value = '';

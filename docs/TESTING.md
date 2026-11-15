@@ -42,6 +42,7 @@ Bar syntax: `title, deadline / step / step`, `!` at the end = big star, `#tag` a
 - A thought comes back after 2 h of app use: `?thoughts=3`, then in the console `ns.useMs(7.3e6)`. One haze is asked (`when? · <age> ago · …`, the others dim), the bar is not focused; click the bar and answer, or wait 60 s for `ignored`. `ns.askNow()` forces the pick; `ns.thoughtState()` shows `step`, `askedAt`, `askUse`.
 - `remind +2h`: write a thought, answer `remind +2h`; at that wall time it comes back even inside the 1 h gate. Early answers step forward by the calendar gaps (`1 d, 3 d, 7 d, 14 d`).
 - After saying a thought, its star is selected in step mode when the condense ends: the bar says `first step? · esc to skip` (focused on desktop, not on touch).
+- Tags group and link: write `essay #study, fri`; a finished tagged star links only to finished stars of its tag, and a new `#study` star lands near the study group. Hover a tagged star to see `#study` at the group's centre. Demo: `?scene=labels&demo=1&tags=1&hover=hm%20one-pager`. Finish 2+ tags in a week: the morning adds a line like `study 5 · work 1 · other 2`.
 - Create, finish (second tap), undo, add/finish steps, drag steps (`?scene=steps`, `&live=1`).
 - Reload after creating: tasks stay.
 - Corrupt storage: `localStorage.setItem('night-sky:v1','{bad')` and reload: app starts empty, a `:corrupt:` backup key appears.

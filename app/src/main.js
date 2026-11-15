@@ -11,7 +11,7 @@ import { shouldStartMorning, isPresent, nextDue, nextAway, seasonOf, weekSummary
 import { pickDue, thoughtMayCome } from './model/thoughts.js';
 import { doFinish, doUndo, pushMorning, clearMorning } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit, enterThoughtWhen, leaveThoughtWhen } from './ui/bar.js';
-import { drawLabels, drawPastHover } from './render/text.js';
+import { drawLabels, drawGroupTag, drawPastHover } from './render/text.js';
 import { setGhostInfo } from './model/placement.js';
 import { bindKeys, finishFocused } from './ui/keys.js';
 import { bindPointer, toUnits, hitStar } from './ui/pointer.js';
@@ -59,7 +59,7 @@ function renderNow(force) {
   if (textReady) {                                                                   // no canvas text until the fonts are in
     if (morningScene()) { drawLabelsFaded(morningLabelK()); if (pf.on) { pf.mark('text.labels'); pf.mark('text.pastHover'); } }
     else {
-      drawLabels(); if (pf.on) pf.mark('text.labels');
+      drawLabels(); drawGroupTag(); if (pf.on) pf.mark('text.labels');
       drawPastHover(); if (pf.on) pf.mark('text.pastHover');
     }
     drawMorningText(); if (pf.on) pf.mark('text.morning');
@@ -216,6 +216,7 @@ function applyScenes() {
     ns.skySwap(FLAGS.devSeed || 11, tFreeze);
     tFreeze += (at === null ? 450 : at) / 1000; freeze = true;
   }
+  if (FLAGS.tags) ns.tagDemo();                                                                                           // dev: ?tags=1 gives the demo stars tags
   if (new URLSearchParams(location.search).get('select')) ns.select(new URLSearchParams(location.search).get('select'));   // dev: ?select=<title> selects a star
   if (FLAGS.hover !== null) ns.hover(FLAGS.hover);
   if (FLAGS.script) { ns.script(FLAGS.script); document.documentElement.setAttribute('data-ready', '1'); return true; }

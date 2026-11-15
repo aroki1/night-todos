@@ -102,6 +102,7 @@ const SCENES = {
   steps: 'scene=steps',
   finish: 'scene=finish',
   labels: 'scene=labels&demo=1&hover=hm%20one-pager',   // demo=1 + hover: star labels and the hover frame are drawn, so TXT/label tokens are covered
+  groups: 'scene=labels&demo=1&tags=1&hover=hm%20one-pager',   // the tagged groups: same layout, plus the group's #tag line
   ambient: 'freeze=1&t=12',
   onboarding: { q: 'freeze=1&t=12', eval: 'ns.fillSteps(1,0,true)' },
   help: { q: 'freeze=1&t=12', eval: "ns.key('n');ns.type('/help');ns.key('Enter');document.documentElement.dataset.cmd" },

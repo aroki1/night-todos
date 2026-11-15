@@ -99,6 +99,13 @@ export function installHooks(a) {
     stepsAdd(name, text, atT) { return doStepAdd(findStar(name), text, atT); },
     stepsDelete(name, k, atT) { const i = findStar(name), s = stars[i]; return !!s && !!s.steps && !!s.steps[k] && doStepDelete(i, s.steps[k].id, atT); },
     stepsInfo() { return { stars: stars.filter(s => s.steps).map(s => [s.n, doneCount(s), s.steps.length, !!s.stepBehind, !!s.stepReady, nextIdx(s)]) }; },
+    /* dev: tags on the demo's own stars, never saved (?tags=1 calls this after demo=1) */
+    tagDemo() {
+      const map = { 'hm one-pager': 'study', 'os linux hw 3': 'study', 'patterns quiz prep': 'study', 'dp · knapsack + lis': 'work', 'mentor session notes': 'work' };
+      for (const s of stars) if (!s.gh) s.tag = map[s.n] || null;
+      api.render(true);
+      return stars.filter(s => s.tag).map(s => [s.n, s.tag]);
+    },
     /* dev: n live tasks with steps spread over the sky (for 48-star and timing checks); `steps` = steps per task */
     fillSteps(n, steps = 5, clear = false) {
       const now = wall(T), r = rng(77);

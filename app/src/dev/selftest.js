@@ -3,11 +3,12 @@ import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../mode
 import { newThought, hazeSlots, ageText, reviveSaid, thoughtDue, pickDue, afterAsk, thoughtMayCome } from '../model/thoughts.js';
 import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
-import { sanitize, isUrgent, stepsDoneBy, R, CORE } from '../model/store.js';
+import { sanitize, isUrgent, stepsDoneBy, R, CORE, sameTag, starTag, nearestDoneIn } from '../model/store.js';
+import { tagPullScore, tagSuffix } from '../model/placement.js';
 import { SPR } from '../sky/components.js';
 import { shouldStartMorning, isPresent, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
-import { MORNING, THOUGHT, SIZE } from '../tokens.js';
+import { MORNING, THOUGHT, SIZE, PLACE } from '../tokens.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { condenseState, condenseMs } from '../choreo/condense.js';
@@ -244,7 +245,10 @@ export function selfTest() {
     mt('l', { x: .2, deadline: nowM + Dm }),
     mt('f', { createdAt: W + 9 * Dm, deadline: nowM + Dm })
   ];
-  ok(deepEq(weekSummary(MT, '2026-W45', nowM), { done: 3, missed: 1, carried: 1, steps: 11 }), 'morning: week summary');
+  ok(deepEq(weekSummary(MT, '2026-W45', nowM), { done: 3, missed: 1, carried: 1, steps: 11, tags: { '': 3 } }), 'morning: week summary');
+  const WT = [mt('a', { doneAt: W + Dm, week: '2026-W45', tag: 'study' }), mt('b', { doneAt: W + Dm, week: '2026-W45', tag: 'work' }),
+    mt('c', { doneAt: W + Dm, week: '2026-W45' }), mt('d', { doneAt: W + Dm, week: '2026-W45', tag: 'study' })];
+  ok(deepEq(weekSummary(WT, '2026-W45', nowM).tags, { study: 2, work: 1, '': 1 }), 'morning: done tasks counted by tag, untagged as empty');
   const FL = flowerList(MT, '2026-W45', nowM, .05);
   ok(FL.map(f => f.id).join() === 'b,a,c,l' && FL.map(f => f.bud).join() === 'false,false,false,true', 'morning: flowers by doneAt, then buds; missed and other weeks left out');
   const fa = FL.find(f => f.id === 'a');
@@ -255,6 +259,11 @@ export function selfTest() {
   ok(summaryLines({ done: 0, missed: 2, carried: 3, steps: 0 }, '2026-W45').join('|') === 'week 45|nothing finished · 2 missed · 3 carry over', 'morning: nothing finished');
   ok(summaryLines({ done: 7, missed: 0, carried: 0, steps: 1 }, '2026-W45', 'moving day').join('|') === 'week 45 · moving day|7 done|1 step', 'morning: name and one step');
   ok(summaryLines({ done: 7, missed: 0, carried: 0, steps: 4 }, '2026-W45', '', 3).join('|') === 'week 45|3 weeks away', 'morning: away');
+  const TL = t => summaryLines({ done: 5, missed: 0, carried: 0, steps: 0, tags: t }, '2026-W45').join('|');
+  ok(TL({ study: 3, work: 2 }) === 'week 45|5 done|study 3 · work 2', 'morning: a tag line for two tags');
+  ok(TL({ study: 1, work: 3, '': 2 }) === 'week 45|5 done|work 3 · study 1 · other 2', 'morning: untagged is other, last');
+  ok(TL({ a: 6, b: 5, c: 4, d: 3, e: 2, '': 1 }) === 'week 45|5 done|a 6 · b 5 · c 4 · d 3 · +2', 'morning: at most four tags, then +N');
+  ok(TL({ study: 4 }) === 'week 45|5 done' && summaryLines({ done: 5, missed: 0, carried: 0, steps: 0, tags: { study: 3, work: 2 } }, '2026-W45', '', 3).join('|') === 'week 45|3 weeks away', 'morning: one tag or an away week has no tag line');
 
   /* morning M2: the timeline, the controls, reduced motion, name or task, week entries */
   const ms0 = morningState(0, [], false);
@@ -381,5 +390,29 @@ export function selfTest() {
   const okP = { visible: true, focused: true, busy: false, barText: false, sinceInput: 5000, sinceShown: 99999 };
   ok(isPresent(okP) && !isPresent(Object.assign({}, okP, { barText: true })) && !isPresent(Object.assign({}, okP, { busy: true })), 'presence: shared idle/shown rule; text or busy blocks it');
   ok(thoughtDue(tb('d', { remindAt: nw }), nw, 0) && !thoughtDue(tb('d', { saidAt: nw - 1 }), nw, 1e9), 'back: said thoughts are never due');
+
+  /* groups by tag (L3): same-tag links, the placement pull, the morning tag line, the snapshot */
+  ok(sameTag('study', 'study') && !sameTag('study', 'work') && sameTag(null, undefined) && sameTag('', null), 'tag: missing tags are the one untagged value');
+  const nd = [
+    { gx: 10, gy: 10, done: 1, task: { tag: 'study' } },
+    { gx: 13, gy: 10, done: 1, task: {} },
+    { gx: 12, gy: 10, done: 0, task: { tag: 'study' } },
+    { gx: 30, gy: 10, done: 1, task: { tag: 'work' } }
+  ];
+  ok(nearestDoneIn(nd, 2) === 0, 'tag: a tagged star links to the nearest done of its tag, not the closer untagged one');
+  const nd2 = [{ gx: 10, gy: 10, done: 1, task: { tag: 'study' } }, { gx: 14, gy: 10, done: 0, task: {} }, { gx: 20, gy: 10, done: 1, task: {} }];
+  ok(nearestDoneIn(nd2, 1) === 2, 'tag: an untagged star links only to untagged done stars');
+  const nd3 = [{ gx: 10, gy: 10, done: 1, task: { tag: 'study' } }, { gx: 14, gy: 10, done: 0, task: { tag: 'work' } }];
+  ok(nearestDoneIn(nd3, 1) === null && nearestDoneIn([{ gx: 0, gy: 0, done: 0, tag: 'x' }, { gx: 5, gy: 0, done: 1, tag: 'x' }], 0) === 1, 'tag: no same-tag done is null; a dev star tag counts');
+  ok(starTag({ task: { tag: 'study' } }) === 'study' && starTag({ tag: 'work' }) === 'work' && starTag({}) === '', 'tag: a task tag or a dev star tag');
+  ok(('sun 15 nov 19:00 · 10m' + tagSuffix('study')) === 'sun 15 nov 19:00 · 10m · #study' && tagSuffix('') === '' && tagSuffix(undefined) === '', 'tag: a full label line 2 carries the star tag, untagged adds nothing');
+  const cen = { gx: 100, gy: 100 }, rad = PLACE.tagRadius * 404;
+  ok(tagPullScore({ gx: 100 + rad - 2, gy: 100 }, cen, 404) === 0 && tagPullScore({ gx: 100 + rad + 10, gy: 100 }, cen, 404) > 0
+    && tagPullScore({ gx: 100 + rad + 20, gy: 100 }, cen, 404) > tagPullScore({ gx: 100 + rad + 10, gy: 100 }, cen, 404), 'tag: the placement pull is 0 inside the radius and grows outside');
+  const wgt = sanitize({ version: 1, tasks: [], weeks: { '2026-W45': { summary: { done: 1, missed: 0, carried: 0, steps: 0, tags: { study: 2, work: 1, '': 3 } } } } });
+  ok(deepEq(wgt.weeks['2026-W45'].summary.tags, { study: 2, work: 1, '': 3 }), 'store: the week summary keeps its tags');
+  const wbt = sanitize({ version: 1, tasks: [], weeks: { '2026-W45': { summary: { done: 1, missed: 0, carried: 0, steps: 0, tags: { 'bad tag': 1 } } } } });
+  const wbt2 = sanitize({ version: 1, tasks: [], weeks: { '2026-W45': { summary: { done: 1, missed: 0, carried: 0, steps: 0, tags: { study: -1 } } } } });
+  ok(!('tags' in wbt.weeks['2026-W45'].summary) && !('tags' in wbt2.weeks['2026-W45'].summary) && wbt.weeks['2026-W45'].summary.done === 1, 'store: bad tag counts are dropped, the summary stays');
   return { pass, fail, total: pass + fail, failed };
 }

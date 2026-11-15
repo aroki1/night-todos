@@ -149,15 +149,22 @@ export function syncStarPositions() {
   }
 }
 
-export function nearestDone(si) {
-  const s = stars[si]; let best = null, bd = 1e9;
-  for (let j = 0; j < NS; j++) {
-    if (j === si || !stars[j].done) continue;
-    const d = Math.hypot(stars[j].gx - s.gx, stars[j].gy - s.gy);
+/* a star's area of life: the task's tag; a dev demo star may carry its own. Missing / null / '' = untagged. */
+export const starTag = s => (s && s.task && s.task.tag) || (s && s.tag) || '';
+export const sameTag = (a, b) => (a || '') === (b || '');
+/* the nearest done star of the same tag. Untagged stars still link only to untagged ones. -> index | null */
+export function nearestDoneIn(list, si) {
+  const s = list[si]; if (!s) return null;
+  const tag = starTag(s); let best = null, bd = 1e9;
+  for (let j = 0; j < list.length; j++) {
+    const o = list[j];
+    if (j === si || !o || !o.done || !sameTag(starTag(o), tag)) continue;
+    const d = Math.hypot(o.gx - s.gx, o.gy - s.gy);
     if (d < bd) { bd = d; best = j; }
   }
   return best;
 }
+export function nearestDone(si) { return nearestDoneIn(stars, si); }
 export function edgeGeom(f, t) {
   const dx = t.gx - f.gx, dy = t.gy - f.gy, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
   const sA = R(f) + 1, sB = len - (R(t) + 1);
@@ -244,8 +251,20 @@ function sanitizeWeeks(w) {
     }
     if ('summary' in c) {
       const s = c.summary, okN = v => Number.isInteger(v) && v >= 0;
-      if (s && typeof s === 'object' && okN(s.done) && okN(s.missed) && okN(s.carried) && okN(s.steps)) c.summary = { done: s.done, missed: s.missed, carried: s.carried, steps: s.steps };
-      else delete c.summary;
+      if (s && typeof s === 'object' && okN(s.done) && okN(s.missed) && okN(s.carried) && okN(s.steps)) {
+        const sum = { done: s.done, missed: s.missed, carried: s.carried, steps: s.steps };
+        if ('tags' in s && s.tags && typeof s.tags === 'object' && !Array.isArray(s.tags)) {    // an old snapshot has no tags: no tag line
+          const tags = {}; let n = 0, okT = true;
+          for (const k of Object.keys(s.tags)) {
+            if (n >= 20) break;
+            const kk = k === '' ? '' : cleanTag(k);
+            if (kk === null || !okN(s.tags[k])) { okT = false; break; }
+            tags[kk] = s.tags[k]; n++;
+          }
+          if (okT) sum.tags = tags;
+        }
+        c.summary = sum;
+      } else delete c.summary;
     }
     out[k] = c;
   }

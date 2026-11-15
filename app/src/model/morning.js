@@ -36,15 +36,32 @@ function carries(t, weekKey, nowMs) {
   return !t.week && !t.doneAt && t.deadline > nowMs && Number.isFinite(t.createdAt) && weekDistance(isoWeekKey(t.createdAt), weekKey) >= 0;
 }
 
-/* the numbers of the morning: done and missed in that week, alive tasks carrying over, steps finished during that week */
+/* the numbers of the morning: done and missed in that week, alive tasks carrying over, steps finished during that week,
+   and the done tasks by tag (untagged is ''). */
 export function weekSummary(tasks, weekKey, nowMs) {
-  let done = 0, missed = 0, carried = 0, steps = 0;
+  let done = 0, missed = 0, carried = 0, steps = 0; const tags = {};
   for (const t of tasks) {
-    if (t.week === weekKey) { if (t.doneAt) done++; else missed++; }
+    if (t.week === weekKey) {
+      if (t.doneAt) { done++; const k = typeof t.tag === 'string' ? t.tag : ''; tags[k] = (tags[k] || 0) + 1; }
+      else missed++;
+    }
     else if (carries(t, weekKey, nowMs)) carried++;
     for (const s of t.steps || []) if (s && s.doneAt && isoWeekKey(s.doneAt) === weekKey) steps++;
   }
-  return { done, missed, carried, steps };
+  return { done, missed, carried, steps, tags };
+}
+
+/* the tag line: only for 2+ tags; the tags by count, highest first, untagged as `other` last, at most 4 entries then +N */
+function tagLine(tags) {
+  if (!tags || typeof tags !== 'object') return '';
+  const keys = Object.keys(tags);
+  if (keys.length < 2) return '';
+  const named = keys.filter(k => k !== '').sort((a, b) => tags[b] - tags[a] || (a < b ? -1 : a > b ? 1 : 0));
+  const rows = named.map(k => k + ' ' + tags[k]);
+  if (Object.prototype.hasOwnProperty.call(tags, '')) rows.push('other ' + tags['']);
+  if (!rows.length) return '';
+  const shown = rows.slice(0, 4);
+  return shown.join(' · ') + (rows.length > 4 ? ' · +' + (rows.length - 4) : '');
 }
 
 /* the title of a week: `week 46`, or `week 46 · <name>` when named */
@@ -68,6 +85,8 @@ export function summaryLines(sum, weekKey, name = '', away = 0) {
   if (sum.carried) parts.push(sum.carried + ' carry over');
   out.push(parts.join(' · '));
   if (sum.steps) out.push(sum.steps + (sum.steps === 1 ? ' step' : ' steps'));
+  const tl = tagLine(sum.tags);
+  if (tl) out.push(tl);
   return out;
 }
 

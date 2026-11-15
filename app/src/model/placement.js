@@ -1,9 +1,9 @@
 /* model/placement.js — label content, label placement with scoring + hysteresis, and the
    placement of a new star. All in grains; the screen never decides text positions. */
 import { rng, hstr, segDist, seg, ease, mixTo } from '../math.js';
-import { K, FONT, SIZE, FLAGS, STEPS } from '../tokens.js';
+import { K, FONT, SIZE, FLAGS, STEPS, PLACE } from '../tokens.js';
 import { ctx, GW, SH } from '../framebuffer.js';
-import { stars, NS, GHI, pres, Rb, edgeGeom as geom, isUrgent } from './store.js';
+import { stars, NS, GHI, pres, Rb, edgeGeom as geom, isUrgent, starTag } from './store.js';
 import { FS, US } from './timeline.js';
 import { edgeState } from '../choreo/finish.js';
 import { undoEdge } from '../choreo/undo.js';
@@ -57,6 +57,9 @@ export function wg(str, wt) {
   return w;
 }
 export function clearWidthCache() { widthCache.clear(); }
+
+/* the tag appended to a full label's second line: `sun 15 nov 19:00 · 10m` + ` · #study`; untagged adds nothing */
+export function tagSuffix(tag) { return tag ? ' · #' + tag : ''; }
 
 export function labelInfo(si) {
   const s = stars[si], L = lab[si], fk = hk[si], foc = focus === si;
@@ -113,10 +116,12 @@ export function labelInfo(si) {
   if (tapSelected && selIdx === si && !s.done && !s.miss && !s.gh && s.on) {
     t2 = stepsLive(s) ? doneCount(s) + '/' + s.steps.length + ' · tap again to finish' : 'tap again to finish'; c2 = K.dim; place2 = t2; l2vis = 1; a2 = 1;
   }
+  const tsuf = foc && t2 && !t3 && !s.gh && s.on && !s.cr && !US[si] ? tagSuffix(starTag(s)) : '';   // the star's own tag, only in the full (hovered / selected) state
+  if (tsuf && place2) place2 += tsuf;
   L.shown = shown; L.vis = vis; L.title = title; L.c1 = c1; L.a1 = a1; L.w1 = fk > .5 ? 500 : 400;
-  L.t2 = t2; L.c2 = c2; L.a2 = a2; L.t3 = t3; L.a3 = a3;
+  L.t2 = t2; L.c2 = c2; L.a2 = a2; L.t3 = t3; L.a3 = a3; L.t4 = tsuf; L.w2 = wg(t2);
   L.wPlace = Math.max(wg(placeTitle, 400), wg(place2, 400), fk > .5 ? wg(placeTitle, 500) : 0); L.rowsPlace = place2 ? 2 : 1;
-  L.wDisp = l2vis > .01 ? Math.max(wg(title, L.w1), wg(t2), t3 ? wg(t3) : 0) : wg(title, L.w1);
+  L.wDisp = l2vis > .01 ? Math.max(wg(title, L.w1), wg(t2 + tsuf), t3 ? wg(t3) : 0) : wg(title, L.w1);
   L.rows2h = Math.round(6 * l2vis);
   L.list = null; L.listK = 0; L.nList = 0;
   if (s.on && !s.gh && stepsLive(s) && (lk[si] > .01 || selIdx === si)) {          // the selected step list: rows under the label
@@ -235,9 +240,22 @@ export function placeLabels() {
 /* ---------- placement of new stars (deterministic: hash of title + creation counter) ---------- */
 let moonClearFn = () => true;
 export function setMoonClear(fn) { moonClearFn = fn; }
-export function placeNew(title, ctr, big) {
+/* the cost of a candidate that sits outside a tag's region: 0 inside tagRadius*GW grains of the centroid, growing outside.
+   Same units as rectScore, so a far candidate pays about one star-label overlap. */
+export function tagPullScore(cand, centroid, gw) {
+  const d = Math.hypot(cand.gx - centroid.gx, cand.gy - centroid.gy);
+  return PLACE.tagPull * Math.max(0, d - PLACE.tagRadius * gw);
+}
+export function placeNew(title, ctr, big, tag = null) {
   const rr = rng((hstr(title) ^ Math.imul(ctr + 1, 0x9E3779B1)) >>> 0);
   const r = big ? SIZE.starRBig : SIZE.starR, w = Math.max(wg(title), 8), th = 12, segs = [], placed = [];
+  /* a tag with on-screen stars pulls a new one into its region; without one (or untagged) this is exactly the old placement */
+  let pull = null;
+  if (tag) {
+    let n = 0, sx = 0, sy = 0;
+    for (let i = 0; i < NS; i++) { const s = stars[i]; if (!s.on || s.gh || starTag(s) !== tag) continue; n++; sx += s.gx; sy += s.gy; }
+    if (n) pull = { gx: sx / n, gy: sy / n };
+  }
   for (let i = 0; i < NS; i++) {
     const s = stars[i];
     if (s.on && s.done && s.link !== null) { const f = stars[s.link]; segs.push(f.gx, f.gy, s.gx, s.gy); }
@@ -257,6 +275,7 @@ export function placeNew(title, ctr, big) {
     if (md < 9 || ed < 6 || !md2) { const q = Math.min(md, ed + 3); if (q > fbd) { fbd = q; fb = { gx, gy }; } continue; }
     let sc = 1e18;
     for (let ci = 0; ci < 4; ci++) { candAnchor(ci, gx, gy, r, w, th, CA); sc = Math.min(sc, rectScore(CA[0] - 1, CA[1] - 1, CA[0] + w + 1, CA[1] + th + 1, GHI, placed) + 3 * ci); }
+    if (pull) sc += tagPullScore({ gx, gy }, pull, GW);
     if (sc < bs) { bs = sc; best = { gx, gy }; }
   }
   return best || fb || { gx: 200, gy: 100 };
