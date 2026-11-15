@@ -109,6 +109,9 @@ const SCENES = {
   hints: { q: 'freeze=1&t=12', eval: "ns.fillSteps(2,0,true);ns.select('task 1 · essay')" },
   morning: 'morning=1',
   morningSummer: 'morning=1&season=summer',
+  morningWinter: 'morning=1&season=winter',
+  morningSpring: 'morning=1&season=spring',
+  morningWinterRise: 'morning=1&season=winter&at=4500',   // the snow takes the light from the sun outward
   morningRise: 'morning=1&at=4500',                    // the sunrise, half way: the land up, the sky turning
   morningSet: 'morning=1&leave=9500&at=14000',         // the sunset, 4.5 s in: dusk, the sun low, the heads closing
   morningLabel: { q: 'morning=1', eval: 'ns.morningHover(0);ns.render(true)' },   // the label of the first flower: plate, two lines, link

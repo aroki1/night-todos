@@ -35,7 +35,7 @@ export function drawDaySky(sc) {
 /* o (the sunrise and the sunset, M2b): { y: centre row, haloK: halo strength 0..1, fade: the whole sun's strength 0..1, clip: per column, the first row that is land (nothing is drawn from there down), core, limb, halo: colours }. No o = the resting sun of the hold */
 export function drawSun(sc, o, haloK = 1) {          // haloK: the halo of the resting sun (the hold paints it twice, 1 and 0, to animate it)
   const S = MORNING.sun, { x: fx, r } = sc.sun, fy = o ? o.y : sc.sun.y, hc = o ? o.halo : S.halo, hr = r * HALO_RAD, k2 = 1 / (2 * HALO_SIG * HALO_SIG * r * r);
-  const hk = o ? o.haloK : haloK, clip = o ? o.clip : null, fade = o ? o.fade : 1;
+  const hk = (o ? o.haloK : haloK) * sc.pal.halo, clip = o ? o.clip : null, fade = o ? o.fade : 1;
   const ph = (sc.seed % 628) / 100, so = sc.seed % 997;
   if (o) haloMoving(sc, o, hc, hr, k2, hk * fade);
   const x0 = Math.max(0, Math.floor(fx - hr)), x1 = Math.min(GW - 1, Math.ceil(fx + hr));

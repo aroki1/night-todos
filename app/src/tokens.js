@@ -38,11 +38,32 @@ export const PAL = [
 /* the morning scene. Grain colours are hex() arrays (0..1, before the tone curve); text colours are strings.
    sky = [top, mid, horizon]; grass = [far, near, tips, shadow]. */
 export const MORNING = {
+  /* per season: sky, grass = [far, near, tips, shadow], stem, foliage (4 colours; the 4th of spring is its blossom pink), species, sunY (share of SH), and the M5 look:
+     snow (1: the ground is a snow field with dry stalks), bladeH / patchy / roll (blade height, how uneven the tufts are, the rolling ground: x summer's),
+     mist and mistDy (the valley mist's strength and its lowering, grains), glint (river glints x), dew (dew or frost x), blossom (share of tree crowns in blossom),
+     sunR and halo (the sun's size and halo strength x). */
   seasons: {
-    autumn: { sky: [hex('#9fb7d6'), hex('#d9b48c'), hex('#eebd78')], grass: [hex('#7f8456'), hex('#46501e'), hex('#b39a3c'), hex('#1e240c')], stem: hex('#86ad3c'), foliage: [hex('#e2b53a'), hex('#c9822a'), hex('#b4501f'), hex('#8a7a22')], species: ['aster', 'chrysanthemum', 'daisy'], sunY: .40 },
-    summer: { sky: [hex('#7fb1e6'), hex('#cfe3f2'), hex('#fbe7b0')], grass: [hex('#6f9a5c'), hex('#2f6a26'), hex('#9bcb52'), hex('#14301a')], stem: hex('#5fb044'), foliage: [hex('#4f9a3a'), hex('#6fb347'), hex('#3a7a2e'), hex('#8cc95a')], species: ['poppy', 'cornflower', 'daisy'], sunY: .42 },
-    spring: { sky: [hex('#8fbfe8'), hex('#dbeaf0'), hex('#f8e4c0')], grass: [hex('#93b87a'), hex('#4f8f3a'), hex('#b5d873'), hex('#2c5222')], stem: hex('#58a040'), foliage: [hex('#6fb347'), hex('#8cc95a'), hex('#4f9a3a'), hex('#e8a0b0')], species: ['crocus', 'tulip', 'daisy'], sunY: .40 },
-    winter: { sky: [hex('#b8c6d8'), hex('#e3e2e6'), hex('#f2dcc4')], grass: [hex('#e8eef5'), hex('#b9c6d6'), hex('#7d8060'), hex('#8f9bb0')], stem: hex('#6e8a5a'), foliage: [hex('#8a9a6a'), hex('#a8a890'), hex('#6e8a5a'), hex('#b0a080')], species: ['snowdrop', 'hellebore'], sunY: .48 }
+    autumn: { sky: [hex('#9fb7d6'), hex('#d9b48c'), hex('#eebd78')], grass: [hex('#7f8456'), hex('#46501e'), hex('#b39a3c'), hex('#1e240c')], stem: hex('#86ad3c'), foliage: [hex('#e2b53a'), hex('#c9822a'), hex('#b4501f'), hex('#8a7a22')], species: ['aster', 'chrysanthemum', 'daisy'], sunY: .40, snow: 0, bladeH: 1, patchy: 1, roll: 1, mist: 1.5, mistDy: 0, glint: 1, dew: 1, blossom: 0, sunR: 1, halo: 1 },
+    summer: { sky: [hex('#7fb1e6'), hex('#cfe3f2'), hex('#fbe7b0')], grass: [hex('#6f9a5c'), hex('#2f6a26'), hex('#9bcb52'), hex('#14301a')], stem: hex('#5fb044'), foliage: [hex('#4f9a3a'), hex('#6fb347'), hex('#3a7a2e'), hex('#8cc95a')], species: ['poppy', 'cornflower', 'daisy'], sunY: .42, snow: 0, bladeH: 1, patchy: 1, roll: 1, mist: 1, mistDy: 0, glint: 1, dew: 1, blossom: 0, sunR: 1, halo: 1 },
+    spring: { sky: [hex('#8fbfe8'), hex('#dbeaf0'), hex('#f8e4c0')], grass: [hex('#93b87a'), hex('#4f8f3a'), hex('#b5d873'), hex('#2c5222')], stem: hex('#58a040'), foliage: [hex('#6fb347'), hex('#8cc95a'), hex('#4f9a3a'), hex('#e8a0b0')], species: ['crocus', 'tulip', 'daisy'], sunY: .40, snow: 0, bladeH: .7, patchy: .45, roll: .6, mist: 1.45, mistDy: 4, glint: 1, dew: 1.35, blossom: .3, sunR: 1, halo: 1 },
+    winter: { sky: [hex('#b8c6d8'), hex('#e3e2e6'), hex('#f2dcc4')], grass: [hex('#e8eef5'), hex('#b9c6d6'), hex('#7d8060'), hex('#8f9bb0')], stem: hex('#6e8a5a'), foliage: [hex('#8a9a6a'), hex('#a8a890'), hex('#6e8a5a'), hex('#b0a080')], species: ['snowdrop', 'hellebore'], sunY: .48, snow: 1, bladeH: .8, patchy: 1, roll: 1, mist: 1.2, mistDy: 0, glint: .4, dew: .9, blossom: 0, sunR: .85, halo: .55 }
+  },
+  /* M5, winter. The snow field: lit / shade / deep (the drift's shade colours) / gold (where the low sun hits), relief (how much the rolling ground shades), slope (the backlit drift edge),
+     haze (the far snow toward the sky), jit (grain jitter), goldK (gold strength), hollow (extra shade in the hollows).
+     dry stalks: keep (share of the blades left), colours [base, body, tip]. dip: the little shade at a flower's base (colour, alpha), shadow: the long shadow's colour.
+     tree: the bare tree line (colour, share of grains left out, snow on its top). cap: snow on the ridges' tops (colour, depth in grains, strength).
+     water: [top, bottom] of the open dark water; ice: shelves along the banks (colour, width, ragged edge, alpha); glint: the colder river glint. */
+  snow: {
+    lit: hex('#d6dae3'), shade: hex('#93a7ca'), deep: hex('#6a80aa'), gold: hex('#ffdfa6'), relief: 1, slope: 1.4, haze: .12, jit: .02, goldK: .5, hollow: .12,
+    keep: .06, dry: [hex('#5e5a44'), hex('#7a7556'), hex('#a8a070')], dip: hex('#6d7fa6'), dipA: .7, shadow: hex('#5d6f98'),
+    tree: hex('#463f4a'), treeGap: .42, treeSnow: hex('#e9edf4'),
+    /* M5b: the snow field's strokes (the meadow's blades, snow-shaped): dens = chance x the meadow's, ridge / ripple = shares (the rest are tufts), len = [far, near] grains, tuft = tallest tuft,
+       shadow = [length, alpha] of a lump's long shadow, dither = grain scatter of the shade, tone = per-stroke brightness spread, rollX / rollY = the drifts' size (grains per unit of noise).
+       mtn: snow on the mountains. line = snow line (share of the peak), litK = how far the line climbs on the sunlit side, rag = ragged edge (grains), fall = streak length (share of the peak),
+       gx = gully spacing, shear = how far a streak runs along the fall line, thr = gully threshold (higher = fewer, thinner), body = the rock's blue x summer's (it keeps the ridge apart from the sky), capA / streakA = cover, lit / shade = snow colours, rock = [lit, shade] bare rock, rockA = rock tint, hazeK = snow toward the ridge's haze. */
+    fx: { dens: 1.8, ridge: .34, ripple: .14, len: [2, 9], tuft: 3, shadow: [4, .5], dither: .22, tone: .08, rollX: .022, rollY: .09 },
+    mtn: { line: .42, litK: .3, facet: .25, rag: 3, fall: .55, gx: .35, shear: .7, thr: .62, body: 1.15, capA: .95, streakA: .9, lit: hex('#fffaf0'), shade: hex('#bccbe6'), rock: [hex('#aab5cf'), hex('#8c9aba')], rockA: .2, hazeK: .3 },
+    water: [hex('#566884'), hex('#24324a')], ice: { color: hex('#dbe8f4'), w: 3.6, rag: 2.4, a: .92 }, glint: hex('#dff0ff')
   },
   /* [petals, core] */
   flowers: {
@@ -67,7 +88,7 @@ export const MORNING = {
   labelBox: { pad: 2, padX: 3, lh: 5, gap: 6, margin: 2, subPx: 11, plate: .9, edge: .2, speck: .05, dot: 2, bright: .15, sunPad: 3 },
   sun: { core: hex('#fffbee'), limb: hex('#ffd890'), halo: hex('#ffe2a8'), r: .15, x: .5, nudge: .06, yPhone: .52, shimmer: .03, shimmerHz: .12 },
   /* the valley: trunk, reeds and cattails, river glints, mist */
-  valley: { trunk: hex('#4a3626'), reed: hex('#7a8a3a'), cattail: hex('#6b4a2a'), glint: hex('#fff2c8'), mist: hex('#fff0d0') },
+  valley: { trunk: hex('#4a3626'), reed: hex('#7a8a3a'), cattail: hex('#6b4a2a'), glint: hex('#fff2c8'), mist: hex('#fff0d0'), blossom: hex('#fbeff2') },
   /* M4b, the living hold. All of it is a function of sky time T and the week seed; reduced motion shows none of it.
      wind: base sway sin(T*w + x*k) and a steady lean (tip offset per grain of blade height), gusts (Gaussian bumps along x: one every `every` s +- jit/2, speed grains/s, sigma grains, strength),
      flower: stems sway this much more than blades per grain of stem height; rampMs: the hold's motion comes in over this long after the hold starts (the sunrise has none of it); easeMs: leaving from the full hold, the sway eases out over this long.
@@ -79,8 +100,14 @@ export const MORNING = {
   glints: { chance: .17, period: [4.17, 8.33], on: 1.5 },
   life: {
     slot: 50, fade: 3.33,
-    kinds: { spring: ['butterfly', 'dew'], summer: ['pollen', 'butterfly'], autumn: ['dew'], winter: [] },
-    p: { pollen: .7, butterfly: .7, dew: .6 }, salt: { pollen: 4, butterfly: 6, dew: 3 },
+    kinds: { spring: ['butterfly', 'dew'], summer: ['pollen', 'butterfly'], autumn: ['dew', 'leaves'], winter: ['snow', 'dew'] },
+    p: { pollen: .7, butterfly: .7, dew: .6, snow: .85, leaves: .8 }, salt: { pollen: 4, butterfly: 6, dew: 3, snow: 8, leaves: 9 },
+    phone: .5,
+    /* M5: snow and leaves fall slowly (grains/s) from top (share of SH) to a landing row, drifting with the wind. n = count, fall = speed, drift / driftHz = sideways sway, wind = grains per unit of wind,
+       frost = the dew of winter. snow: light on dark backgrounds, dark on light ones (luminance from lo to hi). leaves: hz = tumble rate. phone = the share of them on a phone. */
+    snow: { n: 30, fall: 2.2, top: .06, landMin: 8, drift: 3, driftHz: .2, wind: 36, a: .9, color: hex('#ffffff'), dark: hex('#7a8fb6'), lo: .62, hi: .82 },
+    leaves: { n: [10, 20], fall: 3, top: .1, landMin: 10, drift: 7, driftHz: .26, wind: 50, hz: .45, a: .95 },
+    frost: hex('#e4f2ff'),
     pollen: { n: [10, 20], rise: .66, span: .35, drift: 5, driftHz: .21, a: .4, haloBoost: 1.6, color: hex('#fff0a8') },
     dew: { life: .67, every: 1.67, p: .6, a: .85, color: hex('#fffdf0') },
     butterfly: { drift: .012, hz: 1.8, restHz: .48, cycle: 30, wobble: [3.18, 5.46], land: .5, approach: 1.5, stay: [2, 5], colors: [hex('#fff4c8'), hex('#f2c94c'), hex('#e8c0ff')], body: hex('#3a2a1a') },

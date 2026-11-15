@@ -142,7 +142,7 @@ function build() {
   const c = mor.cfg, portrait = GW < SH;
   const horizon = Math.round(SH * (portrait ? MORNING.horizonPhone : MORNING.horizon));
   const pal = MORNING.seasons[c.season] || MORNING.seasons.autumn;
-  const sunR = MORNING.sun.r * Math.min(GW, SH);
+  const sunR = MORNING.sun.r * Math.min(GW, SH) * pal.sunR;
   const nudge = ((c.seed >>> 0) % 1000 / 1000 * 2 - 1) * MORNING.sun.nudge;
   mor.sc = {
     season: MORNING.seasons[c.season] ? c.season : 'autumn', pal, seed: c.seed >>> 0, portrait, horizon,

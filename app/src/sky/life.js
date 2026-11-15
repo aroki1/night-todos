@@ -5,7 +5,7 @@
    and a flock only crosses when at most 1 of them is on, so at most 2 kinds are ever visible at once. */
 import { MORNING } from '../tokens.js';
 import { H, vn, lerp, sm } from '../math.js';
-import { GW, SH, over } from '../framebuffer.js';
+import { GW, SH, BR, BG, BB, over } from '../framebuffer.js';
 import { bladeTip } from './land.js';
 
 const WD = MORNING.wind, GU = WD.gust, LF = MORNING.life, BD = LF.birds;
@@ -53,6 +53,8 @@ export function drawLife(sc, T, k, skyTop) {
   const o = seedOf(sc);
   const kp = kindK(sc, 'pollen', T) * k; if (kp > 0.01) pollen(sc, T, kp, o);
   const kd = kindK(sc, 'dew', T) * k; if (kd > 0.01) dew(sc, T, kd, o);
+  const ks = kindK(sc, 'snow', T) * k; if (ks > 0.01) snowfall(sc, T, ks, o);
+  const kl = kindK(sc, 'leaves', T) * k; if (kl > 0.01) leaves(sc, T, kl, o);
   const kb = kindK(sc, 'butterfly', T) * k; if (kb > 0.01) butterflies(sc, T, kb, o);
   for (let n = Math.floor((T - BD.cross) / BD.every) - 1, ne = Math.ceil(T / BD.every) + 1; n <= ne; n++) {
     const s = flockStart(sc, n); if (s === null || T < s || T > s + BD.cross) continue;
@@ -74,9 +76,40 @@ function pollen(sc, T, k, o) {
 /* dew: at most one glint a second on a grass tip, lasting a short while */
 function dew(sc, T, k, o) {
   const D = LF.dew, s = Math.floor(T / D.every), t = T - s * D.every;
-  if (t >= D.life || H(s, o + 21) >= D.p) return;
+  if (t >= D.life || H(s, o + 21) >= D.p * sc.pal.dew) return;
   const tip = bladeTip(sc, H(s + 0.5, o + 22)); if (!tip) return;
-  over(tip[0], tip[1], D.color, D.a * Math.sin(Math.PI * t / D.life) * k);
+  over(tip[0], tip[1], sc.pal.snow ? LF.frost : D.color, D.a * Math.sin(Math.PI * t / D.life) * k);   // winter: frost on a stalk tip
+}
+
+/* where a faller is at T: it starts at the top (share of SH), falls to its own landing row at its own slow speed, then starts over; fades in and out at the ends. Pure in T.
+   Returns [x, y, alpha] into `out` or false. wind: a gust leans it sideways, in grains. */
+function faller(sc, F, g, T, o, salt, out) {
+  const y0 = SH * F.top, land = lerp(sc.horizon + F.landMin, SH - 3, H(g, o + salt + 1)), life = (land - y0) / (F.fall * (0.7 + 0.6 * H(g, o + salt + 2))), u = (T / life + H(g, o + salt + 3)) % 1;
+  const x0 = H(g, o + salt + 4) * GW, wc = wind.col.length === GW ? wind.col[Math.max(0, Math.min(GW - 1, Math.round(x0)))] : 0;
+  out[0] = Math.round(x0 + F.drift * Math.sin(T * F.driftHz + g * 2.3) + wc * F.wind); out[1] = Math.round(y0 + u * (land - y0));
+  out[2] = sm(0, 0.12, u) * (1 - sm(0.8, 1, u));
+  return true;
+}
+
+/* snowfall: about 30 single grains falling slowly, drifting with the wind; light over dark ground, dark over bright (a white grain on snow would vanish) */
+function snowfall(sc, T, k, o) {
+  const S = LF.snow, n = Math.round(S.n * (sc.portrait ? LF.phone : 1)), p = [0, 0, 0], c = [0, 0, 0];
+  for (let g = 0; g < n; g++) {
+    faller(sc, S, g, T, o, 70, p); if (p[0] < 0 || p[0] >= GW || p[1] < 0 || p[1] >= SH) continue;
+    const q = p[1] * GW + p[0], t = sm(S.lo, S.hi, 0.299 * BR[q] + 0.587 * BG[q] + 0.114 * BB[q]);
+    c[0] = lerp(S.color[0], S.dark[0], t); c[1] = lerp(S.color[1], S.dark[1], t); c[2] = lerp(S.color[2], S.dark[2], t);
+    over(p[0], p[1], c, S.a * p[2] * k);
+  }
+}
+
+/* falling leaves: 10-20 of the season's foliage colours, tumbling slowly (a two-grain shape turning flat, slanted, upright), drifting with the wind */
+function leaves(sc, T, k, o) {
+  const Lv = LF.leaves, n = Math.round((Lv.n[0] + Math.floor(H(o, 81) * (Lv.n[1] - Lv.n[0] + 1))) * (sc.portrait ? LF.phone : 1)), p = [0, 0, 0], fo = sc.pal.foliage;
+  for (let g = 0; g < n; g++) {
+    faller(sc, Lv, g, T, o, 90, p); const a = Lv.a * p[2] * k, c = fo[g % 3], ph = (T * Lv.hz * (0.8 + 0.4 * H(g, o + 95)) + H(g, o + 96)) % 1, i = p[0], j = p[1];
+    over(i, j, c, a);                                                    // three grains: flat, slanted, upright as it turns
+    if (ph < 0.34) { over(i - 1, j, c, a * 0.8); over(i + 1, j, c, a * 0.8); } else if (ph < 0.67) { over(i - 1, j + 1, c, a * 0.8); over(i + 1, j - 1, c, a * 0.8); } else { over(i, j - 1, c, a * 0.8); over(i, j + 1, c, a * 0.8); }
+  }
 }
 
 /* butterflies: 1-2 on a slow noise path; every cycle one may settle on a flower for a few seconds (wings slow), then leave */

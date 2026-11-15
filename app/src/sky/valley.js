@@ -13,6 +13,7 @@ const TREELINE_HAZE = 0.4, COPSE = 0.4;
 /* river: half width at the viewer (share of GW), thread half width at the horizon, growth exponent, bank wobble (share of the width) */
 const RIVER_W = 0.25, THREAD = 0.03, WEXP = 1.0, WOBBLE = 0.2, BANK = 1.2;
 
+const SN = MORNING.snow;
 const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -63,10 +64,29 @@ export function drawMountains(sc) {
       y = lerp(y, Math.max(y, sunBottom), wgt); top[i] = y;
     }
     }
+    const MT = SN.mtn, base = hz + 6 - R.lift * 0.4, snow = sc.pal.snow;
+    let hmax = 1, lit = null, fall = null;
+    if (snow) { for (let i = 0; i < GW; i++) hmax = Math.max(hmax, base - top[i]); lit = new Float32Array(GW); fall = new Float32Array(GW); for (let i = 0; i < GW; i++) { const a2 = Math.max(0, i - 14), b2 = Math.min(GW - 1, i + 14); fall[i] = Math.sign(top[b2] - top[a2]); const a = Math.max(0, i - 5), b = Math.min(GW - 1, i + 5); lit[i] = clamp((top[b] - top[a]) / Math.max(1, b - a) * Math.sign(sc.sun.x - i) * 2.5, -1, 1); } }   // lit: +1 where the slope faces the sun
     for (let i = 0; i < GW; i++) for (let j = Math.max(0, Math.floor(top[i]) - 1); j < hz + 10; j++) {
       const d = j - top[i], a = d < 0 ? 1 + d : 1; if (d < -1) continue;
       skyColor(sc, j, sk);
-      const k = R.blue * (1 - 0.55 * clamp(d / 28, 0, 1)), r = lerp(sk[0], blue[0], k), g = lerp(sk[1], blue[1], k), b = lerp(sk[2], blue[2], k), q = j * GW + i;
+      const k = R.blue * (1 - 0.55 * clamp(d / 28, 0, 1)) * (snow ? SN.mtn.body : 1), q = j * GW + i;
+      let r = lerp(sk[0], blue[0], k), g = lerp(sk[1], blue[1], k), b = lerp(sk[2], blue[2], k);
+      if (snow) {
+        const L = clamp(lit[i] * 0.5 + 0.5 + (vn(i * 0.09 + j * 0.05, j * 0.16 - i * 0.03, o + 31 + n) - 0.5) * MT.facet, 0, 1), hk = R.blue * MT.hazeK, hazeC = [r, g, b];
+        [r, g, b] = mix3(hazeC, mix3(MT.rock[1], MT.rock[0], L), MT.rockA);                                           // the rock keeps the ridge's hazy tone, a little cooler
+        const alt = base - j, line = hmax * (MT.line + lit[i] * 0.5 * MT.litK) + (vn(i * 0.11, 2.5, o + n * 3) - 0.5) * MT.rag * 2 + (H(i * 1.7 + o, j * 1.3) - 0.5) * MT.rag * 0.8, dist = line - alt;   // snow line: higher in the light, lower in the shade, ragged
+        let cov = 0;
+        if (dist <= 0) cov = MT.capA * Math.min(1, 0.55 - dist / (MT.rag * 2));                                       // the cap on the peaks and the upper slopes, soft at its edge
+        else {                                                                                                          // below: thin streaks down the fall line, tapering out downhill
+          const len = hmax * MT.fall * (0.4 + 1.2 * vn(i * 0.07, 7.5, o + n * 9)), f = 1 - dist / len, xs = i - fall[i] * dist * MT.shear;
+          if (f > 0) { const gl = vn(xs * MT.gx, 0.5 + n * 3, o + 13 + n * 17); if (gl > MT.thr + (1 - f) * 0.2 && H(i * 1.9 + o, j * 1.1 + n) < 0.5 + f * 0.5) cov = MT.streakA * (0.5 + 0.5 * f); }
+        }
+        if (cov > 0) {
+          const sn = mix3(MT.shade, MT.lit, L), v = 1 + (H(i + o, j * 1.7) - 0.5) * 0.05, c = mix3(sn, hazeC, hk * 0.5);
+          r = lerp(r, c[0] * v, cov); g = lerp(g, c[1] * v, cov); b = lerp(b, c[2] * v, cov);
+        }
+      }
       BR[q] += (r - BR[q]) * a; BG[q] += (g - BG[q]) * a; BB[q] += (b - BB[q]) * a;
     }
   });
@@ -74,15 +94,18 @@ export function drawMountains(sc) {
 
 /* ---- tree line: a ragged band of grain clusters in copses with gaps, hazy, along the far hill (drawn before the near hill) ---- */
 export function drawTreeline(sc, farLine) {
-  const g = sc.pal.grass, hz = sc.pal.sky[2], o = sc.seed % 997, base = mix3(mix3(g[1], g[3], 0.55), hz, TREELINE_HAZE), gold = mix3(base, g[2], 0.32), light = mix3(base, hz, 0.22);
+  const g = sc.pal.grass, hz = sc.pal.sky[2], o = sc.seed % 997, snow = sc.pal.snow, bl = sc.pal.blossom, pink = sc.pal.foliage[3], white = MORNING.valley.blossom;
+  const base = snow ? mix3(SN.tree, hz, TREELINE_HAZE * 0.7) : mix3(mix3(g[1], g[3], 0.55), hz, TREELINE_HAZE), gold = mix3(base, g[2], 0.32), light = mix3(base, hz, 0.22), top = snow ? mix3(SN.treeSnow, hz, 0.25) : light;
   for (let i = 0; i < GW; i++) {
     const mask = vn(i * 0.016 + 11, 0.6, o + 13); if (mask < COPSE) continue;
     const str = sm(COPSE, 0.75, mask), clump = vn(i * 0.23 + 5, 2.5, o + 4), h = Math.round((2 + 7 * str) * (0.35 + 1.1 * clump));
     for (let q = -h; q <= 4; q++) {
       const j = Math.round(farLine[i]) + q, depth = q + h;                                                          // grains from the crown's top
       if (depth < 3 && H(i * 1.7 + o, j * 2.3) < 0.55 - depth * 0.15) continue;                                      // ragged top edge: sparse grains
-      if (H(i + 0.5, j + o) < 0.07) continue;                                                                       // small gaps
-      const col = H(i * 0.37, o + 9) > 0.8 || vn(i * 0.07, 4.5, o) > 0.72 ? gold : (depth < 3 ? light : base), lit = 1 + (0.5 - depth / (h + 4)) * 0.16 + (H(i, j) - 0.5) * 0.08;
+      if (H(i + 0.5, j + o) < (snow ? SN.treeGap : 0.07)) continue;                                                 // small gaps (winter: bare crowns, mostly gaps)
+      let col = snow ? (depth < 2 && H(i * 1.3, j + o) < 0.3 ? top : base) : H(i * 0.37, o + 9) > 0.8 || vn(i * 0.07, 4.5, o) > 0.72 ? gold : (depth < 3 ? light : base);
+      if (bl > 0 && vn(i * 0.05 + 30, 0.5, o + 19) > 1 - bl && depth < h - 1 && H(i * 2.9 + o, j * 1.3) < 0.4) col = H(i, j * 3.1) < 0.6 ? pink : white;   // spring: blossom in some crowns
+      const lit = 1 + (0.5 - depth / (h + 4)) * 0.16 + (H(i, j) - 0.5) * 0.08;
       if (j >= 0 && j < SH) { const k = j * GW + i; BR[k] = col[0] * lit; BG[k] = col[1] * lit; BB[k] = col[2] * lit; }
     }
   }
@@ -92,7 +115,7 @@ export function drawTreeline(sc, farLine) {
 export function drawRiver(sc, nearLine) {
   needRiver(sc); if (sc.portrait) return;
   const { rl, rr } = rv, S = sc.pal.sky, o = sc.seed % 997, g = sc.pal.grass;
-  const topC = mix3(mix3(S[2], S[0], 0.55), [0, 0, 0], 0.18), botC = mix3(S[0], [0, 0, 0], 0.38), rim = mix3(g[3], g[1], 0.3), gr = sc.sun.r * 0.7, wc = [0, 0, 0];
+  const snow = sc.pal.snow, topC = snow ? SN.water[0] : mix3(mix3(S[2], S[0], 0.55), [0, 0, 0], 0.18), botC = snow ? SN.water[1] : mix3(S[0], [0, 0, 0], 0.38), rim = mix3(g[3], g[1], 0.3), gr = sc.sun.r * 0.7, wc = [0, 0, 0];
   for (let j = Math.max(0, sc.horizon - 2); j < SH; j++) {
     const l = rl[j], r = rr[j]; if (r <= 0) continue;
     const t = (j - (sc.horizon - 2)) / (SH - sc.horizon + 2);
@@ -105,6 +128,7 @@ export function drawRiver(sc, nearLine) {
       const rip = 1 + (vn(i * 0.09, j * 0.8, o) - 0.5) * 0.12 + (H(i, j) - 0.5) * 0.03;
       wc[0] = lerp(topC[0], botC[0], t) * rip; wc[1] = lerp(topC[1], botC[1], t) * rip; wc[2] = lerp(topC[2], botC[2], t) * rip;
       over(i, j, wc, cov);
+      if (snow) { const iw = SN.ice.w * (0.5 + vn(j * 0.12, 6.5, o + 3)) + (H(i * 1.9 + o, j * 0.7) - 0.5) * SN.ice.rag; if (din < iw) { const v = 1 + (H(i, j * 1.7) - 0.5) * 0.12; over(i, j, [SN.ice.color[0] * v, SN.ice.color[1] * v, SN.ice.color[2] * v], SN.ice.a * cov * Math.min(1, (iw - din) * 1.5)); continue; } }   // winter: ice shelves, ragged
       if (din > 0.3 && din < 2.2) over(i, j, rim, 0.4 * (1 - Math.abs(din - 1) / 1.2));             // thin darker wet edge
       if (din > 0.5 && din < 2.6 && H(i * 1.7 + o, j * 0.9) < 0.1 * (1 - din / 2.6)) { over(i, j, g[2], 0.8); over(i, j - 1, g[2], 0.7); }   // a few grass tips lean over the water
     }
@@ -119,9 +143,9 @@ export function drawRiver(sc, nearLine) {
 }
 
 /* ---- mist: a soft pale band lying on the valley floor, a little denser where it drifts (low-frequency noise) ---- */
-const mistA = (sc, i, j, o, y0, sig) => 0.4 * Math.exp(-((j - y0) * (j - y0)) / (2 * sig * sig)) * (0.65 + 0.7 * vn(i * 0.011, j * 0.12, o + 40));
+const mistA = (sc, i, j, o, y0, sig) => 0.4 * sc.pal.mist * Math.exp(-((j - y0) * (j - y0)) / (2 * sig * sig)) * (0.65 + 0.7 * vn(i * 0.011, j * 0.12, o + 40));
 export function drawMist(sc) {
-  const o = sc.seed % 997, c = MORNING.valley.mist, y0 = sc.horizon + 6, sig = Math.max(5, SH * 0.06);
+  const o = sc.seed % 997, c = MORNING.valley.mist, y0 = sc.horizon + 6 + sc.pal.mistDy, sig = Math.max(5, SH * 0.06);
   for (let j = Math.max(0, Math.floor(y0 - sig * 3)); j < Math.min(SH, y0 + sig * 3.5); j++) for (let i = 0; i < GW; i++) over(i, j, c, mistA(sc, i, j, o, y0, sig));
 }
 
@@ -129,16 +153,16 @@ export function drawMist(sc) {
    The list is built once per scene: grain, strength (the mist over it already taken off), period and phase. drawGlints paints the flickers at sky time `t`. ---- */
 let gl = null, glSc = null, glW = 0, glH = 0;
 function buildGlints(sc, nearLine) {
-  const out = [], G = MORNING.glints, o = sc.seed % 997, gr = sc.sun.r * 0.7, my0 = sc.horizon + 6, msig = Math.max(5, SH * 0.06);
+  const out = [], G = MORNING.glints, o = sc.seed % 997, gr = sc.sun.r * 0.7, my0 = sc.horizon + 6 + sc.pal.mistDy, msig = Math.max(5, SH * 0.06);
   needRiver(sc);
   const { rl, rr } = rv;
   if (!sc.portrait) for (let j = Math.max(0, sc.horizon - 2); j < SH; j++) {
     const l = rl[j], r = rr[j]; if (r <= 0) continue;
     const t = (j - (sc.horizon - 2)) / (SH - sc.horizon + 2);
     for (let i = Math.max(0, Math.floor(l)); i <= Math.min(GW - 1, Math.ceil(r)); i++) {
-      const dx = Math.abs(i - sc.sun.x) / (gr + (r - l) * 0.2); if (dx >= 1 || i - l < 1 || r - i < 1 || j < nearLine[i] + 1) continue;
+      const dx = Math.abs(i - sc.sun.x) / (gr + (r - l) * 0.2); if (dx >= 1 || Math.min(i - l, r - i) < (sc.pal.snow ? SN.ice.w + 1 : 1) || j < nearLine[i] + 1) continue;
       const off = H(j, o + 9) * 5, cell = Math.floor((i + off) / 5), len = 2 + ((H(cell, j + o) * 3) | 0), pos = (i + off) - cell * 5;
-      if (pos < len && H(cell * 1.3 + 1, j * 1.9 + o) < G.chance * Math.pow(1 - dx, 1.6) * (0.4 + 0.6 * t)) {
+      if (pos < len && H(cell * 1.3 + 1, j * 1.9 + o) < G.chance * sc.pal.glint * Math.pow(1 - dx, 1.6) * (0.4 + 0.6 * t)) {
         const a = (0.3 + 0.22 * (1 - dx)) * (1 - Math.min(1, mistA(sc, i, j, o, my0, msig)));
         out.push({ i, j, a, p: G.period[0] + (G.period[1] - G.period[0]) * H(cell + 0.4, j * 0.7 + o), ph: H(cell * 2.1, j + o + 5) });
       }
@@ -150,7 +174,7 @@ function buildGlints(sc, nearLine) {
 export function drawGlints(sc, nearLine, t, k) {
   if (k <= 0) return;
   if (glSc !== sc || glW !== GW || glH !== SH) buildGlints(sc, nearLine);
-  const c = MORNING.valley.glint, on = MORNING.glints.on;
+  const c = sc.pal.snow ? SN.glint : MORNING.valley.glint, on = MORNING.glints.on;
   for (let q = 0; q < gl.length; q++) {
     const g = gl[q], u = ((t / g.p + g.ph) % 1) * g.p; if (u >= on) continue;
     over(g.i, g.j, c, g.a * k * Math.sin(Math.PI * u / on));

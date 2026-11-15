@@ -5,6 +5,7 @@ import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, prev
 import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
 import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
+import { MORNING } from '../tokens.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
@@ -211,6 +212,10 @@ export function selfTest() {
   setClockBase(cb0);
   ok(rs1 && Math.abs(w1 - (1e12 + 60000)) < 1 && !rs2, 'clock: resync after a 60 s gap, not within 2 s');
 
+  /* morning M5: every season has every field the drawing reads, its species have colours and labels, its life kinds have odds */
+  { const S = MORNING.seasons, names = ['autumn', 'summer', 'spring', 'winter'], num = ['sunY', 'snow', 'bladeH', 'patchy', 'roll', 'mist', 'mistDy', 'glint', 'dew', 'blossom', 'sunR', 'halo'];
+    const col = c => Array.isArray(c) && c.length === 3 && c.every(Number.isFinite);
+    ok(names.every(n => { const s = S[n]; return s && s.sky.length === 3 && s.sky.every(col) && s.grass.length === 4 && s.grass.every(col) && col(s.stem) && s.foliage.length === 4 && s.foliage.every(col) && num.every(f => Number.isFinite(s[f])) && s.species.length > 0 && s.species.every(sp => MORNING.flowers[sp] && MORNING.label[sp]) && Array.isArray(MORNING.life.kinds[n]) && MORNING.life.kinds[n].every(kd => MORNING.life.p[kd] > 0 && Number.isFinite(MORNING.life.salt[kd])); }) && Object.keys(S).length === names.length, 'morning: every season has every field the drawing reads'); }
   /* morning M1: season, summary, lines, flower list */
   ok(Array.from({ length: 12 }, (_, m) => seasonOf(new Date(2026, m, 15, 12).getTime())).join() === 'winter,winter,spring,spring,spring,summer,summer,summer,autumn,autumn,autumn,winter', 'morning: season by month');
   const W = new Date(2026, 10, 2, 0, 0).getTime(), Dm = 864e5, nowM = W + 15 * Dm;            // Mon 2 Nov 2026 = start of 2026-W45; now = Tue 17 Nov (W47)

@@ -22,7 +22,7 @@ const RADIAL = {
 };
 const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 const S = [0, 0, 0], WHITE = [1, 1, 1];
-const L = MORNING.light, WF = MORNING.wind.flower;
+const L = MORNING.light, WF = MORNING.wind.flower, SN = MORNING.snow;
 let rimK = 0;                                  // this flower's backlight (strongest under the sun)
 
 /* o (the sunrise and the sunset, M2b): { bloom(order) -> { stem, head } 0..1, bud: 0..1, dark: 0..1 (toward the silhouette), shadow: 0..1, dy: rows the whole land is lowered by, keep: (i, j) -> 0..1 or null }.
@@ -48,7 +48,7 @@ export function drawFlora(sc, o, W) {      // W: the wind of this frame (sky/lif
     return [x, base];
   };
   /* long soft shadows first (the sun is in front: they fall toward the viewer and a little away from the sun's x), so no flower is ever darkened by another's */
-  const dk = mix3(shadow, [0, 0, 0], 0.35);
+  const dk = sc.pal.snow ? SN.shadow : mix3(shadow, [0, 0, 0], 0.35);
   for (const f of list) {
     const gk = grow(f); if (gk <= 0 || shK <= 0) continue;
     const hk = f.bud ? gk : BL ? BL(f.order).head : 1;
@@ -90,7 +90,8 @@ export function drawFlora(sc, o, W) {      // W: the wind of this frame (sky/lif
     const hov = sc.hov && sc.hov.i === idxOf.get(f) ? sc.hov.k * MORNING.labelBox.bright : 0;   // the hovered flower's head is lightened (the label's link is drawn by render/morning.js)
     const hp = hov > 0 ? (i, j, c, a) => px(i, j, mix3(c, WHITE, hov), a) : px;
     const stem = (hs, h, c) => { for (let q = 0; q < hs; q++) px(x + Math.round(ls * (q / h) * (q / h)), base - q, c); return x + Math.round(ls * (hs / h) * (hs / h)); };
-    px(x - 1, base, shadow, 0.5); px(x + 1, base, shadow, 0.5);
+    if (sc.pal.snow) { for (let q = -2; q <= 2; q++) ov(x + q, base, SN.dip, SN.dipA * (Math.abs(q) > 1 ? 0.55 : 1) * (1 - 0.5 * far)); for (let q = -1; q <= 1; q++) ov(x + q, base + 1, SN.dip, SN.dipA * 0.6 * (1 - 0.5 * far)); }   // winter: a dip of shade where the stem leaves the snow
+    else { px(x - 1, base, shadow, 0.5); px(x + 1, base, shadow, 0.5); }
     if (f.bud) {
       const h = Math.max(4, Math.round((8 + (f.pick % 3)) * lerp(1, FAR_STEM, far))), hs = Math.max(1, Math.round(h * gk)), tx = stem(hs, h, stemC), ty = base - hs, bw = far < 0.6 ? 1 : 1;
       const green = mix3(stemC, g[2], 0.25);
