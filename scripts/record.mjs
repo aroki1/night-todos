@@ -44,6 +44,7 @@ const SEED = `(async () => {
 const STILL = {
   hero: { url: '?' + WEEK, size: [1600, 900], dpr: 2, outW: 1600, run: SEED.replace('%W%', 6) },
   help: { url: '?' + WEEK, size: [1600, 900], dpr: 2, outW: 1600, run: SEED.replace('%W%', 6) + '.then(async () => { ns.key("n"); ns.type("/help"); ns.key("Enter"); ns.advance(900); return 0; })' },
+  groups: { url: '?' + DEMO + '&scene=labels&tags=1&hover=hm%20one-pager', size: [1600, 900], dpr: 2, outW: 1600 },
   phone: { url: '?' + WEEK, size: [375, 812], dpr: 3, outW: 1125, run: SEED.replace('%W%', 6).replace("'library books', .83, .27", "'library books', .83, .12").replace("'seminar notes', .45, .22", "'seminar notes', .45, .27") }
 };
 /* clips: `pre` runs once after load; `step(i)` returns JS run before frame i (after it, time advances by 1/FPS) */
@@ -58,6 +59,24 @@ const CLIP = {
       if (i === 68) return 'ns.key("Enter");';
       return '';
     }
+  },
+  thought: {
+    url: '?' + WEEK, size: [1600, 900], secs: 5.6, crop: [1600, 600, 0, 300],
+    pre: SEED.replace('%W%', 6) + '.then(() => { ns.key("n"); ns.advance(10); return 0; })',
+    step: i => {
+      const a = 'call the landlord', b = 'fri';                  // a thought, then its answer to "when?"
+      const k = Math.floor((i - 8) / 3), j = Math.floor((i - 104) / 5);
+      if (i >= 8 && (i - 8) % 3 === 0 && k < a.length) return 'ns.key(' + JSON.stringify(a[k] === ' ' ? 'Space' : a[k]) + ');';
+      if (i === 68) return 'ns.key("Enter");';
+      if (i >= 104 && (i - 104) % 5 === 0 && j < b.length) return 'ns.key(' + JSON.stringify(b[j]) + ');';
+      if (i === 124) return 'ns.key("Enter");';
+      return '';
+    }
+  },
+  practice: {
+    url: '?' + WEEK + '&practices=3', size: [1600, 900], secs: 4.4, crop: [480, 270, 610, 350],
+    pre: SEED.replace('%W%', 6) + '.then(() => { ns.advance(10); return 0; })',
+    step: i => i === 20 ? 'ns.practiceMark("gym", 0);' : i === 66 ? 'ns.hover("gym");' : ''
   },
   finish: { url: '?' + DEMO + '&scene=finish&at=0', size: [1600, 900], secs: 3.0, t0: 2.0 },
   steps: { url: '?' + DEMO + '&steps=1&scene=steps&sel=hm%20one-pager&stepfin=hm%20one-pager&t=3&at=0', size: [1600, 900], secs: 3.2, t0: 3, crop: [960, 540, 160, 0] },

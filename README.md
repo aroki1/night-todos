@@ -63,6 +63,18 @@ and when the week ends, the night ends with it. 🌅
     <td width="50%" valign="top"><h3>The weekly morning</h3>every monday, last week gets a sunrise.<br>a flower for everything you did.</td>
   </tr>
   <tr>
+    <td width="50%"><a href="docs/media/thought.mp4"><img src="docs/media/thought.gif" alt="A thought typed without a deadline becomes a faint haze at the horizon; the bar asks when, and an answer condenses the haze into a star." width="100%"></a></td>
+    <td width="50%" valign="top"><h3>Thoughts</h3>no deadline? it's a thought: a soft haze above the bar.<br>say when, and it becomes a star.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/media/groups.png" alt="Hovering a tagged star shows its #study tag, and the group's name appears at the centre of its stars." width="100%"></td>
+    <td width="50%" valign="top"><h3>Groups</h3>add <code>#study</code>. lines connect only stars of the same group.<br>each area of life gets its own corner of the sky.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/media/practice.mp4"><img src="docs/media/practice.gif" alt="A practice star is marked for the day, then hovered to show its ring of weeks." width="100%"></a></td>
+    <td width="50%" valign="top"><h3>Practices</h3>something you do again and again.<br>mark the day; a ring of weeks fills in. no streaks, no zeros.</td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/media/help.png" alt="The /help panel open above the bar, listing the syntax and keys in a few short lines." width="100%"></td>
     <td width="50%" valign="top"><h3>Past weeks</h3>old weeks drift away, but never disappear.<br>hover one to see its name.<br><sub>lost? type <code>/help</code>.</sub></td>
   </tr>
@@ -76,11 +88,14 @@ Press `n` or `/`, then write a title, a comma and a deadline:
 essay, fri
 weekly report, tomorrow 18:00 / outline / draft
 launch notes, +3d !
+call the landlord #home
 ```
 
 - The deadline comes after the last comma.
 - Add steps after the deadline, each one after ` / ` (a slash with spaces around it).
-- End with ` !` for a bigger star.
+- End with ` !` for a bigger star. A leading `!` works too.
+- Add `#tag` anywhere to put the star in a group (letters, digits and `-`, up to 16). It is removed from the title.
+- Leave the deadline out (no comma, or nothing after it) and you have a thought, not a star. The bar then asks "when?". Answer with a deadline from the table below (steps and `!` work there too) to make it a star, or `remind <when>` (`remind +2h`, `remind fri 9:00`) to bring it back at that time. `Esc` or an empty Enter keeps it as a thought.
 
 | Kind | Examples |
 | --- | --- |
@@ -100,11 +115,15 @@ A date without a time means 23:59. A date that has already passed reads as "that
 | Delete a step | hover a row, `Delete` | hold a row | `Delete` over a row |
 | Undo | click `undo` | tap `undo` | `z` |
 | Move between stars | hover for a label | tap | `Tab`, `Shift+Tab` |
+| Mark a practice | click it | tap to select, tap again | `Enter` or `Space` on a selected one; `y` marks yesterday |
+| Answer a thought | click its haze | tap its haze | `Tab` to select it |
+| Let a thought go | `Delete` on an empty answer | hold the haze | `Delete`, then `Enter` |
 | Close help or clear | click the sky | tap the sky | `Esc` |
 
 In the bar, type a command instead of a task:
 
 - `/help` opens the short reference.
+- `/practice <title> [#tag]` starts a practice. `/practice` lists them, `/practice stop <name>` archives one, `/practice limit <n>` sets how many you can keep (5 by default, up to 20).
 - `/export` downloads a JSON backup; `/import` restores one.
 - `/motion on|off|system` sets reduced motion. The default follows your system setting.
 
@@ -118,6 +137,20 @@ name the week, if you like.<br>
 then the sun sets, and the meadow turns back into stars.
 
 <sub>It plays the first time you open the app in a new week. Click or press Space to hurry the sunrise; Enter or Esc lets the sun set. Type a name, or a task with a deadline to start the new week with it.</sub>
+
+## thought, word, deed
+
+a thought is only haze.<br>
+say when, and it becomes a star.<br>
+do it, and it joins the constellation. ✨<br>
+nothing resets. nothing scolds.
+
+<p align="center">
+  <a href="docs/media/thought.mp4"><img src="docs/media/thought.gif" alt="Typing a thought, the haze at the horizon, answering 'fri', and the haze condensing into a star." width="100%"></a>
+</p>
+<p align="center"><sub>A thought, a date, a star. Click for the full-quality video.</sub></p>
+
+<sub>A thought you leave alone comes back by itself, only while you are in the app and at most once an hour. Practices keep a week of dots under the star and, on hover, a ring of weeks; a missed day is a dim grain, never a zero.</sub>
 
 ## Install
 
@@ -150,7 +183,7 @@ See [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) for the module map and 
 
 ```powershell
 npm run dev       # static server on http://127.0.0.1:5173
-npm test          # 202 selftests in Node
+npm test          # 279 selftests in Node
 npm run verify    # tests, import rules, shell check, golden hashes, perf budget
 npm run shell     # regenerate the service worker shell after changing app/
 npm run record    # re-render the clips in docs/media (needs the dev server and ffmpeg)
