@@ -2,7 +2,7 @@
 import { rng, clamp01 } from '../math.js';
 import { setT, wall, T, isoWeekKey, seedForWeek, setClockISO, setClockBase, weekDistance, weekLabel, wc } from '../sky/clock.js';
 import { sky, skyFlags, makeSky } from '../sky/sky.js';
-import { cloudReset, cloudDebug } from '../sky/clouds.js';
+import { cloudReset, cloudDebug, cloudsPath, cloudsCompare, cloudsGpuStats } from '../sky/clouds.js';
 import { resetClockCache, clockTick } from '../sky/clock.js';
 import { moonSt } from '../sky/moon.js';
 import { specialsNow, setForceShower, satTime, setMoonShow, cometHead, satNow } from '../sky/events.js';
@@ -26,7 +26,7 @@ import { doneCount, nextIdx, sui } from '../model/steps.js';
 import { stepsBack, stepsFront } from '../render/steps.js';
 import * as pf from '../stageprof.js';
 import { FLAGS } from '../tokens.js';
-import { P as PX, ROWS } from '../framebuffer.js';
+import { P as PX, ROWS, configure } from '../framebuffer.js';
 
 let api = null;
 const findStar = n => { const k = stars.findIndex(s => s.n === n); return k >= 0 ? k : stars.findIndex(s => s.n.indexOf(n) >= 0); };
@@ -217,7 +217,12 @@ export function installHooks(a) {
       return store.thoughts.map(t => ({ id: t.id, text: t.text, tag: t.tag, step: t.step, askedAt: t.askedAt, askUse: t.askUse,
         remindAt: t.remindAt, saidAt: t.saidAt, goneAt: t.goneAt, usedMs: t.usedMs, taskId: t.taskId }));
     },
-    gl: { active: glActive, lose: glLose },
+    gl: { active: glActive, lose: glLose, error: () => cloudsGpuStats().error },
+    cloudsPath() { return cloudsPath(); },
+    cloudsCompare() { return cloudsCompare(); },
+    cloudsGpuStats() { return cloudsGpuStats(); },
+    /* dev: resize through configure (what the window resize does, minus star re-layout), then force a cloud refresh */
+    resizeGrid(gw, sh) { configure(gw, sh, ROWS - SH, dpr); cloudReset(); api.render(true); return { GW, SH }; },
     selfTest() { return selfTest(); },
     pace() { return api.pace(); },                                  // the smart frame cap state (sky/clock.js pace)
     renders() { return window.__nsRenders || 0; },

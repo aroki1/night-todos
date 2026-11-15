@@ -307,6 +307,7 @@ export const FLAGS = {
   prof: Q.get('prof') === '1',               // dev: per-stage frame timer (stageprof.js)
   dev: Q.get('dev') !== '0' && (Q.get('dev') === '1' || LOC.hostname === 'localhost' || LOC.hostname === '127.0.0.1'),
   demo: Q.get('demo') === '1',
+  gpuclouds: Q.get('gpuclouds') === '1',     // experiment: the cloud field on the GPU (sky/cloudsgl.js); off = the CPU path as ever
   gl: Q.get('gl') !== '0',                   // ?gl=0 forces the 2D canvas path (dev/tests)
   debug: Q.get('debug') === '1',
   seed: Q.has('seed') ? +Q.get('seed') : null,

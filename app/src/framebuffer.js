@@ -199,6 +199,7 @@ export function dotPixel(x, y) {
   const v = gu32[y * GW + x]; return [v & 255, (v >> 8) & 255, (v >> 16) & 255, 255];
 }
 export const glActive = () => !!gl;
+export const glCtx = () => (gl ? { gl, g2 } : null);                 // the one GL context, for sky/cloudsgl.js (which restores every state it touches)
 
 /* grains to device pixels, drawn 1:1 (2D path) */
 function blit2d() {

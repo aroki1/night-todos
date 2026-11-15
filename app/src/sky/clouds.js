@@ -1,7 +1,9 @@
 /* sky/clouds.js — half-res fbm clouds, bilinear upsample, refreshed in slices. */
-import { fbm, sm, H } from '../math.js';
+import { fbm, sm, H, tone } from '../math.js';
 import { GW, SH, SR, SG, SB, CR, CG, CB, BARY, dpr, geometryListeners, onSkyReset } from '../framebuffer.js';
 import { sky } from './sky.js';
+import { FLAGS } from '../tokens.js';
+import * as gc from './cloudsgl.js';
 import { T } from './clock.js';
 import * as pf from '../stageprof.js';
 
@@ -10,6 +12,7 @@ const TW = 96, TH = 48;
 const mkTabs = () => [0, 1, 2, 3].map(() => ({ d: new Float32Array(TW * TH), x0: 0, y0: 0 }));
 const ctabs = [0, 1, 2].map(mkTabs);
 let cloudT = -9, cycT = 0, cycRow = HH, upRow = 0;
+let gst = 0, gup = 0, gcyc = 0;      // ?gpuclouds=1 live state: 0 idle, 1 read in flight, 2 upsampling hr into CRn
 
 /* live path only (the exact path above stays as it was): the slow layers w (scale 420) and m (scale 600) are keyframed every KP s of sky time and
    interpolated; keyframe C (the next one, tC = tB + KP) is computed ahead over the slices, so nothing lags. CRn/CGn/CBn double-buffer the upsample. */
@@ -21,7 +24,7 @@ const Sw = mkS(), Sn = mkS(), Sm = mkS();
 
 function alloc() {
   HW = Math.max(1, Math.ceil(GW / 2)); HH = Math.max(1, Math.ceil(SH / 2));
-  hr = new Float32Array(HW * HH * 3); cycRow = HH; upRow = 0;
+  hr = new Float32Array(HW * HH * 3); cycRow = HH; upRow = 0; gst = 0; gc.resize(HW, HH);
   const mk = () => ({ w: new Float32Array(HW * HH), m: new Float32Array(HW * HH) });
   kA = mk(); kB = mk(); kC = mk(); kfOk = false; crow = HH;
   CRn = new Float32Array(GW * SH); CGn = new Float32Array(GW * SH); CBn = new Float32Array(GW * SH);
@@ -30,7 +33,7 @@ function alloc() {
 }
 alloc();
 geometryListeners.push(alloc);
-onSkyReset(() => { cloudT = -9; cycRow = HH; kfOk = false; });
+onSkyReset(() => { cloudT = -9; cycRow = HH; kfOk = false; gst = 0; gc.drop(); });
 
 function Hc(t, o, ix, iy) {
   const a = ix - t.x0, b = iy - t.y0;
@@ -77,7 +80,9 @@ function upRows(j0, j1, cr, cg, cb) {
   }
 }
 export function cloudUpsample(t) { upRows(0, SH, CR, CG, CB); cloudT = t; }
-export function clouds() { cloudRows(T, 0, HH); cloudUpsample(T); cycRow = HH; }
+/* GPU path for the exact formula: fills hr (same layout as cloudRows). false = use the CPU */
+function gpuFill(t, dst) { return FLAGS.gpuclouds && !!sky && gc.ok() && gc.render(t, sky.off, sky.cl[0], sky.cl[1], BARY) && gc.readSync(dst); }
+export function clouds() { if (!gpuFill(T, hr)) cloudRows(T, 0, HH); cloudUpsample(T); cycRow = HH; gst = 0; gc.drop(); }
 export function isCloudStale() { return cloudT < 0; }
 export function cloudTime() { return cloudT; }
 export function cloudReset() { cloudT = -9; cycRow = HH; }
@@ -142,8 +147,29 @@ function cloudRowsLive(t, j0, j1) {
     }
   }
 }
+/* live loop on the GPU: render the whole grid, read it back through a pack buffer and a fence (never waits), then upsample in slices and publish */
+function gpuTick() {
+  if (gst === 0) {
+    if (T - cloudT < .0625) return;
+    gcyc = T;
+    if (!gc.render(gcyc, sky.off, sky.cl[0], sky.cl[1], BARY) || !gc.readStart()) return;
+    gst = 1; if (pf.on) pf.lap('clouds.kf'); return;
+  }
+  if (gst === 1) {
+    const r = gc.readPoll(hr);
+    if (pf.on) pf.lap('clouds.rows');
+    if (r < 0) { gst = 0; return; }
+    if (r === 0) return;
+    gst = 2; gup = 0;
+  }
+  const frames = paceFrames || (dpr >= 2 ? 6 : 5), lim = Math.min(SH, gup + Math.ceil(SH / frames));
+  upRows(gup, lim, CRn, CGn, CBn); gup = lim;
+  if (gup >= SH) { CR.set(CRn); CG.set(CGn); CB.set(CBn); cloudT = gcyc; gst = 0; }
+  if (pf.on) pf.lap('clouds.upsample');
+}
 export function cloudsTick() {
   if (!sky) return;
+  if (FLAGS.gpuclouds) { if (gc.ok()) return gpuTick(); if (gst) { gst = 0; cycRow = HH; } }
   if (cycRow >= HH) { if (T - cloudT < .0625) return; cycT = T; cycRow = 0; upRow = 0; }
   const frames = paceFrames || (dpr >= 2 ? 6 : 5), chunk = Math.ceil(HH / frames);
   const j1 = Math.min(HH, cycRow + chunk);
@@ -164,4 +190,27 @@ export function cloudDebug(x, y) {
   return { HW, HH, hrLen: hr.length, q00, h: [hr[q00], hr[q00 + 1], hr[q00 + 2], hr[q00 + 3], hr[q00 + 4], hr[q00 + 5]], cloudT, sky: sky && sky.cl };
 }
 /* full refresh when frozen (tests, sky swaps) */
-export function cloudsForce() { cloudRows(T, 0, HH); cloudUpsample(T); cycRow = HH; }
+export function cloudsForce() { if (!gpuFill(T, hr)) cloudRows(T, 0, HH); cloudUpsample(T); cycRow = HH; gst = 0; gc.drop(); }
+/* dev: which path the clouds take, and why */
+export function cloudsPath() { if (!FLAGS.gpuclouds) return { path: 'cpu', why: 'flag off' }; return gc.ok() ? { path: 'gpu', why: '' } : { path: 'cpu', why: gc.why() }; }
+export const cloudsGpuStats = () => ({ ...gc.stats, error: gc.error() });
+/* dev: the CPU exact path against the GPU path at the current T, into scratch buffers (the live ones stay as they are) */
+export function cloudsCompare() {
+  if (!sky) return { err: 'no sky' };
+  if (!gc.ok()) return { err: gc.why() };
+  const live = hr, n = GW * SH, mk = () => [new Float32Array(n), new Float32Array(n), new Float32Array(n)], hc = new Float32Array(live.length), hg = new Float32Array(live.length), A = mk(), B = mk();
+  hr = hc; cloudRows(T, 0, HH); upRows(0, SH, A[0], A[1], A[2]);
+  const g = gc.render(T, sky.off, sky.cl[0], sky.cl[1], BARY) && gc.readSync(hg);
+  if (g) { hr = hg; upRows(0, SH, B[0], B[1], B[2]); }
+  hr = live;
+  if (cycRow < HH) cycRow = HH;                  // the CPU compare used the live lattice tables: restart a half-done refresh
+  gst = 0; gc.drop();
+  if (!g) return { err: gc.why() };
+  let hrMax = 0, crMax = 0, tMax = 0, tOver = 0;
+  for (let i = 0; i < hc.length; i++) hrMax = Math.max(hrMax, Math.abs(hc[i] - hg[i]));
+  for (let c = 0; c < 3; c++) for (let k = 0; k < n; k++) {
+    crMax = Math.max(crMax, Math.abs(A[c][k] - B[c][k]));
+    const d = Math.abs(tone(A[c][k]) - tone(B[c][k])); if (d > tMax) tMax = d; if (d > 1) tOver++;
+  }
+  return { hrMaxAbs: hrMax, crMaxAbs: crMax, tone8Max: tMax, tone8Over1Share: tOver / (3 * n), grains: n, HW, HH };
+}
