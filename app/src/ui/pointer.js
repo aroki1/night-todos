@@ -1,12 +1,13 @@
 /* ui/pointer.js — mouse and touch. The first tap selects a star; a second tap within 4 s finishes it. */
 import { T } from '../sky/clock.js';
 import { SIZE, STEPS } from '../tokens.js';
-import { UW, UH, BARY, cv } from '../framebuffer.js';
-import { stars, NS, Rb } from '../model/store.js';
-import { doFinish, doUndo, doStepToggle, doStepDelete, undoTarget, externalUndo } from '../model/timeline.js';
+import { UW, UH, GW, SH, BARY, cv } from '../framebuffer.js';
+import { stars, NS, Rb, liveThoughts, findThought } from '../model/store.js';
+import { doFinish, doUndo, doStepToggle, doStepDelete, doLetGo, undoTarget, externalUndo } from '../model/timeline.js';
+import { hazeHit } from '../model/thoughts.js';
 import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } from '../model/placement.js';
-import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo, closeHelp } from './bar.js';
-import { skySwap } from '../render/compose.js';
+import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo, closeHelp, enterThoughtWhen, leaveThoughtWhen } from './bar.js';
+import { skySwap, setThoughtHover } from '../render/compose.js';
 import { setPointerGrain, clearPointerGrain } from '../sky/past.js';
 import { morningPhase, morningCtl, morningHit, setMorningHover, morningHover } from '../render/morning.js';
 import { wake } from './bar.js';
@@ -66,6 +67,10 @@ export function hitPanel(px, py) {
 /* touch: a row toggles on release; holding it for 500 ms deletes it instead (undoable); moving more than 8 px scrolls the panel and does neither */
 let lp = null;
 const lpClear = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
+/* touch: tapping a haze slot opens "when?"; holding it lets the thought go (same undo as Delete on an empty bar) */
+let tp = null;
+function tpClear() { if (tp) { clearTimeout(tp.t); tp = null; } }
+const hazeIdAt = (px, py) => py < BARY ? hazeHit(liveThoughts(), px / 3, py / 3, GW, SH) : null;
 const unitsPerCss = () => { const r = cv.getBoundingClientRect(); return UW / r.width; };
 function lpStart(h, e) {
   lpClear();
@@ -111,13 +116,15 @@ export function bindPointer() {
       return;
     }
     if (skyBtn) skyBtn.hover = inBtn(px, py);
-    setMouseHover(hitStar(px, py, false));
+    const thId = hazeIdAt(px, py);
+    bar.thoughtHover = thId; setThoughtHover(thId);
+    setMouseHover(thId ? -1 : hitStar(px, py, false));
     const hr = hitRow(px, py); sui.rowHover = hr ? hr.r : -1; sui.rowStar = hr ? hr.si : -1;
     setPointerGrain(px / 3, py / 3);
     const onUndo = inUndo(px, py);
-    cv.style.cursor = (mouseHover >= 0 || hr || inBtn(px, py) || onUndo) ? 'pointer' : (py >= BARY) ? 'text' : 'default';
+    cv.style.cursor = (mouseHover >= 0 || thId || hr || inBtn(px, py) || onUndo) ? 'pointer' : (py >= BARY) ? 'text' : 'default';
   });
-  cv.addEventListener('mouseleave', () => { setMouseHover(-1); setMorningHover(-1); setPointerGrain(-1e9, -1e9); });
+  cv.addEventListener('mouseleave', () => { setMouseHover(-1); setMorningHover(-1); bar.thoughtHover = null; setThoughtHover(null); setPointerGrain(-1e9, -1e9); });
   cv.addEventListener('click', e => {
     if (e.pointerType === 'touch') return;             // handled by pointerdown
     const [px, py] = toUnits(e);
@@ -130,8 +137,11 @@ export function bindPointer() {
     }
     if (inBtn(px, py)) { skySwap(11, T); wake(); return; }
     if (inUndo(px, py)) { tryUndo(doUndo); return; }
+    const thId = hazeIdAt(px, py);
+    if (thId) { enterThoughtWhen(thId, true); wake(); return; }        // a thought: "when?" with the bar focused
     if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
     setBarFocus(false);
+    leaveThoughtWhen();
     setTapSelected(false);
     const hr = hitRow(px, py);
     if (hr) { clickRow(hr); return; }
@@ -143,9 +153,16 @@ export function bindPointer() {
     if (i >= 0) { setSelIdx(i); if (doFinish(i, T, true)) { setSelIdx(-1); wake(); } }
     else setSelIdx(-1);
   });
-  cv.addEventListener('pointerup', lpEnd);
-  cv.addEventListener('pointercancel', lpClear);
-  cv.addEventListener('pointermove', e => { if (e.pointerType === 'touch') lpMove(e); });
+  cv.addEventListener('pointerup', e => {
+    if (tp) { const q = tp, moved = isDrag(e.clientX - q.x, e.clientY - q.y); tpClear(); if (!moved) { enterThoughtWhen(q.id, true); wake(); } return; }
+    lpEnd();
+  });
+  cv.addEventListener('pointercancel', () => { lpClear(); tpClear(); });
+  cv.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'touch') return;
+    lpMove(e);
+    if (tp && isDrag(e.clientX - tp.x, e.clientY - tp.y)) tpClear();
+  });
   cv.addEventListener('wheel', e => {                                    // desktop: the wheel scrolls the panel under the pointer
     const mp = morningPhase();
     if (mp && mp !== 'end') return;
@@ -170,8 +187,21 @@ export function bindPointer() {
     }
     if (inBtn(px, py)) { skySwap(11, T); wake(); return; }
     if (inUndo(px, py)) { tryUndo(doUndo); wake(); return; }
+    const thId = hazeIdAt(px, py);
+    if (thId) {                                                     // tap opens "when?", a long press lets it go
+      tpClear();
+      const held = thId;
+      tp = { id: thId, x: e.clientX, y: e.clientY, t: 0 };
+      tp.t = setTimeout(() => {
+        const th = findThought(held);
+        tpClear();
+        if (th) { doLetGo(th, T); leaveThoughtWhen(); wake(); }
+      }, STEPS.longPress);
+      return;
+    }
     if (py >= BARY) { setBarFocus(true); setBarCaret(); wake(); return; }
     setBarFocus(false);
+    leaveThoughtWhen();
     const hr = hitRow(px, py, true);
     if (hr) { lpStart(hr, e); return; }
     const i = hitStar(px, py, true);

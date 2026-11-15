@@ -40,6 +40,7 @@ canvas{display:block;margin:0 auto}
 <script>window.addEventListener('error', e => { document.documentElement.setAttribute('data-err', (e.message || '') + ' @' + (e.filename || '') + ':' + (e.lineno || 0)); });
 window.addEventListener('unhandledrejection', e => { document.documentElement.setAttribute('data-err', 'reject ' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason)); });</script>
 <!-- gen:preload -->
+<link rel="modulepreload" href="./src/choreo/condense.js">
 <link rel="modulepreload" href="./src/choreo/expire.js">
 <link rel="modulepreload" href="./src/choreo/finish.js">
 <link rel="modulepreload" href="./src/choreo/morning.js">
@@ -54,10 +55,12 @@ window.addEventListener('unhandledrejection', e => { document.documentElement.se
 <link rel="modulepreload" href="./src/model/quotes.js">
 <link rel="modulepreload" href="./src/model/steps.js">
 <link rel="modulepreload" href="./src/model/store.js">
+<link rel="modulepreload" href="./src/model/thoughts.js">
 <link rel="modulepreload" href="./src/model/timeline.js">
 <link rel="modulepreload" href="./src/model/week.js">
 <link rel="modulepreload" href="./src/platform.js">
 <link rel="modulepreload" href="./src/render/compose.js">
+<link rel="modulepreload" href="./src/render/haze.js">
 <link rel="modulepreload" href="./src/render/morning.js">
 <link rel="modulepreload" href="./src/render/steps.js">
 <link rel="modulepreload" href="./src/render/text.js">

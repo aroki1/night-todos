@@ -8,7 +8,8 @@ import { clouds, cloudsTick, cloudsForce, isCloudStale, cloudTime } from '../sky
 import { moonUpdate, drawMoon } from '../sky/moon.js';
 import { drawAurora, auroraUpdate, drawComet, drawSats, drawMeteor } from '../sky/events.js';
 import { drawPast } from '../sky/past.js';
-import { stars, NS, GHI, edgeGeom, expAt, R, CORE, Rb, pres, lifeAt, timeStr, isUrgent } from '../model/store.js';
+import { stars, NS, GHI, edgeGeom, expAt, R, CORE, Rb, pres, lifeAt, timeStr, isUrgent, liveThoughts } from '../model/store.js';
+import { drawHaze, hazeAnimating } from './haze.js';
 import { FS, US, undoTarget, replay, setPipTotals } from '../model/timeline.js';
 import { hk, computeFocus, placeLabels, lab } from '../model/placement.js';
 import { finishState, edgeState } from '../choreo/finish.js';
@@ -20,6 +21,7 @@ import { stepsUpdate } from '../model/steps.js';
 import * as pf from '../stageprof.js';
 import { stepsBack, stepsFront, stepsBullets, stepsPanel } from './steps.js';
 
+export { setThoughtSel, setThoughtHover } from './haze.js';
 export const bump = new Float32Array(SIZE.maxStars);
 const dims = []; let dimN = 0;
 const acts = []; let actN = 0;
@@ -35,7 +37,7 @@ export function prepare() {
   clockTick(false);
   replay(T);
   if (pf.on) pf.mark('prepare.replay');
-  animating = !!xf; actN = 0; dimN = 0;
+  animating = !!xf || hazeAnimating(); actN = 0; dimN = 0;
   let nTot = 0, lt = -1e9;
   for (let si = 0; si < NS; si++) {
     const s = stars[si];
@@ -300,6 +302,8 @@ export function compose() {
   if (pf.on) pf.mark('events');
   drawMorningNight();
   if (pf.on) pf.mark('morningNight');
+  if (!st) drawHaze();                                       // thoughts are a night thing; the morning keeps its own scene
+  if (pf.on) pf.mark('haze');
   const ga = mk ? groupBegin(mk.alive) : 1;                  // this week's alive stars: edges, halos, steps, labels' dim, sprites
   if (ga) {
     drawEdges();

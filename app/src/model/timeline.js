@@ -3,8 +3,9 @@
 import { isReduced, SIZE, STEPS } from '../tokens.js';
 import { wall, fmtDate, fmtDay } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
+import { reviveSaid } from './thoughts.js';
 import {
-  stars, NS, setNS, MAXS, DEMO_ON, mkStar, expAt, lifeAt, isUrgent, isBehind, stepsDoneBy, touchSave, timeStr, nearestDone,
+  store, stars, NS, setNS, MAXS, DEMO_ON, mkStar, expAt, lifeAt, isUrgent, isBehind, stepsDoneBy, touchSave, timeStr, nearestDone,
   addTask, removeTask, markDone, clearDone, announce, newId,
   snapshotData, restoreData, replaceData, onRebuild, rebuildStars
 } from './store.js';
@@ -12,8 +13,11 @@ import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
 import { slotCount, slotFill } from '../choreo/step.js';
 import { stepView } from './steps.js';
+import { condenseMs } from '../choreo/condense.js';
 
 export let events = [], undoTarget = null, externalUndo = null;
+/* per thought id: how its haze is leaving or returning (derived in replay): { kind: 'say', t0, si, x, y, reduced } | { kind: 'go', t0, dir } */
+export const thFx = new Map();
 export const FS = new Array(SIZE.maxStars).fill(null), US = new Array(SIZE.maxStars).fill(null);
 export let pipTotal = 7, pipLastT = -1e9;
 export function setPipTotals(n, t) { pipTotal = n; pipLastT = t; }
@@ -21,7 +25,7 @@ export function setPipTotals(n, t) { pipTotal = n; pipLastT = t; }
 onRebuild(() => resetTimeline());
 export function resetTimeline() {
   events = []; undoTarget = null; externalUndo = null;
-  FS.fill(null); US.fill(null);
+  FS.fill(null); US.fill(null); thFx.clear();
 }
 
 export function makeFin(si, at0, hov) {
@@ -58,7 +62,7 @@ export function replay(t) {
     s.done = s.initDone; s.link = s.initLink; s.fin = null; s.und = null; s.stamp = s.initStamp;
     s.on = s.base ? 1 : 0; s.cr = null; s.rm = null; s.miss = s.baseMiss; s.mT = -1; s.sev = null;
   }
-  undoTarget = null;
+  undoTarget = null; thFx.clear();
   for (let e = 0; e < events.length; e++) {
     const ev = events[e]; if (ev.at > t) break;
     if (ev.type === 'create') { const s = stars[ev.si]; s.on = 1; s.cr = { t0: ev.at, reduced: ev.reduced }; undoTarget = { si: ev.si, at: ev.at, type: 'add' }; }
@@ -70,11 +74,21 @@ export function replay(t) {
       const s = stars[ev.si];
       if (ev.dir) s.sev = { t0: ev.at, dir: ev.dir, reduced: ev.reduced, slot: ev.slot, lo: ev.lo, hi: ev.hi };
       undoTarget = { si: ev.si, at: ev.at, type: 'step', ev };
+    } else if (ev.type === 'thought') {
+      undoTarget = { type: 'thought', at: ev.at, th: ev.th };
+      thFx.set(ev.th.id, { kind: 'go', t0: ev.at, dir: -1 });
+    } else if (ev.type === 'condense') {                                 // a thought is said: its haze condenses and travels to the star
+      thFx.set(ev.id, { kind: 'say', t0: ev.at, si: ev.si, x: ev.x, y: ev.y, reduced: ev.reduced });
     } else if (ev.type === 'undo') {
       if (!undoTarget || ev.at - undoTarget.at > 5) continue;
+      if (undoTarget.type === 'thought') { thFx.set(undoTarget.th.id, { kind: 'go', t0: ev.at, dir: 1 }); undoTarget = null; continue; }     // the thought's data was restored by doUndo
       const s = stars[undoTarget.si];
       if (undoTarget.type === 'step') { const u = undoTarget.ev; if (u.dir) s.sev = { t0: ev.at, dir: -u.dir, reduced: isReduced(), slot: u.slot, lo: u.lo, hi: u.hi }; }
-      else if (undoTarget.type === 'add') { s.on = 0; s.rm = { t0: ev.at }; s.cr = null; }
+      else if (undoTarget.type === 'add') {
+        s.on = 0; s.rm = { t0: ev.at }; s.cr = null;
+        const ce = events.find(q => q.type === 'condense' && q.si === undoTarget.si);
+        if (ce) thFx.set(ce.id, { kind: 'go', t0: ev.at, dir: 1 });     // its thought's haze returns
+      }
       else { s.und = makeUnd(s, ev.at); s.done = 0; s.link = null; s.fin = null; }
       undoTarget = null;
     }
@@ -111,16 +125,25 @@ export function doUndo(at) {
   }
   const u = undoTarget;
   if (!u || at - u.at > 5) return false;
+  if (u.type === 'thought') {                                   // let go: the thought comes back
+    pushEvent({ type: 'undo', at });
+    if (u.th) { u.th.goneAt = null; u.th.usedMs = 0; }
+    touchSave();
+    undoTarget = null;
+    announce('undone');
+    return true;
+  }
   pushEvent({ type: 'undo', at });
   const s = stars[u.si];
   if (u.type === 'step') undoStep(s, u.ev);
   else if (s && s.task) {
-    if (u.type === 'add') removeTask(s.task); else clearDone(s.task);
+    if (u.type === 'add') { reviveSaid(store.thoughts, s.task.id); removeTask(s.task); }   // a said thought comes back as haze
+    else clearDone(s.task);
   }
   announce('undone');
   return true;
 }
-export function doCreate(title, gx, gy, big, dlMs, at, stepTexts) {
+export function doCreate(title, gx, gy, big, dlMs, at, stepTexts, tag) {
   if (stars.length >= MAXS) return -1;
   const s = mkStar({ n: title, gx, gy, big: big ? 1 : 0, base: 0, on: 0 });
   s.dl = dlMs; s.rem0 = Math.max(1, dlMs - wall(at)); s.life0 = 1; s.life = 1;
@@ -130,11 +153,27 @@ export function doCreate(title, gx, gy, big, dlMs, at, stepTexts) {
       id: s.id, title, createdAt: wall(at), deadline: dlMs, big: big ? 1 : 0,
       x: gx / (GW - 1), y: gy / (SH - 1), doneAt: null, link: null, week: null, steps: mkSteps(stepTexts)
     };
+    if (tag) t.tag = tag;
     addTask(t); s.task = t; s.nx = t.x; s.ny = t.y; s.steps = t.steps;
   } else if (stepTexts && stepTexts.length) s.steps = mkSteps(stepTexts);
   stars.push(s); setNS(stars.length); pushEvent({ type: 'create', at, si: stars.length - 1, reduced: isReduced() });
   announce('added ' + title + ', due ' + fmtDay(dlMs));
   return NS - 1;
+}
+/* let a thought go: it leaves the haze now, and the undo row can bring it back for 5 s */
+export function doLetGo(th, at) {
+  if (!th || th.goneAt) return false;
+  th.goneAt = wall(at); th.usedMs = Math.max(0, wall(at) - th.createdAt);
+  touchSave();
+  pushEvent({ type: 'thought', at, th });
+  announce('let go ' + th.text);
+  return true;
+}
+/* a thought is said: its haze (grain x, y) condenses and travels to star `si`, whose creation is moved to the end of the condense */
+export function doCondense(id, si, x, y, at) {
+  const reduced = isReduced(), ev = events.find(e => e.type === 'create' && e.si === si);
+  if (ev) ev.at = at + condenseMs(reduced) / 1000;
+  pushEvent({ type: 'condense', at, id, si, x, y, reduced });
 }
 export function applyImport(raw, atT) {
   const snapshot = snapshotData();

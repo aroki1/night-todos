@@ -1,13 +1,15 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
-import { parseDeadline, splitBar } from '../model/parser.js';
+import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
+import { newThought, hazeSlots, ageText, reviveSaid } from '../model/thoughts.js';
 import { fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
 import { sanitize, isUrgent, stepsDoneBy } from '../model/store.js';
 import { shouldStartMorning, nextDue, seasonOf, weekSummary, summaryLines, flowerList, morningEnter, withSummary, withName, cleanName, weekTitle, nextAway, flowerLabel } from '../model/morning.js';
 import { QUOTES, quoteFor } from '../model/quotes.js';
-import { MORNING } from '../tokens.js';
+import { MORNING, THOUGHT } from '../tokens.js';
 import { isDrag, clampScroll, stepRows } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
+import { condenseState, condenseMs } from '../choreo/condense.js';
 import { morningState, morningControls, riseAt, bloom, textK, HOLD_END } from '../choreo/morning.js';
 import { onboardingHint, helpLines, enterGate } from '../ui/guide.js';
 
@@ -297,5 +299,46 @@ export function selfTest() {
   ok(flowerLabel({ title: 'carry 0', doneAt: null, bud: true }).sub === 'carries over' && flowerLabel({ title: 'carry 0', doneAt: wed, bud: true }).title === 'carry 0', 'flower label: a bud says it carries over');
   ok(flowerLabel({ title: 'x'.repeat(40), doneAt: wed, bud: false }).title === 'x'.repeat(27) + '…', 'flower label: a long title is cut to 28 characters');
   { const g = enterGate(350); ok(g(1000) && !g(1100) && !g(1349) && g(1400) && g(2000), 'enter gate: one Enter through per window, later ones pass'); }
+
+  /* thoughts: the tag, the bar kind, the "when?" answer */
+  const tg1 = extractTag('essay #Study, fri'), tg2 = extractTag('a #toolongtagnameeeee'), tg3 = extractTag('#x thought');
+  ok(tg1.text === 'essay, fri' && tg1.tag === 'study', 'tag: "essay #Study, fri" -> "essay, fri", study');
+  ok(tg2.tag === null && tg2.text === 'a #toolongtagnameeeee', 'tag: more than 16 chars is no tag');
+  ok(tg3.tag === 'x' && tg3.text === 'thought', 'tag: at the start of the text');
+  const nw = now.getTime();
+  ok(barKind('', nw) === 'empty' && barKind('/help', nw) === 'cmd', 'bar kind: empty and command');
+  ok(barKind('essay, fri', nw) === 'task' && barKind('learn the pumping lemma', nw) === 'thought' && barKind('essay,', nw) === 'thought' && barKind('x #study', nw) === 'thought', 'bar kind: task, thought, trailing comma, tag only');
+  ok(barKind('essay, blah', nw) === 'bad' && barKind('x, today 9', nw) === 'bad', 'bar kind: unreadable and past are bad');
+  const pw0 = parseWhen('', nw), pw1 = parseWhen('fri', nw), pw2 = parseWhen('fri / a / b !', nw);
+  ok(pw0.kind === 'later' && pw1.kind === 'say' && pw1.date.getTime() === at(2026, 11, 13, 23, 59), 'when: empty is later, fri is say');
+  ok(pw2.kind === 'say' && pw2.steps.join('|') === 'a|b' && pw2.big === true, 'when: steps and the trailing !');
+  const pw3 = parseWhen('remind +2h', nw), pw4 = parseWhen('r tomorrow', nw);
+  ok(pw3.kind === 'remind' && pw3.date.getTime() === nw + 2 * 36e5 && pw4.kind === 'remind' && pw4.date.getTime() === at(2026, 11, 14, 23, 59), 'when: remind and r');
+  ok(parseWhen('remind yesterday', nw).kind === 'bad' && parseWhen('blah', nw).kind === 'bad', 'when: bad deadlines stay bad');
+  const th0 = newThought('  learn x  ', 'study', 5, 'i1');
+  ok(th0.text === 'learn x' && th0.tag === 'study' && th0.createdAt === 5 && th0.saidAt === null && th0.step === 0, 'thought: the item');
+  const ths = sanitize({ version: 1, tasks: [], thoughts: [
+    { id: 'p', text: '  learn x  ', tag: 'STUDY', createdAt: 5, step: 9, usedMs: 2 },
+    { id: 'q', createdAt: 9 },
+    { id: 'r', text: 'ok', tag: 'bad tag!', createdAt: 7, step: 3 }
+  ] }).thoughts;
+  ok(ths.length === 2 && ths[0].text === 'learn x' && ths[0].tag === 'study' && ths[0].step === 5, 'thought: sanitize keeps a good one, clamps step, cleans the tag');
+  ok(ths[1].id === 'r' && ths[1].tag === null && ths[1].step === 3 && ths[1].saidAt === null, 'thought: no tag becomes null, timestamps default to null');
+  const tagged = sanitize({ version: 1, tasks: [Object.assign({}, good.tasks[0], { tag: 'Study' })] }).tasks[0];
+  ok(tagged.tag === 'study' && sanitize(JSON.parse(JSON.stringify({ version: 1, tasks: [tagged] }))).tasks[0].tag === 'study', 'store: task.tag survives a round trip');
+  const hlist = Array.from({ length: 12 }, (_, i) => ({ id: 'h' + i }));
+  const hs = hazeSlots(hlist, 404), hs2 = hazeSlots(hlist, 404);
+  ok(hs.length === 12 && hs.every(q => q.x >= 0 && q.x < 404), 'haze: 12 slots inside 404 grains');
+  ok(hs.every((q, i) => hs.every((p, j) => i === j || Math.abs(q.x - p.x) >= THOUGHT.patchW)), 'haze: no overlapping patches');
+  ok(JSON.stringify(hs.map(q => [q.id, q.x])) === JSON.stringify(hs2.map(q => [q.id, q.x])), 'haze: stable for the same ids');
+  { const a = hazeSlots(hlist, 404), b = hazeSlots(hlist.filter(q => q.id !== 'h3' && q.id !== 'h7'), 404), c = hazeSlots(hlist.concat([{ id: 'hnew' }]), 404);
+    ok(b.every(q => q.x === a.find(p => p.id === q.id).x), 'haze: the others keep their slots when thoughts leave');
+    ok(c.filter(q => q.id !== 'hnew').every(q => q.x === a.find(p => p.id === q.id).x), 'haze: a new thought moves no existing slot'); }
+  { const l = [{ id: 'a', saidAt: 5, taskId: 'T1', usedMs: 9 }, { id: 'b', saidAt: null, taskId: null, usedMs: 0 }], r = reviveSaid(l, 'T1');
+    ok(r && r.id === 'a' && r.saidAt === null && r.taskId === null && reviveSaid(l, 'T1') === null && reviveSaid(l, null) === null, 'undo of a said thought\'s star: the thought is haze again (saidAt, taskId cleared)'); }
+  ok(ageText(nw - 36e5, nw) === 'today' && ageText(nw - D, nw) === '1 day' && ageText(nw - 3 * D, nw) === '3 days' && ageText(nw - 14 * D, nw) === '2 weeks', 'thought: age text');
+  const cc = { x0: 100, y0: 150, x1: 160, y1: 40, reduced: false }, c0 = condenseState(cc, 0), c1 = condenseState(cc, THOUGHT.condenseMs), c9 = condenseState(cc, THOUGHT.condenseMs + THOUGHT.holdMs);
+  ok(c0.scale === 1 && !c0.on && Math.abs(c1.px - 160) < 1e-6 && Math.abs(c1.py - 40) < 1e-6 && !c9.on, 'condense: starts at the haze, lands on the star, ends');
+  ok(condenseMs(false) >= 900 && condenseMs(false) <= 1300 && condenseMs(true) === 250 && condenseState({ ...cc, reduced: true }, 250).hazeA === 0, 'condense: 900-1300 ms, 250 ms when reduced');
   return { pass, fail, total: pass + fail, failed };
 }

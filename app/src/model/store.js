@@ -1,11 +1,12 @@
 /* model/store.js — persistent data (tasks, weeks, prefs) and the week's sky view.
    This module never imports sky generation, render, ui or choreography. */
 import { clamp01 } from '../math.js';
-import { FLAGS, URGENT, PACE, STEPS } from '../tokens.js';
+import { FLAGS, URGENT, PACE, STEPS, SIZE } from '../tokens.js';
 import { CLOCK0, wall, fmtDate, fmtDay, fmtLeft, isoWeekKey } from '../sky/clock.js';
 import { GW, SH } from '../framebuffer.js';
 import { inCurrentWeek, ensureWeeks, archivePast } from './week.js';
 import { nextDue, nextAway } from './morning.js';
+import { newThought } from './thoughts.js';
 
 /* persistence is injected by main; the default is in-memory so tests/scenes never touch storage */
 let persistence = { load: async () => null, save: async () => { } };
@@ -13,10 +14,11 @@ export function setPersistence(p) { persistence = p || { load: async () => null,
 
 export const STEPS_SCENE = FLAGS.scene === 'steps' && FLAGS.dev;   // dev scene for the step visuals
 export const DEMO_ON = (FLAGS.demo || STEPS_SCENE) && FLAGS.dev;   // demo tasks never exist in the product
+export const THOUGHTS_DEMO = FLAGS.dev && FLAGS.thoughts !== null && FLAGS.thoughts > 0;   // synthetic thoughts, in memory only
 export const MAXS = 48;
 const HR = 36e5;
 
-export const store = { version: 1, tasks: [], weeks: {}, lastSeenWeek: null, morningDue: null, morningAway: 0, prefs: { reducedMotion: 'system' } };
+export const store = { version: 1, tasks: [], thoughts: [], weeks: {}, lastSeenWeek: null, morningDue: null, morningAway: 0, prefs: { reducedMotion: 'system' } };
 
 const DEF = [
   { n: 'hm one-pager',         gx: 268, gy: 40,  big: 1, life: .86, off: (7 * 24 + 2) * HR + 59 * 6e4 },
@@ -43,6 +45,28 @@ export let rolledFrom = null;
 let announcer = () => { };
 export function setAnnouncer(fn) { announcer = fn; }
 export function announce(msg) { announcer(msg); }
+
+/* thoughts that are neither said (turned into a star) nor let go, oldest first. */
+export function liveThoughts() {
+  return store.thoughts
+    .filter(t => !t.saidAt && !t.goneAt)
+    .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+export function addThought(t) { store.thoughts.push(t); saveSoon(); return t; }
+export function findThought(id) { return store.thoughts.find(t => t.id === id) || null; }
+
+/* dev: ?thoughts=n adds n synthetic thoughts in memory (like demo); the store is not persisted in that mode */
+const DEMO_THOUGHTS = ['learn the pumping lemma', 'ask ana about the lab', 'redraw the sky', 'read the rest of ch. 3',
+  'fix the loop pedal', 'plan the spring term', 'call the landlord', 'outline the essay'];
+function demoThoughts() {
+  if (!THOUGHTS_DEMO) return;
+  const now = wall(0), n = Math.min(24, FLAGS.thoughts | 0);
+  store.thoughts = [];
+  for (let i = 0; i < n; i++) {
+    const t = DEMO_THOUGHTS[i % DEMO_THOUGHTS.length] + (i >= DEMO_THOUGHTS.length ? ' ' + (i + 1) : '');
+    store.thoughts.push(newThought(t, i % 4 === 0 ? 'study' : null, now - i * 30 * HR, 'd' + i));
+  }
+}
 
 const rebuildHooks = [];
 export function onRebuild(fn) { rebuildHooks.push(fn); }
@@ -155,7 +179,7 @@ export function saveSoon() {
 export function flushSave() {
   if (!dirty) return;
   dirty = false;
-  persistence.save({ version: 1, tasks: store.tasks, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, morningDue: store.morningDue, morningAway: store.morningAway, prefs: store.prefs });
+  persistence.save({ version: 1, tasks: store.tasks, thoughts: store.thoughts, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, morningDue: store.morningDue, morningAway: store.morningAway, prefs: store.prefs });
 }
 
 /* tasks saved before steps existed load with steps: []. Junk steps are dropped, never the task. */
@@ -169,6 +193,31 @@ export function sanitizeSteps(a) {
     while (seen.has(id)) id = newId();
     seen.add(id);
     out.push({ id, text: t.text.trim().slice(0, STEPS.maxText), doneAt: Number.isFinite(t.doneAt) ? t.doneAt : null });
+  }
+  return out;
+}
+/* a task or thought tag: letters, digits and `-`, 1..16 chars, lowercase; anything else is null */
+const TAG_RE = /^[A-Za-z0-9-]{1,16}$/;
+export function cleanTag(v) { return typeof v === 'string' && TAG_RE.test(v) ? v.toLowerCase() : null; }
+const numOrNull = v => Number.isFinite(v) ? v : null;
+/* a thought without text or a creation time is dropped; step is a whole number 0..5; the rest is a number or null */
+export function sanitizeThoughts(a) {
+  if (!Array.isArray(a)) return [];
+  const out = [];
+  for (const t of a) {
+    if (!t || typeof t !== 'object' || typeof t.text !== 'string' || !t.text.trim() || !Number.isFinite(t.createdAt)) continue;
+    out.push({
+      id: typeof t.id === 'string' && t.id ? t.id : newId(),
+      text: t.text.trim().slice(0, SIZE.maxTitle),
+      tag: cleanTag(t.tag),
+      createdAt: t.createdAt,
+      saidAt: numOrNull(t.saidAt),
+      taskId: typeof t.taskId === 'string' ? t.taskId : null,
+      goneAt: numOrNull(t.goneAt),
+      remindAt: numOrNull(t.remindAt),
+      step: Number.isInteger(t.step) ? Math.max(0, Math.min(5, t.step)) : 0,
+      usedMs: Number.isFinite(t.usedMs) ? t.usedMs : 0
+    });
   }
   return out;
 }
@@ -195,21 +244,26 @@ function sanitizeWeeks(w) {
 }
 export function sanitize(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.tasks) || (raw.version !== undefined && raw.version !== 1)) return null;
-  const tasks = raw.tasks.filter(t => t && typeof t.title === 'string' && Number.isFinite(t.deadline)).map(t => ({
-    id: typeof t.id === 'string' ? t.id : newId(),
-    title: t.title,
-    createdAt: Number.isFinite(t.createdAt) ? t.createdAt : t.deadline - 7 * 864e5,
-    deadline: t.deadline,
-    big: t.big ? 1 : 0,
-    x: clamp01(Number.isFinite(t.x) ? t.x : .5),
-    y: clamp01(Number.isFinite(t.y) ? t.y : .4),
-    doneAt: Number.isFinite(t.doneAt) ? t.doneAt : null,
-    link: typeof t.link === 'string' ? t.link : null,
-    week: typeof t.week === 'string' ? t.week : null,
-    steps: sanitizeSteps(t.steps)
-  }));
+  const tasks = raw.tasks.filter(t => t && typeof t.title === 'string' && Number.isFinite(t.deadline)).map(t => {
+    const o = {
+      id: typeof t.id === 'string' ? t.id : newId(),
+      title: t.title,
+      createdAt: Number.isFinite(t.createdAt) ? t.createdAt : t.deadline - 7 * 864e5,
+      deadline: t.deadline,
+      big: t.big ? 1 : 0,
+      x: clamp01(Number.isFinite(t.x) ? t.x : .5),
+      y: clamp01(Number.isFinite(t.y) ? t.y : .4),
+      doneAt: Number.isFinite(t.doneAt) ? t.doneAt : null,
+      link: typeof t.link === 'string' ? t.link : null,
+      week: typeof t.week === 'string' ? t.week : null,
+      steps: sanitizeSteps(t.steps)
+    };
+    const tag = cleanTag(t.tag);                 // absent when the task had none, so an old store round-trips byte for byte
+    if (tag) o.tag = tag;
+    return o;
+  });
   return {
-    version: 1, tasks,
+    version: 1, tasks, thoughts: sanitizeThoughts(raw.thoughts),
     weeks: sanitizeWeeks(raw.weeks),
     lastSeenWeek: typeof raw.lastSeenWeek === 'string' ? raw.lastSeenWeek : null,
     morningDue: typeof raw.morningDue === 'string' && /^\d{4}-W\d{2}$/.test(raw.morningDue) ? raw.morningDue : null,
@@ -234,15 +288,16 @@ export async function loadModel() {
     store.lastSeenWeek = nowKey;
     saveSoon();
   } else ensureWeeks(store, wall(0));
+  demoThoughts();
   rebuildStars();
   return store;
 }
 
 export function snapshotData() {
-  return JSON.parse(JSON.stringify({ tasks: store.tasks, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs }));
+  return JSON.parse(JSON.stringify({ tasks: store.tasks, thoughts: store.thoughts, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs }));
 }
 export function restoreData(snap) {
-  store.tasks = snap.tasks; store.weeks = snap.weeks; store.lastSeenWeek = snap.lastSeenWeek; store.prefs = snap.prefs;
+  store.tasks = snap.tasks; store.thoughts = snap.thoughts || []; store.weeks = snap.weeks; store.lastSeenWeek = snap.lastSeenWeek; store.prefs = snap.prefs;
   saveSoon();
 }
 export function replaceData(raw) {

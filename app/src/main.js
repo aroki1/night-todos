@@ -6,7 +6,7 @@ import { archivePast } from './model/week.js';
 import { setMorningScene, clearMorningScene, morningScene, morningNow, morningPhase, morningCfg, morningCtl, setMorningName, drawMorningText, morningLabelK } from './render/morning.js';
 import { makeSky } from './sky/sky.js';
 import { cloudsForce, cloudReset, setCloudPace } from './sky/clouds.js';
-import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
+import { store, loadModel, flushSave, saveSoon, syncStarPositions, rebuildStars, stars, NS, DEMO_ON, THOUGHTS_DEMO, isUrgent, setAnnouncer, setPersistence } from './model/store.js';
 import { shouldStartMorning, nextDue, nextAway, seasonOf, weekSummary, withSummary, withName, cleanName } from './model/morning.js';
 import { doFinish, doUndo, pushMorning, clearMorning } from './model/timeline.js';
 import { initBar, bar, setWake, drawBar, barTick, barAnimating, undoHit } from './ui/bar.js';
@@ -303,7 +303,7 @@ async function boot() {
     Promise.all([document.fonts.load('400 12px "IBM Plex Mono"'), document.fonts.load('500 12px "IBM Plex Mono"')]),
     new Promise(r => setTimeout(r, 3000))
   ]);
-  if (!FLAGS.freeze && !FLAGS.scene && !DEMO_ON) setPersistence({ load: loadStore, save: saveStore });
+  if (!FLAGS.freeze && !FLAGS.scene && !DEMO_ON && !THOUGHTS_DEMO) setPersistence({ load: loadStore, save: saveStore });
   else setPersistence(null);
   await loadModel();
   setReducedPref(FLAGS.reduced ? 'on' : (store.prefs.reducedMotion || 'system'));

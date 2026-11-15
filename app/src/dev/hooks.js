@@ -7,10 +7,11 @@ import { resetClockCache, clockTick } from '../sky/clock.js';
 import { moonSt } from '../sky/moon.js';
 import { specialsNow, setForceShower, satTime, setMoonShow, cometHead, satNow } from '../sky/events.js';
 import { BR, BG, BB, SR, SG, SB, CR, CG, CB, SBR, SBG, SBB, AGR, AGG, AGB, GW, SH, UH, dpr, P, D, N, dotPixel, glActive, glLose } from '../framebuffer.js';
-import { stars, NS, GHI, rebuildStars, store } from '../model/store.js';
+import { stars, NS, GHI, rebuildStars, store, liveThoughts, addThought, newId } from '../model/store.js';
+import { newThought } from '../model/thoughts.js';
 import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDelete, mkSteps, pipTotal } from '../model/timeline.js';
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
-import { bar, submitBar, barParse, barPlaceholder, msAvg } from '../ui/bar.js';
+import { bar, submitBar, barParse, barPlaceholder, msAvg, enterThoughtWhen, leaveThoughtWhen } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { HOLD_END } from '../choreo/morning.js';
 import { morningInfo as morningInfoR, setMorningHover } from '../render/morning.js';
@@ -159,6 +160,27 @@ export function installHooks(a) {
       return s;
     },
     now() { return T; },
+    /* dev: add a thought in memory without saving; select the i-th live thought (negative = from the end) */
+    thought(text, tag) {
+      const th = newThought(String(text || 'a thought'), tag || null, wall(T), newId());
+      addThought(th); api.render(true); return th.id;
+    },
+    selectThought(i) {
+      const list = liveThoughts(), th = list[i < 0 ? list.length + i : i];
+      if (!th) return null;
+      enterThoughtWhen(th.id, false);
+      api.render(true);
+      return th.id;
+    },
+    /* dev: say the i-th thought ('mon' is its deadline) and show the frame `ms` into the condense (frozen shots) */
+    condenseAt(ms, i = 1) {
+      const list = liveThoughts(), th = list[i < 0 ? list.length + i : i]; if (!th) return null;
+      enterThoughtWhen(th.id, true); ns.type('mon'); ns.key('Enter');
+      const t0 = T; setT(t0 + ms / 1000); resetClockCache(); api.render(true);
+      return th.id;
+    },
+    noThought() { leaveThoughtWhen(); api.render(true); return true; },
+    thoughts() { return store.thoughts.map(t => ({ id: t.id, text: t.text, saidAt: t.saidAt, goneAt: t.goneAt, remindAt: t.remindAt })); },
     gl: { active: glActive, lose: glLose },
     selfTest() { return selfTest(); },
     typeTrace(str) {

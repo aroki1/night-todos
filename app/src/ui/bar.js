@@ -1,19 +1,22 @@
 /* ui/bar.js — the bottom bar, its hidden real <input>, undo row and counter. */
 import { clamp01, seg, css, mixTo } from '../math.js';
-import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, setReducedPref, getReducedPref } from '../tokens.js';
-import { ctx, cv, P, SH, ROWS, BARY, UW, UH, dpr, geometryListeners } from '../framebuffer.js';
-import { T, wall, fmtDate, fmtLeft } from '../sky/clock.js';
-import { parseDeadline, splitBar } from '../model/parser.js';
+import { TXT, K, C, FLAGS, SIZE, STEPS, MORNING, TIME, GUIDE, THOUGHT, setReducedPref, getReducedPref } from '../tokens.js';
+import { ctx, cv, P, SH, ROWS, BARY, UW, UH, GW, dpr, geometryListeners } from '../framebuffer.js';
+import { T, wall, fmtDate, fmtDay, fmtLeft, WDN, two } from '../sky/clock.js';
+import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
-import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce } from '../model/store.js';
-import { undoTarget, externalUndo, doCreate, doStepAdd, applyImport } from '../model/timeline.js';
-import { placeNew, selIdx, setSelIdx } from '../model/placement.js';
+import { stars, NS, GHI, MAXS, store, saveSoon, DEMO_ON, rebuildStars, announce, liveThoughts, findThought, addThought, newId } from '../model/store.js';
+import { undoTarget, externalUndo, doCreate, doCondense, doStepAdd, doLetGo, applyImport } from '../model/timeline.js';
+import { newThought, hazeSlots, ageText } from '../model/thoughts.js';
+import { placeNew, selIdx, setSelIdx, setMouseHover } from '../model/placement.js';
+import { setThoughtSel } from '../render/compose.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
 import { onboardingHint, helpLines, enterGate } from './guide.js';
 
 export const bar = {
-  text: '', caret: 0, focus: false, last: -9, title: '', big: false, res: null, pv: '', pvWarn: false,
-  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: [], help: false
+  text: '', caret: 0, focus: false, last: -9, title: '', tag: null, big: false, res: null, pv: '', pvWarn: false,
+  gOn: false, gA0: 0, gT0: -9, gCommit: -1, blink: -9, gpos: null, ctr: 0, out: null, steps: [], help: false,
+  thought: null, letGo: false, thoughtHover: null
 };
 /* step mode: a selected live star turns the bar into "step for <title>"; Enter adds a step to it */
 export function stepTarget() {
@@ -53,6 +56,7 @@ let pendingEnter = null;
 function syncFromInput() {
   bar.text = input.value.slice(0, SIZE.maxBar);
   bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.text.length, input.selectionStart);
+  if (bar.text !== '') bar.letGo = false;
   bar.last = T;
 }
 function fireEnter(ts) {
@@ -115,8 +119,12 @@ function onInputKey(e) {
       else { setBarFocus(false); morningCtl.leave(''); }
       wake(); return;
     }
+    if (bar.thought) { leaveThoughtWhen(); setBarFocus(false); wake(); return; }                   // "when?" esc: later, the thought stays
     if (stepTarget() >= 0) { bar.text = ''; bar.caret = 0; input.value = ''; setSelIdx(-1); }     // step mode: Esc deselects, the bar returns to normal
     setBarFocus(false); wake(); return;
+  }
+  if (bar.thought && bar.text === '' && (e.key === 'Delete' || e.key === 'Backspace')) {         // an empty answer: let go?
+    e.preventDefault(); bar.letGo = true; wake(); return;
   }
   if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); onEnter(e.timeStamp, e.isComposing || e.keyCode === 229); return; }
   if (e.key === 'Tab') { e.preventDefault(); return; }
@@ -125,10 +133,25 @@ function onInputKey(e) {
   setTimeout(() => { if (bar.focus) { bar.caret = Math.min(bar.caretMax(), input.selectionStart || 0); wake(); } }, 0);
 }
 
+const shortWhen = ms => { const d = new Date(ms); return WDN[d.getDay()] + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()); };
+function whenPreview(w) {
+  if (w.kind === 'later') return '';
+  if (w.kind === 'bad') return w.err === 'past' ? "that's already gone" : "can't read that";
+  const ms = w.date.getTime();
+  return w.kind === 'remind' ? '→ remind ' + shortWhen(ms) : '→ ' + fmtDay(ms) + ' · ' + fmtLeft(ms - wall(T));
+}
 export function barParse() {
-  const p = splitBar(bar.text);
+  if (bar.thought) {                                             // "when?": the answer is not a task's title, deadline and steps
+    bar.title = ''; bar.tag = null; bar.big = false; bar.steps = []; bar.res = null;
+    const w = parseWhen(bar.text, wall(T));
+    bar.pvWarn = w.kind === 'bad';
+    bar.pv = whenPreview(w);
+    return;
+  }
+  const ex = extractTag(bar.text);
+  const p = splitBar(ex.text);
   const title = p.title.slice(0, SIZE.maxTitle), dls = p.dls;
-  bar.title = title; bar.big = p.big;
+  bar.title = title; bar.tag = ex.tag; bar.big = p.big;
   bar.steps = p.steps.slice(0, STEPS.maxSteps).map(x => x.slice(0, STEPS.maxText));
   bar.res = dls !== null && dls.trim() !== '' ? parseDeadline(dls, new Date(wall(T))) : null;
   const r = bar.res; bar.pvWarn = !!(r && r.err);
@@ -175,7 +198,7 @@ async function runCommand(cmd) {
 }
 
 function exportStore() {
-  const data = { version: 1, tasks: store.tasks, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs, exportedAt: new Date(wall(T)).toISOString() };
+  const data = { version: 1, tasks: store.tasks, thoughts: store.thoughts, weeks: store.weeks, lastSeenWeek: store.lastSeenWeek, prefs: store.prefs, exportedAt: new Date(wall(T)).toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   const d = new Date(wall(T));
@@ -204,11 +227,77 @@ function pickImport() {
   f.click();
 }
 
+function clearBar() { bar.text = ''; bar.caret = 0; bar.letGo = false; if (input) input.value = ''; }
+
+/* enter "when?" for a thought: the bar asks the question; `focus` false (Tab) leaves the input closed until Enter */
+export function enterThoughtWhen(id, focus) {
+  bar.thought = id; bar.letGo = false; bar.thoughtHover = null;
+  setSelIdx(-1); setMouseHover(-1); setThoughtSel(id);
+  clearBar();
+  bar.last = T;
+  if (focus) setBarFocus(true);
+  wake();
+}
+export function leaveThoughtWhen() {
+  if (!bar.thought) return false;
+  bar.thought = null; bar.letGo = false; setThoughtSel(null);
+  clearBar();
+  wake();
+  return true;
+}
+/* a thought was written: keep it, clear the bar, ask "when?" and stay focused */
+function keepThought() {
+  const text = bar.title.slice(0, SIZE.maxTitle);
+  if (!text) return false;
+  const th = newThought(text, bar.tag, wall(T), newId());
+  addThought(th);
+  bar.out = { text: bar.text, t0: T };
+  enterThoughtWhen(th.id, true);
+  announce('thought kept');
+  return true;
+}
+/* Enter in "when?": say, remind, later, or (on an empty bar) let go */
+function submitWhen() {
+  if (bar.letGo && bar.text === '') return letGoNow();
+  const now = wall(T), w = parseWhen(bar.text, now);
+  if (w.kind === 'bad') return false;
+  const th = findThought(bar.thought);
+  if (!th) { leaveThoughtWhen(); return false; }
+  if (w.kind === 'later') { leaveThoughtWhen(); setBarFocus(false); return true; }
+  if (w.kind === 'remind') {
+    th.remindAt = w.date.getTime(); th.usedMs = Math.max(0, now - th.createdAt);
+    saveSoon();
+    announce('remind ' + shortWhen(th.remindAt));
+    leaveThoughtWhen(); setBarFocus(false);
+    return true;
+  }
+  const pos = placeNew(th.text, bar.ctr, w.big);
+  const slot = hazeSlots(liveThoughts(), GW).find(p => p.id === th.id);            // where its haze is now: the condense starts there
+  const si = doCreate(th.text, pos.gx, pos.gy, w.big, w.date.getTime(), T, w.steps, th.tag);
+  if (si < 0) return false;
+  if (slot) doCondense(th.id, si, slot.x, SH - THOUGHT.bandY + THOUGHT.bandH / 2, T);
+  th.saidAt = now; th.taskId = stars[si] ? stars[si].id : null; th.usedMs = Math.max(0, now - th.createdAt);
+  saveSoon();
+  bar.ctr++; bar.out = { text: bar.text, t0: T }; bar.gpos = pos;
+  announce('said: ' + th.text);
+  leaveThoughtWhen(); setBarFocus(false);
+  return true;
+}
+function letGoNow() {
+  const th = findThought(bar.thought);
+  bar.letGo = false;
+  if (!th) { leaveThoughtWhen(); return false; }
+  doLetGo(th, T);
+  bar.out = { text: th.text, t0: T };
+  leaveThoughtWhen(); setBarFocus(false);
+  return true;
+}
+
 export function submitBar() {
   barParse();
   const mp = morningPhase();
   if (mp && mp !== 'end') return submitMorning(mp);
-  if (bar.text.trim().startsWith('/')) return runCommand(bar.text.trim());
+  if (bar.text.trim().startsWith('/')) { const r = runCommand(bar.text.trim()); leaveThoughtWhen(); return r; }
   const sel = stepTarget();
   if (sel >= 0) {                                                  // step mode: the whole text is one step; a full list quietly refuses
     const tx = bar.text.trim(); if (!tx) return false;
@@ -216,10 +305,12 @@ export function submitBar() {
     bar.out = { text: bar.text, t0: T }; bar.text = ''; bar.caret = 0; if (input) input.value = '';
     bar.last = T; wake(); return true;
   }
+  if (bar.thought) return submitWhen();
+  if (barKind(bar.text, wall(T)) === 'thought') return keepThought();
   const r = bar.res;
   if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
   const pos = bar.gpos || placeNew(bar.title, bar.ctr, bar.big);
-  doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps);
+  doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps, bar.tag);
   bar.ctr++; bar.out = { text: bar.text, t0: T }; bar.gpos = pos; bar.gCommit = T; bar.gOn = true;
   bar.text = ''; bar.caret = 0; if (input) input.value = '';
   setBarFocus(false); wake(); return true;
@@ -266,6 +357,7 @@ export function fitText(t, maxW) {
 export function barPlaceholder() {
   if (morningPhase() === 'hold') return MORNING.text.name;
   if (bar.help) return GUIDE.open;
+  if (bar.thought) return bar.letGo && bar.text === '' ? GUIDE.letGo : touchLayout() ? GUIDE.whenTouch : GUIDE.when;
   const st = stepTarget();
   if (st >= 0) { const n = stars[st].n; return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n); }
   return onboardingHint({
@@ -312,6 +404,19 @@ export function drawBar() {
   ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0); ctx.textBaseline = 'middle';
   ctx.font = '500 12px ' + '"IBM Plex Mono", ui-monospace, Consolas, monospace';
   ctx.fillStyle = TXT.ink2; ctx.fillText('›', 18, by);
+  /* the asked thought (or the hovered one) names itself above its haze: text in the dim label ink, the age dimmer, centred on the patch, clear of the bar and the haze */
+  ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+  const lt = bar.thought ? findThought(bar.thought) : bar.thoughtHover ? findThought(bar.thoughtHover) : null;
+  const lq = lt ? hazeSlots(liveThoughts(), GW).find(p => p.id === lt.id) : null;
+  if (lt && lq) {
+    const age = ' · ' + ageText(lt.createdAt, wall(T)), room = Math.min(UW - 18, 270);
+    const head = fitText(lt.text, Math.max(60, room - ctx.measureText(age).width));
+    const hw = ctx.measureText(head).width, aw = ctx.measureText(age).width, lw = hw + aw;
+    const lx = Math.max(9, Math.min(UW - 9 - lw, lq.x * 3 - lw / 2)), ly = (SH - THOUGHT.bandY - 6) * 3;
+    ctx.fillStyle = TXT.ink2; ctx.globalAlpha = THOUGHT.labelAlpha; ctx.fillText(head, lx, ly);
+    ctx.fillStyle = TXT.dim; ctx.globalAlpha = THOUGHT.ageAlpha; ctx.fillText(age, lx + hw, ly);
+    ctx.globalAlpha = 1;
+  }
   // counter: pips fill at the arrival of each connection (measured first: the placeholder must stop before it)
   const arr = [];
   for (let i = 0; i < NS; i++) { const s = stars[i]; if (s.done && s.on) arr.push(s.fin ? s.fin.t0 + s.fin.arriveMs / 1000 : -1e9); }
@@ -351,6 +456,7 @@ export function drawBar() {
   if (ua > 0 && u) {
     let t, label;
     if (ext) { t = ext.n + ' stars'; label = 'imported · '; }
+    else if (u.type === 'thought') { t = u.th.text; if (t.length > 28) t = t.slice(0, 27) + '…'; label = 'let go · '; }
     else if (u.type === 'step') { t = u.ev.text; if (t.length > 28) t = t.slice(0, 27) + '…'; label = { fin: 'step done · ', reopen: 'step reopened · ', add: 'step added · ', del: 'step removed · ' }[u.ev.kind]; }
     else { t = stars[u.si].n; if (t.length > 28) t = t.slice(0, 27) + '…'; label = u.type === 'add' ? 'added · ' : 'finished · '; }
     ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace'; ctx.globalAlpha = ua;

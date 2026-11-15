@@ -1,9 +1,9 @@
 /* ui/keys.js — keyboard: n / / to write, Tab to move, Enter to finish, z to undo. */
 import { T } from '../sky/clock.js';
-import { stars, NS } from '../model/store.js';
+import { stars, NS, liveThoughts } from '../model/store.js';
 import { doFinish, doUndo, doStepNext, doStepToggle, doStepDelete } from '../model/timeline.js';
 import { focus, selIdx, mouseHover, setSelIdx, setMouseHover, setForceFocus, lab } from '../model/placement.js';
-import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget, closeHelp } from './bar.js';
+import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget, closeHelp, enterThoughtWhen, leaveThoughtWhen } from './bar.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
 import { wake } from './bar.js';
 import { stepsLive, stepRows, sui } from '../model/steps.js';
@@ -53,17 +53,28 @@ export function bindKeys() {
         return;
       }
     }
+    if (bar.thought && (k === 'Delete' || k === 'Backspace')) {                   // a Tab-selected thought: let go? (the input then asks to confirm)
+      e.preventDefault(); bar.letGo = true; setBarFocus(true); setBarCaret(); wake(); return;
+    }
     if (k === 'n' || k === '/') {
-      e.preventDefault(); setBarFocus(true); setBarCaret(); if (stepTarget() < 0) setSelIdx(-1); setMouseHover(-1); wake();
+      e.preventDefault(); leaveThoughtWhen(); setBarFocus(true); setBarCaret(); if (stepTarget() < 0) setSelIdx(-1); setMouseHover(-1); wake();
     } else if (k === 'Tab') {
       e.preventDefault();
-      const l = aliveByGx(); if (!l.length) return;
-      let q = l.indexOf(selIdx); q = e.shiftKey ? (q <= 0 ? l.length - 1 : q - 1) : (q + 1) % l.length;
-      setSelIdx(l[q]); setMouseHover(-1); wake();
+      const l = aliveByGx(), ths = liveThoughts(), n = l.length + ths.length; if (!n) return;
+      let cur = -1;
+      if (bar.thought) { const j = ths.findIndex(t => t.id === bar.thought); if (j >= 0) cur = l.length + j; }
+      else if (selIdx >= 0) cur = l.indexOf(selIdx);
+      const q = e.shiftKey ? (cur <= 0 ? n - 1 : cur - 1) : (cur + 1) % n;
+      setMouseHover(-1);
+      if (q < l.length) { leaveThoughtWhen(); setSelIdx(l[q]); }
+      else { setSelIdx(-1); enterThoughtWhen(ths[q - l.length].id, false); }
+      wake();
     } else if (k === 'Enter') {
+      if (bar.thought) { setBarFocus(true); setBarCaret(); wake(); return; }
       if (focus >= 0) finishFocused();
     } else if (k === 'Escape') {
       if (bar.text !== '') { bar.text = ''; bar.caret = 0; bar.last = T; }
+      leaveThoughtWhen();
       setSelIdx(-1); setForceFocus(null); wake();
     } else if (k === 'z' || k === 'Z') {
       tryUndo(doUndo);

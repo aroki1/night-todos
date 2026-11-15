@@ -208,6 +208,25 @@ export const SIZE = {
   pipStep: 9, pipRow: 9
 };
 
+/* thoughts: text without a deadline, kept as a haze in a band above the bar.
+   bandY = the band's top in grains above the sky's bottom edge; bandH = its height; patchW = a patch's width in grains.
+   The hit test uses the same band rect. The haze is cool violet-grey (not one of the four meanings), always dimmer than the dimmest star.
+   alpha / selAlpha / hoverAlpha = the patch's peak brightness at rest / asked / hovered; hazeH = rows of a patch; fill = share of cells that carry grain.
+   breathA / breathS = the faint breathing (fraction, seconds); driftA / driftS = the slow sideways drift (grains, seconds).
+   asked: the patch stays put and brightens to selAlpha; a seed point (seedA brightness, seedWarm = how far its colour warms toward alive ivory) fades in over seedMs
+   and pulses seedHz by seedPulse; all other patches dim to dimOthers over dimMs (back the same way). gather = how far a said patch starts to pull toward its centre; letGoMs = thinning out; condenseMs = a said thought travels up to its star,
+   condenseReducedMs = the reduced-motion crossfade, gatherMs / travelFrom = the pull-in and when the point sets off, arc = the sideways bow in grains,
+   pointA = the travelling point's brightness, holdMs / holdFade = how long the point rests on the new star before the star takes over. */
+export const THOUGHT = {
+  bandY: 12, bandH: 10, patchW: 18, patchH: 4, patchGap: 4,
+  alpha: .32, selAlpha: .44, hoverAlpha: .38, undoMs: 5,
+  seedA: .5, seedWarm: .55, seedMs: 300, seedHz: .4, seedPulse: .16, dimOthers: .5, dimMs: 200,
+  color: hex('#a9a3cc'), hazeH: 8, fill: .8,
+  breathA: .22, breathS: 9, driftA: 2.4, driftS: 90, gather: .22,
+  letGoMs: 600, condenseMs: 1100, condenseReducedMs: 250, gatherMs: 480, travelFrom: 420, arc: 6, pointA: .95, holdMs: 650, holdFade: 230,
+  labelAlpha: .8, ageAlpha: 1
+};
+
 /* first-use copy and the quiet, replayable /help panel. Layout values are in grains. */
 export const GUIDE = {
   first: 'add your first star — title, deadline',
@@ -215,6 +234,9 @@ export const GUIDE = {
   add: 'title, deadline',
   finishMouse: 'click a star to finish',
   finishTouch: 'tap twice to finish',
+  when: 'when? · fri makes it a star · remind +2h · esc: later',
+  whenTouch: 'when? · fri · remind +2h',
+  letGo: 'let go? enter · esc keeps it',
   open: 'help · esc to close',
   helpDesktop: [
     'help',
@@ -263,6 +285,7 @@ export const FLAGS = {
   script: Q.get('script'),
   devSeed: Q.get('seed2') ? +Q.get('seed2') : null,
   steps: Q.get('steps'),                      // dev: steps=1 puts steps on the demo tasks
+  thoughts: Q.has('thoughts') ? +Q.get('thoughts') : null,   // dev: ?thoughts=n adds n synthetic thoughts in memory
   morning: Q.get('morning') === '1',          // dev: show the morning hold frame (M1)
   season: Q.get('season'),                     // dev: winter | spring | summer | autumn
   gap: Q.get('gap'),                           // dev: paper | mosaic

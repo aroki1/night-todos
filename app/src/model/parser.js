@@ -85,3 +85,46 @@ export function splitBar(text) {
   if (/\s!$/.test(title)) { title = title.replace(/\s*!$/, ''); big = true; }
   return { title, big, dls, steps };
 }
+
+/* the first `#tag` token (letters, digits, `-`, 1..16) that starts after a space or at the text's start is removed and returned lowercase.
+   Punctuation may follow the token (`#study, fri`), so a tag never needs its own comma. -> { text, tag } */
+const TAG = /(^|\s)#([A-Za-z0-9-]{1,16})(?![A-Za-z0-9-])/;
+export function extractTag(text) {
+  const src = String(text === null || text === undefined ? '' : text);
+  const m = TAG.exec(src);
+  const squash = s => s.trim().replace(/\s{2,}/g, ' ');
+  if (!m) return { text: squash(src), tag: null };
+  return { text: squash(src.slice(0, m.index) + src.slice(m.index + m[0].length)), tag: m[2].toLowerCase() };
+}
+
+/* what the bar would make of this text: a command, a task (title + a readable deadline), a thought (title, no deadline), or bad.
+   `nowMs` is wall ms. */
+export function barKind(text, nowMs) {
+  const tx = String(text === null || text === undefined ? '' : text).trim();
+  if (!tx) return 'empty';
+  if (tx[0] === '/') return 'cmd';
+  const p = splitBar(extractTag(tx).text);
+  if (p.dls === null || p.dls.trim() === '') return p.title === '' ? 'bad' : 'thought';
+  const r = parseDeadline(p.dls, new Date(nowMs));
+  return p.title !== '' && r.ok ? 'task' : 'bad';
+}
+
+/* the "when?" answer. -> { kind:'say', date, steps, big } | { kind:'remind', date } | { kind:'later' } | { kind:'bad', err } */
+const WHENSEP = /\s\/(?=\s|$)/;
+export function parseWhen(text, nowMs) {
+  const tx = String(text === null || text === undefined ? '' : text).trim();
+  if (!tx) return { kind: 'later' };
+  const now = new Date(nowMs);
+  const m = /^(?:remind|r)\s+([\s\S]+)$/i.exec(tx);
+  if (m) {
+    const r = parseDeadline(m[1].trim(), now);
+    return r.ok ? { kind: 'remind', date: r.date } : { kind: 'bad', err: r.err };
+  }
+  let t = tx, big = false;
+  if (/\s!$/.test(t)) { t = t.replace(/\s*!$/, ''); big = true; }
+  const parts = t.split(WHENSEP);
+  const r = parseDeadline(parts[0].trim(), now);
+  if (!r.ok) return { kind: 'bad', err: r.err };
+  const steps = parts.slice(1).map(x => x.trim()).filter(x => x);
+  return { kind: 'say', date: r.date, steps, big };
+}

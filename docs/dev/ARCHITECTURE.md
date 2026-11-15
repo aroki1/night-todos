@@ -32,7 +32,8 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 
 - `app/src/model/store.js` — durable data and task projections.
 - `app/src/model/timeline.js` — in-memory events and undo.
-- `app/src/model/parser.js` — deadlines and bar syntax.
+- `app/src/model/parser.js` — deadlines, bar syntax, tags, and the "when?" answer.
+- `app/src/model/thoughts.js` — thoughts, their haze slots, and their age.
 - `app/src/model/placement.js` — star and label placement.
 - `app/src/model/steps.js` — step progress, rows, and orbit geometry.
 - `app/src/model/week.js` — ISO-week membership and archives.
@@ -43,6 +44,7 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 - `app/src/choreo/morning.js` — sunrise, hold, and sunset timeline.
 - `app/src/choreo/step.js` — step transition and slot fill.
 - `app/src/choreo/undo.js` — undo transition.
+- `app/src/choreo/condense.js` — a said thought: haze pulls into a point and travels to its star.
 
 ### Sky and rendering
 
@@ -61,6 +63,7 @@ Night Sky is a static ES-module app. The web app lives in `app/`; the Tauri shel
 - `app/src/render/compose.js` — frame composition.
 - `app/src/render/text.js` — labels and hover text.
 - `app/src/render/steps.js` — step orbit and list.
+- `app/src/render/haze.js` — thoughts as haze: drift, breath, asked/hover, condense, let go.
 - `app/src/render/morning.js` — morning scene and controls.
 
 ### Interaction and development
