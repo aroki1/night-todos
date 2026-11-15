@@ -128,16 +128,42 @@ export function parseDeadline(str, now) {
   return out <= now ? PAST : { ok: true, date: out };
 }
 
-/* the bar: `title, deadline / step / step`. Steps split only on a lone slash between spaces (" / "), so `20/11` is never split.
-   The separator counts only after a comma, so a title may contain " / ". Commas inside steps are fine.
-   -> { title, big, dls (the deadline text or null), steps: [text] } */
+/* the bar. One line, three parts in any order, separated by commas: title, deadline, `#tag`. Pieces that are neither a deadline nor a tag stay in
+   the title, commas kept (`buy milk, eggs, today`). Without a comma the deadline is the longest tail of words parseDeadline accepts.
+   Steps: lines after the first that start with `-`, or the old ` / ` after a comma (a lone slash between spaces, so `20/11` is never split).
+   Other extra lines are joined to the title with a space. A leading `!` or a trailing ` !` makes the star big.
+   -> { title, big, dls (deadline text or null), res (parseDeadline result or null), steps: [text], tag } */
 const SEP = /\s\/(?=\s|$)/g;
-/* a leading `!` (`! x` or `!x`) makes a star big and is removed; a trailing ` !` is handled by each caller */
 const LEAD = /^\s*!\s*/;
-export function splitBar(text) {
-  let t = text,
+const readable = (s, now) => {
+  const r = parseDeadline(s, now);
+  return r.ok || r.err === 'past';
+};
+export function parseBar(text, nowMs) {
+  const now = new Date(nowMs),
+    lines = String(text === null || text === undefined ? '' : text)
+      .replace(/\r\n?/g, '\n')
+      .split('\n');
+  const lineSteps = [],
+    extra = [];
+  for (const l of lines.slice(1)) {
+    const x = l.trim();
+    if (!x) continue;
+    if (x[0] === '-') {
+      const st = x.replace(/^-+\s*/, '').trim();
+      if (st) lineSteps.push(st);
+    } else extra.push(x);
+  }
+  const ex = extractTag(lines[0]);
+  let t = ex.text,
+    tag = ex.tag,
     big = false,
     steps = [];
+  for (let i = 0; i < extra.length; i++) {
+    const e = extractTag(extra[i]);
+    extra[i] = e.text;
+    if (!tag && e.tag) tag = e.tag;
+  }
   if (LEAD.test(t)) {
     t = t.replace(LEAD, '');
     big = true;
@@ -158,14 +184,44 @@ export function splitBar(text) {
     t = head;
     break;
   }
-  const ci = t.lastIndexOf(','); // title = before the LAST comma
-  let title = ci < 0 ? t.trim() : t.slice(0, ci).trim();
-  const dls = ci < 0 ? null : t.slice(ci + 1);
+  steps = steps.concat(lineSteps);
+  const pieces = t
+    .split(',')
+    .map(x => x.trim())
+    .filter(x => x);
+  let dls = null,
+    rest = pieces;
+  for (let k = pieces.length - 1; k >= 0 && pieces.length > 1; k--)
+    if (readable(pieces[k], now)) {
+      dls = pieces[k];
+      rest = pieces.filter((_, j) => j !== k);
+      break;
+    }
+  if (dls === null && pieces.length) {
+    const words = pieces[pieces.length - 1].split(/\s+/);
+    for (let i = 1; i < words.length; i++) {
+      const cand = words.slice(i).join(' ');
+      if (readable(cand, now)) {
+        dls = cand;
+        rest = pieces.slice(0, -1).concat([words.slice(0, i).join(' ')]);
+        break;
+      }
+    }
+  }
+  let title = rest.join(', ');
+  if (extra.length) title = (title + ' ' + extra.join(' ')).trim();
   if (/\s!$/.test(title)) {
     title = title.replace(/\s*!$/, '');
     big = true;
   }
-  return { title, big, dls, steps };
+  return { title, big, dls, res: dls === null ? null : parseDeadline(dls, now), steps, tag };
+}
+/* the answer to "steps?": comma separated, trimmed, empty ones dropped */
+export function parseStepAnswer(text) {
+  return String(text === null || text === undefined ? '' : text)
+    .split(/[,\n]/)
+    .map(x => x.trim())
+    .filter(x => x);
 }
 
 /* the first `#tag` token (letters, digits, `-`, 1..16) that starts after a space or at the text's start is removed and returned lowercase.
@@ -185,10 +241,9 @@ export function barKind(text, nowMs) {
   const tx = String(text === null || text === undefined ? '' : text).trim();
   if (!tx) return 'empty';
   if (tx[0] === '/') return 'cmd';
-  const p = splitBar(extractTag(tx).text);
-  if (p.dls === null || p.dls.trim() === '') return p.title === '' ? 'bad' : 'thought';
-  const r = parseDeadline(p.dls, new Date(nowMs));
-  return p.title !== '' && r.ok ? 'task' : 'bad';
+  const p = parseBar(tx, nowMs);
+  if (p.dls === null) return p.title === '' ? 'bad' : 'thought';
+  return p.title !== '' && p.res.ok ? 'task' : 'bad';
 }
 
 /* the "when?" answer. -> { kind:'say', date, steps, big } | { kind:'remind', date } | { kind:'later' } | { kind:'bad', err } */

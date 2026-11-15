@@ -1,5 +1,5 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
-import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
+import { parseDeadline, parseBar, parseStepAnswer, extractTag, barKind, parseWhen } from '../model/parser.js';
 import { newThought, hazeSlots, ageText, reviveSaid, thoughtDue, pickDue, afterAsk, thoughtMayCome } from '../model/thoughts.js';
 import { pace, PACE0, fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
@@ -125,7 +125,7 @@ export function selfTest() {
     'guide: first live star teaches finish for pointer and touch'
   );
   ok(
-    onboardingHint({ taskCount: 2, hasLive: true, hasDone: true }) === 'title, deadline / step / step' &&
+    onboardingHint({ taskCount: 2, hasLive: true, hasDone: true }) === 'title, deadline, #tag · any order' &&
       onboardingHint({ taskCount: 4, hasDone: true }) === 'title, deadline',
     'guide: normal and step syntax hints after first finish'
   );
@@ -323,7 +323,8 @@ export function selfTest() {
   );
 
   /* steps: the bar. title, deadline / step / step */
-  const sp = splitBar('hm one-pager, fri / outline / draft'),
+  const sb = t => parseBar(t, now.getTime());
+  const sp = sb('hm one-pager, fri / outline / draft'),
     pd = parseDeadline(sp.dls, now);
   ok(
     sp.title === 'hm one-pager' &&
@@ -334,7 +335,7 @@ export function selfTest() {
       pd.date.getTime() === at(2026, 11, 13, 23, 59),
     'bar: "hm one-pager, fri / outline / draft" = 2 steps'
   );
-  const sx = splitBar('x, 20/11');
+  const sx = sb('x, 20/11');
   ok(
     sx.steps.length === 0 &&
       sx.title === 'x' &&
@@ -343,26 +344,26 @@ export function selfTest() {
     'bar: "x, 20/11" = 0 steps and 20 Nov'
   );
   ok(
-    splitBar('x, fri 18:00 / a 20/11 / b').steps.join('|') === 'a 20/11|b' &&
-      splitBar('a, b, fri / c, d').title === 'a, b' &&
-      splitBar('a, b, fri / c, d').steps[0] === 'c, d',
+    sb('x, fri 18:00 / a 20/11 / b').steps.join('|') === 'a 20/11|b' &&
+      sb('a, b, fri / c, d').title === 'a, b' &&
+      sb('a, b, fri / c, d').steps[0] === 'c, d',
     'bar: commas in steps and titles'
   );
   ok(
-    splitBar('a / b, fri').steps.length === 0 &&
-      splitBar('a / b, fri').title === 'a / b' &&
-      splitBar('x, fri /').steps.length === 0 &&
-      splitBar('x, fri /').dls.trim() === 'fri',
+    sb('a / b, fri').steps.length === 0 &&
+      sb('a / b, fri').title === 'a / b' &&
+      sb('x, fri /').steps.length === 0 &&
+      sb('x, fri /').dls.trim() === 'fri',
     'bar: a slash in the title or a trailing slash makes no steps'
   );
   ok(
-    splitBar('x, fri / a !').big && splitBar('x, fri / a !').steps.join() === 'a' && splitBar('no deadline yet').steps.length === 0,
+    sb('x, fri / a !').big && sb('x, fri / a !').steps.join() === 'a' && sb('no deadline yet').steps.length === 0,
     'bar: ! still makes it big'
   );
-  const bgE = splitBar('make a course, today !'),
-    bgL = splitBar('! make a course, today'),
-    bgN = splitBar('!make a course, today'),
-    bgP = splitBar('make a course, today');
+  const bgE = sb('make a course, today !'),
+    bgL = sb('! make a course, today'),
+    bgN = sb('!make a course, today'),
+    bgP = sb('make a course, today');
   ok(
     bgE.big === true &&
       bgE.title === 'make a course' &&
@@ -374,15 +375,15 @@ export function selfTest() {
       bgP.big === false,
     'bar: ! at the start or the end makes it big and leaves the title'
   );
-  const bgS = splitBar('! x, fri / a / b');
+  const bgS = sb('! x, fri / a / b');
   ok(
     bgS.big &&
       bgS.title === 'x' &&
       bgS.steps.join() === 'a,b' &&
-      splitBar('!').title === '' &&
+      sb('!').title === '' &&
       barKind('! learn x', 5) === 'thought' &&
       barKind('! make a course, today', now.getTime()) === 'task' &&
-      splitBar('wow! x, fri').big === false,
+      sb('wow! x, fri').big === false,
     'bar: leading ! with steps, a lone !, a ! inside a word'
   );
   ok(
@@ -928,7 +929,49 @@ export function selfTest() {
       barKind('x #study', nw) === 'thought',
     'bar kind: task, thought, trailing comma, tag only'
   );
-  ok(barKind('essay, blah', nw) === 'bad' && barKind('x, today 9', nw) === 'bad', 'bar kind: unreadable and past are bad');
+  ok(
+    barKind('essay, blah', nw) === 'thought' && barKind('x, today 9', nw) === 'bad',
+    'bar kind: an unreadable piece is title text, a past deadline is bad'
+  );
+  {
+    /* the forgiving bar: title, deadline, #tag in any order; lines for steps */
+    const D = at(2026, 11, 14, 18, 0),
+      f = t => {
+        const p = parseBar(t, nw);
+        return p.title + '|' + (p.res && p.res.ok ? p.res.date.getTime() : p.dls) + '|' + p.tag + '|' + p.steps.join(';') + '|' + p.big;
+      },
+      want = 'new task|' + D + '|career||false';
+    ok(
+      f('new task, tomorrow 18:00, #career') === want &&
+        f('#career, new task, tomorrow 18:00') === want &&
+        f('tomorrow 18:00, new task, #career') === want &&
+        f('new task tomorrow 18:00 #career') === want &&
+        f('new task, #career tomorrow 18:00') === want,
+      'bar: title, deadline and tag in any order, with or without commas'
+    );
+    const bm = parseBar('buy milk, eggs, bread, today', nw);
+    ok(bm.title === 'buy milk, eggs, bread' && bm.dls === 'today' && bm.steps.length === 0, 'bar: other comma pieces stay in the title');
+    const eo = parseBar('essay, fri / outline / draft', nw);
+    ok(eo.title === 'essay' && eo.steps.join() === 'outline,draft', 'bar: the old " / " steps still work');
+    const ml = parseBar('essay, fri, #study\n- outline\n-draft', nw);
+    ok(ml.title === 'essay' && ml.tag === 'study' && ml.steps.join() === 'outline,draft' && ml.res.ok, 'bar: "-" lines are steps');
+    const mx = parseBar('essay, fri\n- a\nnotes for later\n-b', nw);
+    ok(mx.title === 'essay notes for later' && mx.steps.join() === 'a,b', 'bar: a non-dash extra line joins the title');
+    ok(
+      barKind('call fri about the car', nw) === 'thought' &&
+        parseBar('call fri about the car', nw).title === 'call fri about the car' &&
+        barKind('call mom, then the car', nw) === 'thought' &&
+        barKind('call the car, fri', nw) === 'task',
+      'bar: a date word inside a title makes no deadline'
+    );
+    const b1 = parseBar('! big task, fri', nw),
+      b2 = parseBar('big task, fri !', nw);
+    ok(b1.big && b2.big && b1.title === 'big task' && b2.title === 'big task' && b1.dls === 'fri', 'bar: ! at either end makes it big');
+    ok(
+      parseStepAnswer('outline, draft, ').join() === 'outline,draft' && parseStepAnswer('  ').length === 0,
+      'bar: the steps answer is a comma list'
+    );
+  }
   const pw0 = parseWhen('', nw),
     pw1 = parseWhen('fri', nw),
     pw2 = parseWhen('fri / a / b !', nw);

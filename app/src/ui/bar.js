@@ -10,6 +10,7 @@ import {
   MORNING,
   TIME,
   GUIDE,
+  BARML,
   THOUGHT,
   PRACTICE,
   isReduced,
@@ -18,7 +19,7 @@ import {
 } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, UH, GW, dpr, geometryListeners } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtDay, fmtLeft, WDN, two } from '../sky/clock.js';
-import { parseDeadline, splitBar, extractTag, barKind, parseWhen } from '../model/parser.js';
+import { parseBar, parseStepAnswer, extractTag, barKind, parseWhen } from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
 import {
   stars,
@@ -131,7 +132,16 @@ geometryListeners.push(placeBarInput);
    (or 150 ms: an Enter that never ends the composition still submits what is in the input) */
 const gate = enterGate();
 let pendingEnter = null;
+/* more than one line is only for a new star (Shift+Enter, or a pasted list); "when?", step mode and commands stay one line */
+function multiOK() {
+  const mp = morningPhase();
+  return !bar.thought && stepTarget() < 0 && !(mp && mp !== 'end') && !bar.text.trim().startsWith('/');
+}
 function syncFromInput() {
+  if (input.value.indexOf('\n') >= 0 && (bar.thought || stepTarget() >= 0 || input.value.trimStart().startsWith('/'))) {
+    const ask = stepTarget() >= 0 && bar.firstStepSi === stepTarget();
+    input.value = input.value.replace(/\s*\n+\s*/g, ask ? ', ' : ' ');
+  }
   bar.text = input.value.slice(0, SIZE.maxBar);
   bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.text.length, input.selectionStart);
   if (bar.text !== '') bar.letGo = false;
@@ -283,6 +293,16 @@ function onInputKey(e) {
     wake();
     return;
   }
+  if ((e.key === 'Enter' || e.keyCode === 13) && e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    if (multiOK() && input.value.length < SIZE.maxBar) {
+      input.setRangeText('\n', input.selectionStart, input.selectionEnd, 'end');
+      syncFromInput();
+      bar.blink = T;
+      wake();
+    }
+    return;
+  }
   if (e.key === 'Enter' || e.keyCode === 13) {
     e.preventDefault();
     onEnter(e.timeStamp, e.isComposing || e.keyCode === 229);
@@ -325,15 +345,25 @@ export function barParse() {
     bar.pv = whenPreview(w);
     return;
   }
-  const ex = extractTag(bar.text);
-  const p = splitBar(ex.text);
-  const title = p.title.slice(0, SIZE.maxTitle),
-    dls = p.dls;
-  bar.title = title;
-  bar.tag = ex.tag;
+  const st = stepTarget();
+  if (st >= 0) {
+    // step mode: the text is a step (or, right after "steps?", a comma list), not a new star
+    bar.title = '';
+    bar.tag = null;
+    bar.big = false;
+    bar.steps = [];
+    bar.res = null;
+    const n = bar.firstStepSi === st ? Math.min(STEPS.maxSteps, parseStepAnswer(bar.text).length) : 0;
+    bar.pv = n ? '→ ' + n + (n === 1 ? ' step' : ' steps') : '';
+    bar.pvWarn = false;
+    return;
+  }
+  const p = parseBar(bar.text, wall(T));
+  bar.title = p.title.slice(0, SIZE.maxTitle);
+  bar.tag = p.tag;
   bar.big = p.big;
   bar.steps = p.steps.slice(0, STEPS.maxSteps).map(x => x.slice(0, STEPS.maxText));
-  bar.res = dls !== null && dls.trim() !== '' ? parseDeadline(dls, new Date(wall(T))) : null;
+  bar.res = p.res;
   const r = bar.res;
   bar.pvWarn = !!(r && r.err);
   const ns = bar.steps.length;
@@ -344,6 +374,7 @@ export function barParse() {
         fmtDate(r.date.getTime()) +
         ' · ' +
         fmtLeft(r.date.getTime() - wall(T)) +
+        (bar.tag ? ' · #' + bar.tag : '') +
         (ns ? ' · ' + ns + (ns === 1 ? ' step' : ' steps') : '')
       : r.err === 'past'
         ? "that's already gone"
@@ -712,7 +743,7 @@ function submitWhen() {
   bar.out = { text: bar.text, t0: T };
   bar.gpos = pos;
   bar.firstStepSi = -1;
-  bar.firstStep = { si, at: T + condenseMs(isReduced()) / 1000 }; // when the condense ends: offer its first step
+  if (!w.steps.length) bar.firstStep = { si, at: T + condenseMs(isReduced()) / 1000 }; // when the condense ends: ask for its steps
   announce('said: ' + th.text);
   leaveThoughtWhen('said');
   setBarFocus(false);
@@ -746,6 +777,27 @@ export function submitBar() {
   if (sel >= 0) {
     // step mode: the whole text is one step; a full list quietly refuses
     const tx = bar.text.trim();
+    if (bar.firstStepSi === sel) {
+      // "steps?": a comma list; an empty Enter skips
+      const list = parseStepAnswer(tx);
+      if (!list.length) {
+        bar.firstStepSi = -1;
+        clearBar();
+        setSelIdx(-1);
+        setBarFocus(false);
+        wake();
+        return true;
+      }
+      let n = 0;
+      for (const x of list) if (doStepAdd(sel, x, T)) n++;
+      if (!n) return false;
+      bar.firstStepSi = -1;
+      bar.out = { text: bar.text, t0: T };
+      clearBar();
+      bar.last = T;
+      wake();
+      return true;
+    }
     if (!tx) return false;
     if (!doStepAdd(sel, tx, T)) return false;
     bar.firstStepSi = -1;
@@ -762,7 +814,8 @@ export function submitBar() {
   const r = bar.res;
   if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
   const pos = bar.gpos || placeNew(bar.title, bar.ctr, bar.big, bar.tag);
-  doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps, bar.tag);
+  const si = doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps, bar.tag);
+  const ask = si >= 0 && bar.steps.length === 0; // no steps given: the bar asks for them
   bar.ctr++;
   bar.out = { text: bar.text, t0: T };
   bar.gpos = pos;
@@ -771,7 +824,9 @@ export function submitBar() {
   bar.text = '';
   bar.caret = 0;
   if (input) input.value = '';
-  setBarFocus(false);
+  bar.firstStepSi = -1;
+  if (ask) bar.firstStep = { si, at: T };
+  else setBarFocus(false);
   wake();
   return true;
 }
@@ -844,7 +899,7 @@ export function barPlaceholder() {
   }
   const st = stepTarget();
   if (st >= 0) {
-    if (bar.firstStepSi === st) return GUIDE.firstStep;
+    if (bar.firstStepSi === st) return touchLayout() ? GUIDE.firstStepTouch : GUIDE.firstStep;
     const n = stars[st].n;
     return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n);
   }
@@ -900,8 +955,23 @@ export function drawBar() {
   ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
   ctx.textBaseline = 'middle';
   ctx.font = '500 12px ' + '"IBM Plex Mono", ui-monospace, Consolas, monospace';
+  /* several lines grow the bar upward: the last line sits on the bar row, the earlier ones stack above it on a panel (at most BARML.max rows) */
+  const allLines = bar.text.split('\n'),
+    lines = allLines.slice(-BARML.max),
+    nL = lines.length,
+    cut = allLines.length - nL,
+    rowY = j => by - BARML.row * (nL - 1 - j);
+  if (nL > 1) {
+    const top = by - BARML.row * (nL - 1) - BARML.row / 2;
+    ctx.globalAlpha = BARML.alpha;
+    ctx.fillStyle = TXT.bg;
+    ctx.fillRect(0, top, UW, BARY - top);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = TXT.rule;
+    ctx.fillRect(0, top, UW, 1);
+  }
   ctx.fillStyle = TXT.ink2;
-  ctx.fillText('›', 18, by);
+  ctx.fillText('›', 18, rowY(0));
   /* the asked thought (or the hovered one) names itself above its haze: text in the dim label ink, the age dimmer, centred on the patch, clear of the bar and the haze */
   ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   const lt = bar.thought ? findThought(bar.thought) : bar.thoughtHover ? findThought(bar.thoughtHover) : null;
@@ -943,10 +1013,11 @@ export function drawBar() {
   undoHit = null;
   ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   let textW = 0;
+  const pvJ = cut > 0 ? nL - 1 : 0; // the preview sits after the first line (the title), or the last visible one
   if (bar.text !== '') {
     ctx.fillStyle = TXT.ink;
-    ctx.fillText(bar.text, 33, by);
-    textW = ctx.measureText(bar.text).width;
+    for (let j = 0; j < nL; j++) ctx.fillText(lines[j], 33, rowY(j));
+    textW = ctx.measureText(lines[pvJ]).width;
   }
   if (bar.out) {
     // Enter: the text slides up one grain and fades
@@ -955,14 +1026,18 @@ export function drawBar() {
       const k = seg(ms, 0, 80);
       ctx.globalAlpha = 1 - k;
       ctx.fillStyle = TXT.ink;
-      ctx.fillText(bar.out.text, 33, by - 3 * k);
+      ctx.fillText(bar.out.text.split('\n')[0], 33, by - 3 * k);
       ctx.globalAlpha = 1;
     } else if (ms > 600) bar.out = null;
   }
   if (bar.focus && ((((T - bar.blink) * 1.1) % 1) + 1) % 1 < 0.5) {
-    const cx = Math.round((33 + ctx.measureText(bar.text.slice(0, bar.caret)).width) / 3) * 3;
-    ctx.fillStyle = TXT.ink2;
-    ctx.fillRect(cx, by - 9, 6, 18);
+    const before = bar.text.slice(0, bar.caret).split('\n'),
+      cj = before.length - 1 - cut;
+    if (cj >= 0) {
+      const cx = Math.round((33 + ctx.measureText(before[before.length - 1]).width) / 3) * 3;
+      ctx.fillStyle = TXT.ink2;
+      ctx.fillRect(cx, rowY(cj) - 9, 6, 18);
+    }
   }
   if (bar.text === '') {
     const pa = (1 - ua) * (bar.out ? seg(T - bar.out.t0, 0.4, 0.55) : 1);
@@ -981,7 +1056,8 @@ export function drawBar() {
     if (pa > 0) {
       ctx.globalAlpha = pa;
       ctx.fillStyle = bar.pvWarn ? TXT.warn : TXT.dim;
-      ctx.fillText(bar.pv, Math.round((33 + textW) / 3) * 3 + 9, by);
+      const px = Math.round((33 + textW) / 3) * 3 + 9;
+      ctx.fillText(fitText(bar.pv, Math.max(30, UW - 18 - cw - pipTotalNow * 9 - 20 - px)), px, rowY(pvJ));
       ctx.globalAlpha = 1;
     }
   }

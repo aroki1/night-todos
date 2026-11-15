@@ -82,20 +82,23 @@ and when the week ends, the night ends with it. 🌅
 
 ## Writing stars
 
-Press `n` or `/`, then write a title, a comma and a deadline:
+Press `n` or `/`, then write a title, a deadline and optionally a `#tag`, in any order, separated by commas:
 
 ```text
 essay, fri
-weekly report, tomorrow 18:00 / outline / draft
-launch notes, +3d !
-call the landlord #home
+weekly report, tomorrow 18:00, #work
+#home, call the landlord, today 18:00
+launch notes +3d !
 ```
 
-- The deadline comes after the last comma.
-- Add steps after the deadline, each one after ` / ` (a slash with spaces around it).
+- Title, deadline and `#tag` may come in any order. Other comma pieces stay in the title (`buy milk, eggs, bread, today`).
+- Without commas the deadline is read from the end (`new task today 18:00 #career`); a date word in the middle of a title stays in the title.
+- Steps: after `Enter` on a star without steps the bar asks `steps?`; answer with a comma list, or `Enter` to skip.
+- Or press `Shift+Enter` for a new line: lines starting with `-` are steps. Pasted lists work the same way; other extra lines join the title. Then the bar does not ask.
+- The old form still works: `essay, fri / outline / draft`.
 - End with ` !` for a bigger star. A leading `!` works too.
-- Add `#tag` anywhere to put the star in a group (letters, digits and `-`, up to 16). It is removed from the title.
-- Leave the deadline out (no comma, or nothing after it) and you have a thought, not a star. The bar then asks "when?". Answer with a deadline from the table below (steps and `!` work there too) to make it a star, or `remind <when>` (`remind +2h`, `remind fri 9:00`) to bring it back at that time. `Esc` or an empty Enter keeps it as a thought.
+- A `#tag` (letters, digits and `-`, up to 16) puts the star in a group. It is removed from the title.
+- Leave the deadline out and you have a thought, not a star. The bar then asks "when?". Answer with a deadline from the table below (steps and `!` work there too) to make it a star, or `remind <when>` (`remind +2h`, `remind fri 9:00`) to bring it back at that time. `Esc` or an empty Enter keeps it as a thought.
 
 | Kind | Examples |
 | --- | --- |
@@ -109,7 +112,7 @@ A date without a time means 23:59. A date that has already passed reads as "that
 
 | | Desktop | Touch | Keyboard |
 | --- | --- | --- | --- |
-| Write a star | click the bar | tap the bar | `n` or `/` |
+| Write a star | click the bar | tap the bar | `n` or `/` (`Shift+Enter`: new line for `-` steps) |
 | Finish a star | click it | tap to select, tap again | `Tab` to select, `Enter` |
 | Finish a step | click its row | tap its row | `Space` finishes the next step, `1`-`5` toggle a row |
 | Delete a step | hover a row, `Delete` | hold a row | `Delete` over a row |

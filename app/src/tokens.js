@@ -661,6 +661,9 @@ export const THOUGHT = {
   ageAlpha: 1
 };
 
+/* the bar with several lines (Shift+Enter): one row per line, in bar units (3 per grain) */
+export const BARML = { row: 18, max: 5, alpha: 0.94 };
+
 /* first-use copy and the quiet, replayable /help panel. Layout values are in grains. */
 export const GUIDE = {
   first: 'add your first star — title, deadline',
@@ -672,11 +675,13 @@ export const GUIDE = {
   whenTouch: 'when? · fri · remind +2h',
   whenBack: 'when? · {age} · fri makes it a star · esc: later',
   letGo: 'let go? enter · esc keeps it',
-  firstStep: 'first step? · esc to skip',
+  firstStep: 'steps? comma separated · enter to skip',
+  firstStepTouch: 'steps? a, b, c',
   open: 'help · esc to close',
   helpDesktop: [
     'help',
-    'add · title, deadline / step / step',
+    'add · title, deadline, #tag in any order',
+    'steps · asked after enter, or - lines (shift+enter)',
     'big · add ! at the end',
     'finish · click a star',
     'n or / write · tab move · enter finish · z undo',
@@ -686,8 +691,8 @@ export const GUIDE = {
   ],
   helpTouch: [
     'help',
-    'add · title, deadline',
-    'steps · add / step / step',
+    'add · title, deadline, #tag',
+    'steps · asked after enter',
     'big · add ! at the end',
     'finish · tap a star twice',
     'n or / write · tab move',
@@ -773,7 +778,7 @@ export const STEPS = {
   indent: 4,
   rowHint: '+ step',
   rowHintAlpha: 0.7, // the dim row under a selected star that has no steps yet
-  barHint: 'title, deadline / step / step',
+  barHint: 'title, deadline, #tag · any order',
   barHintEvery: 3, // the empty bar shows the step syntax when the task count is 2 mod 3
   panelFrac: 0.4,
   panelRows: 6,

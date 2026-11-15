@@ -23,7 +23,7 @@ body{color:#f1ead6;font-family:"IBM Plex Mono",ui-monospace,Consolas,"Courier Ne
 canvas{display:block;margin:0 auto}
 /* the real input: visually hidden, still focusable, so IME, paste and mobile keyboards work */
 #bar-form{margin:0;padding:0;border:0}
-#bar-input{position:fixed;left:50%;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;font-size:16px;background:transparent;color:transparent;caret-color:transparent;z-index:-1;pointer-events:none}
+#bar-input{resize:none;overflow:hidden;position:fixed;left:50%;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;font-size:16px;background:transparent;color:transparent;caret-color:transparent;z-index:-1;pointer-events:none}
 /* touch: the input lies over the bar (rect set by bar.js), so a tap is a native tap on it and the soft keyboard opens */
 #bar-input.over{z-index:5;pointer-events:auto;outline:0;-webkit-tap-highlight-color:transparent}
 #bar-input::selection{background:transparent}
@@ -33,7 +33,7 @@ canvas{display:block;margin:0 auto}
 </head>
 <body>
 <canvas id="c"></canvas>
-<form id="bar-form" action="javascript:void(0)" autocomplete="off"><input id="bar-input" type="text" inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="false" aria-label="Add a star: title, deadline"></form>
+<form id="bar-form" action="javascript:void(0)" autocomplete="off"><textarea id="bar-input" rows="1" wrap="off" inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="false" aria-label="Add a star: title, deadline, tag"></textarea></form>
 <div id="live" aria-live="polite"></div>
 <div id="safe"></div>
 <noscript>Night Sky needs JavaScript.</noscript>

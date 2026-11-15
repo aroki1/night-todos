@@ -550,6 +550,15 @@ export function installHooks(a) {
         api.render();
         return;
       }
+      if (bar.focus && k === 'Enter' && parts.includes('Shift')) {
+        bar.text = bar.text.slice(0, bar.caret) + '\n' + bar.text.slice(bar.caret);
+        bar.caret++;
+        bar.last = T;
+        const inp = document.getElementById('bar-input');
+        if (inp) inp.value = bar.text;
+        api.render();
+        return;
+      }
       if (bar.focus && k === 'Enter') {
         submitBar();
         api.render();

@@ -3,7 +3,7 @@ import { TIME } from '../tokens.js';
 import { clamp01, hstr } from '../math.js';
 import { isoWeekKey, weekDistance, weekLabel, WDN } from '../sky/clock.js';
 import { previousWeekKey } from './week.js';
-import { splitBar, parseDeadline } from './parser.js';
+import { parseBar } from './parser.js';
 import { practiceLine } from './practices.js';
 
 /* the week whose morning is still unseen, after the app learns it is now `nowMs` and the last week it saw was `prevWeek`.
@@ -169,9 +169,8 @@ export function morningEnter(text, nowMs) {
   const tx = String(text === null || text === undefined ? '' : text).trim();
   if (!tx) return { kind: 'none' };
   if (tx[0] === '/') return { kind: 'cmd' };
-  const p = splitBar(tx);
-  const r = p.dls !== null && p.dls.trim() !== '' ? parseDeadline(p.dls, new Date(nowMs)) : null;
-  if (p.title !== '' && r && r.ok) return { kind: 'task' };
+  const p = parseBar(tx, nowMs);
+  if (p.title !== '' && p.res && p.res.ok) return { kind: 'task' };
   return { kind: 'name', name: cleanName(tx) };
 }
 
