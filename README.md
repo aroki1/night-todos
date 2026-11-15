@@ -5,8 +5,7 @@
 <h1 align="center">Night Sky</h1>
 
 <p align="center">
-  A todo list where every task is a star.<br>
-  Finish one and it joins the week's constellation. Miss one and it burns out.
+  ✦ a todo list where every task is a star ✦
 </p>
 
 <p align="center">
@@ -31,9 +30,13 @@
 
 ## What it is
 
-Night Sky is a small, quiet todo app. You write a task with a deadline and it appears as a star in a night sky. The deadline is the star's life: it warms toward amber as it gets close. When you finish it, it flares, turns blue-white and draws a line to the last thing you finished, so the week slowly becomes a constellation. When the week is over, the sky opens into a short morning that grows a flower for everything you did.
+write a task. a star lights up.<br>
+the deadline is its life — warm at first, amber when time runs short.<br>
+finish it, and it flares and reaches for the last thing you did.<br>
+by friday, your week has a shape.<br>
+miss one, and it quietly burns out. no red badges, no guilt.
 
-Everything is drawn as grain: one framebuffer of small dots, with no framework and no images. It runs in any modern browser, installs as a PWA, and keeps your data on your device.
+and when the week ends, the night ends with it. 🌅
 
 <p align="center">
   <a href="docs/media/weekly-morning.mp4"><img src="docs/media/weekly-morning.gif" alt="The night closes, a grain-drawn sunrise opens over a meadow, and flowers sway in the wind while the week's line fades in." width="100%"></a>
@@ -45,23 +48,23 @@ Everything is drawn as grain: one framebuffer of small dots, with no framework a
 <table>
   <tr>
     <td width="50%"><a href="docs/media/create.mp4"><img src="docs/media/create.gif" alt="Typing 'essay, fri' in the bar: a faint preview star appears, then assembles into a real star when Enter is pressed." width="100%"></a></td>
-    <td width="50%" valign="top"><h3>Create</h3>Write <code>essay, fri</code> and watch a preview star appear where the new task will go. Press Enter and it assembles. Add steps with <code>/</code> and a big star with <code>!</code>.</td>
+    <td width="50%" valign="top"><h3>Create</h3>type <code>essay, fri</code>. press enter.<br>it's in the sky.</td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/media/finish.mp4"><img src="docs/media/finish.gif" alt="A star flares and rings out as it is finished, then a line travels from it to the week's constellation." width="100%"></a></td>
-    <td width="50%" valign="top"><h3>Finish</h3>Click a star. It flares, a ring leaves it, and a line travels to the constellation. It stays blue-white for the rest of the week. Undo is open for five seconds.</td>
+    <td width="50%" valign="top"><h3>Finish</h3>click a star.<br>watch it join the others.<br><sub>changed your mind? undo stays open for five seconds.</sub></td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/media/steps.mp4"><img src="docs/media/steps.gif" alt="A selected star with a list of steps orbiting it; one step is finished and its light pulses into the star's core." width="100%"></a></td>
-    <td width="50%" valign="top"><h3>Steps</h3>A task can carry steps. They orbit the star, and each finished step pulses into its core. A small marker shows whether the work is keeping pace with the deadline.</td>
+    <td width="50%" valign="top"><h3>Steps</h3>big tasks carry small moons.<br>each one you finish pulses into the core.</td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/media/weekly-morning.mp4"><img src="docs/media/weekly-morning.gif" alt="The weekly morning: a sunrise over a meadow with one flower for every finished task." width="100%"></a></td>
-    <td width="50%" valign="top"><h3>The weekly morning</h3>Each Monday the last week closes with a morning: a flower for each finished task, a bud for each one you carry over, and a line of text for the week.</td>
+    <td width="50%" valign="top"><h3>The weekly morning</h3>every monday, last week gets a sunrise.<br>a flower for everything you did.</td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/media/help.png" alt="The /help panel open above the bar, listing the syntax and keys in a few short lines." width="100%"></td>
-    <td width="50%" valign="top"><h3>Past weeks and help</h3>Archived weeks stay in the sky as faint, distant constellations. Hover one to see its week and name. Type <code>/help</code> for a short reference at any time.</td>
+    <td width="50%" valign="top"><h3>Past weeks</h3>old weeks drift away, but never disappear.<br>hover one to see its name.<br><sub>lost? type <code>/help</code>.</sub></td>
   </tr>
 </table>
 
@@ -107,7 +110,14 @@ In the bar, type a command instead of a task:
 
 ## The weekly morning
 
-When a new week begins and you open the app, the old week gets its morning. The night closes, a sunrise is drawn in grain over a meadow, and wind moves the grass. Every task you finished is a flower; a task you are carrying into the new week is a bud. One of 52 short lines for the week fades in, and you can type a name for the week or a first task for the next one. Escape or Enter lets the sun set into the new night. The finished week then stays in the sky as a distant constellation.
+every monday, the night ends.<br>
+a sun rises over a valley made of dots.<br>
+every task you finished has grown into a flower. 🌼<br>
+the ones you're carrying stand as buds.<br>
+name the week, if you like.<br>
+then the sun sets, and the meadow turns back into stars.
+
+<sub>It plays the first time you open the app in a new week. Click or press Space to hurry the sunrise; Enter or Esc lets the sun set. Type a name, or a task with a deadline to start the new week with it.</sub>
 
 ## Install
 
@@ -124,9 +134,13 @@ Installers are written under the Cargo target directory in `release/bundle/`. Th
 
 ## Privacy
 
+your sky lives on your device. no account, no server, no tracking.
+
 Tasks, preferences and weekly history live in the browser's local storage (or the desktop app's). There is no account, no server and no analytics. The app makes no network requests of its own; the service worker only caches the app's files, and the one font, IBM Plex Mono, is served from the same place. Back up or move your data with `/export` and `/import`.
 
 ## How it works
+
+there are no images in Night Sky. only dots.
 
 Everything is drawn into one grain framebuffer, a grid of small dots, and presented through WebGL with a 2D canvas fallback. Only the labels are canvas text. Each moment in the app, such as a finish, an undo, a deadline passing or the weekly morning, is a pure function of time and its inputs, so a frame depends only on the sky time `T`. That makes it possible to step the app frame by frame, which is how the clips above were rendered. There is no framework and no build step: the files in `app/` are the files that run. `npm run verify` checks the result against golden screenshot hashes and a frame-time budget.
 
