@@ -4,7 +4,7 @@ import { stars, NS, liveThoughts } from '../model/store.js';
 import { dayKey, prevDayKey, canMark } from '../model/practices.js';
 import { doFinish, doUndo, doStepNext, doStepToggle, doStepDelete, doPracticeToggle } from '../model/timeline.js';
 import { focus, selIdx, mouseHover, setSelIdx, setMouseHover, setForceFocus, lab } from '../model/placement.js';
-import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget, closeHelp, enterThoughtWhen, leaveThoughtWhen } from './bar.js';
+import { bar, setBarFocus, setBarCaret, tryUndo, stepTarget, closeHelp, enterThoughtWhen, leaveThoughtWhen, startEdit } from './bar.js';
 import { morningPhase, morningCtl } from '../render/morning.js';
 import { wake } from './bar.js';
 import { stepsLive, stepRows, sui } from '../model/steps.js';
@@ -135,6 +135,11 @@ export function bindKeys() {
       bar.letGo = true;
       setBarFocus(true);
       setBarCaret();
+      wake();
+      return;
+    }
+    if ((k === 'e' || k === 'E') && selIdx >= 0 && startEdit(selIdx)) {
+      e.preventDefault(); // the star's title, tag and steps open in the bar
       wake();
       return;
     }

@@ -353,6 +353,12 @@ export function syncStarPositions() {
 
 /* a star's area of life: the task's tag; a dev demo star may carry its own. Missing / null / '' = untagged. */
 export const starTag = s => (s && s.task && s.task.tag) || (s && s.pdata && s.pdata.tag) || (s && s.tag) || '';
+/* set (or clear, with a falsy tag) a star's tag: on its task, or on the dev demo star. It does not move the star. */
+export function setStarTag(s, tag) {
+  const o = s.task || s;
+  if (tag) o.tag = tag;
+  else delete o.tag;
+}
 export const sameTag = (a, b) => (a || '') === (b || '');
 /* the nearest done star of the same tag. Untagged stars still link only to untagged ones. -> index | null */
 export function nearestDoneIn(list, si) {

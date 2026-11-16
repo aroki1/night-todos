@@ -1,9 +1,25 @@
 /* dev/selftest.js — parser, formatting, week membership, archive and store round-trip. */
-import { parseDeadline, parseBar, parseStepAnswer, extractTag, barKind, parseWhen } from '../model/parser.js';
+import {
+  parseDeadline,
+  parseBar,
+  parseStepAnswer,
+  parseTagAnswer,
+  parseEdit,
+  editText,
+  topTags,
+  askSkip,
+  extractTag,
+  barKind,
+  parseWhen,
+  cleanPaste,
+  scrollStart,
+  visibleSlice
+} from '../model/parser.js';
 import { newThought, hazeSlots, ageText, reviveSaid, thoughtDue, pickDue, afterAsk, thoughtMayCome } from '../model/thoughts.js';
 import { pace, PACE0, fmtLeft, isoWeekKey, isoWeekOf, T, wall, clockBase, setClockBase, resyncClock } from '../sky/clock.js';
 import { inCurrentWeek, archivePast, taskWeekKey, ensureWeeks, nextWeekKey, previousWeekKey, decideRitual } from '../model/week.js';
-import { sanitize, isUrgent, stepsDoneBy, R, CORE, sameTag, starTag, nearestDoneIn } from '../model/store.js';
+import { sanitize, isUrgent, stepsDoneBy, R, CORE, sameTag, starTag, nearestDoneIn, stars, mkStar } from '../model/store.js';
+import { doEdit, doTagSet, doUndo, replay, events } from '../model/timeline.js';
 import { tagPullScore, tagSuffix } from '../model/placement.js';
 import { SPR } from '../sky/components.js';
 import {
@@ -36,7 +52,7 @@ import {
   practiceRows,
   canCreate
 } from '../model/practices.js';
-import { isDrag, clampScroll, stepRows } from '../model/steps.js';
+import { isDrag, clampScroll, stepRows, matchSteps } from '../model/steps.js';
 import { slotCount, slotFill, slotF, stepFinishState, pulseMs, collapseK } from '../choreo/step.js';
 import { condenseState, condenseMs } from '../choreo/condense.js';
 import { markState, stopState } from '../choreo/practice.js';
@@ -972,6 +988,38 @@ export function selfTest() {
       'bar: the steps answer is a comma list'
     );
   }
+  ok(
+    cleanPaste('```text\nDAA, fri\n\n- a\n   \n- b  \n```\n\n') === 'DAA, fri\n- a\n- b' &&
+      cleanPaste('`- step`\n`a` and `b`\nrun `ls`') === '- step\n`a` and `b`\nrun `ls`' &&
+      cleanPaste('a\r\n\r\nb\rc') === 'a\nb\nc' &&
+      cleanPaste('') === '' &&
+      cleanPaste(null) === '' &&
+      cleanPaste('\n \n```\n') === '',
+    'paste: fences, blank lines, wrapped backticks, CRLF and empty input'
+  );
+  ok(
+    visibleSlice('abcdefghij', 0, 5, '…').text === 'abcd…' &&
+      visibleSlice('abcdefghij', 3, 5, '…').text === '…efg…' &&
+      visibleSlice('abcdefghij', 6, 5, '…').text === '…hij' &&
+      visibleSlice('abc', 0, 10, '…').text === 'abc' &&
+      visibleSlice('abc', 0, 0, '…').text === '' &&
+      visibleSlice('abc', 5, 2, '…').text === '' &&
+      scrollStart(20, 0, 10, 4) === 15 &&
+      scrollStart(2, 15, 10, 4) === 0 &&
+      scrollStart(12, 0, 10, 4) === 7 &&
+      scrollStart(8, 7, 10, 4) === 4 &&
+      scrollStart(5, 0, 10, 4) === 0 &&
+      (() => {
+        let st = scrollStart(300, 0, 150, 4, 300);
+        for (let n = 299; n >= 20; n--) {
+          st = scrollStart(n, st, 150, 4, n);
+          if (n > 149 ? st !== n + 1 - 150 : st !== 0) return false; // right-filled while it does not fit, 0 once it fits
+          if (n === 100 && st !== 0) return false;
+        }
+        return scrollStart(0, 50, 150, 4, 300) === 0 && scrollStart(300, 0, 150, 4, 300) === 151;
+      })(),
+    'scroll: whole-character rows with ellipses, and the caret column follows with a margin'
+  );
   const pw0 = parseWhen('', nw),
     pw1 = parseWhen('fri', nw),
     pw2 = parseWhen('fri / a / b !', nw);
@@ -1387,5 +1435,129 @@ export function selfTest() {
       summaryLines(w6, '2026-W45', '', 3).join('|') === 'week 45|3 weeks away',
     'practice: five lines then +N, none in an away week'
   );
+  /* the questions after a create: the tag answer, the tags used most, Enter skips one, Esc skips all */
+  ok(
+    parseTagAnswer('#study').tag === 'study' &&
+      parseTagAnswer('study').tag === 'study' &&
+      parseTagAnswer('Study').tag === 'study' &&
+      parseTagAnswer('  #Home-2 ').tag === 'home-2',
+    'tag?: with or without #, any case'
+  );
+  ok(
+    parseTagAnswer('').kind === 'skip' &&
+      parseTagAnswer('  ').kind === 'skip' &&
+      parseTagAnswer('two words').kind === 'bad' &&
+      parseTagAnswer('a'.repeat(17)).kind === 'bad' &&
+      parseTagAnswer('wh@t').kind === 'bad' &&
+      parseTagAnswer('##x').kind === 'bad',
+    'tag?: empty skips, an invalid answer is bad'
+  );
+  ok(
+    topTags(['b', 'a', 'a', null, '', 'c', 'c', 'c', 'd'], 3).join() === 'c,a,b' &&
+      topTags([], 3).length === 0 &&
+      topTags(['x'], 3).join() === 'x',
+    'tag?: the 3 tags used most (ties alphabetical, empty ones ignored)'
+  );
+  ok(
+    askSkip(['steps', 'tag'], false).join() === 'tag' &&
+      askSkip(['tag'], false).length === 0 &&
+      askSkip(['steps', 'tag'], true).length === 0 &&
+      askSkip([], false).length === 0,
+    'ask: Enter skips one question, Esc skips all'
+  );
+  /* edit: the text, the step matching, the typed deadline, the undo */
+  ok(
+    editText('essay', 'study', ['outline', 'draft']) === 'essay #study\n- outline\n- draft' && editText('a b', null, []) === 'a b',
+    'edit: the text is the title and tag, then one - line per step'
+  );
+  {
+    const old = [
+      { id: 'a', text: 'outline', doneAt: 5 },
+      { id: 'b', text: 'draft', doneAt: null },
+      { id: 'c', text: 'draft', doneAt: 9 }
+    ];
+    const m1 = matchSteps(old, ['draft', 'outline', 'new one']);
+    ok(
+      m1.length === 3 && m1[0].keep === old[1] && m1[1].keep === old[0] && m1[2].keep === null && m1[2].text === 'new one',
+      'edit steps: kept ones keep their step (and done state), a new line is new, the order follows the lines'
+    );
+    const m2 = matchSteps(old, ['outline']);
+    ok(m2.length === 1 && m2[0].keep === old[0], 'edit steps: a line removed removes the step');
+    const m3 = matchSteps(old, ['draft', 'draft', 'draft']);
+    ok(
+      m3[0].keep === old[1] && m3[1].keep === old[2] && m3[2].keep === null,
+      'edit steps: duplicates pair off in order, the extra one is new'
+    );
+    const m4 = matchSteps(
+      [],
+      Array.from({ length: 25 }, (_, i) => 's' + i)
+    );
+    ok(m4.length === 20 && matchSteps(old, ['  ', '']).length === 0, 'edit steps: the limit holds, blank lines are dropped');
+  }
+  {
+    const pe = parseEdit('essay #study\n- outline\n- draft', 'essay', nw);
+    ok(
+      pe.title === 'essay' && pe.tag === 'study' && pe.steps.join() === 'outline,draft' && !pe.ignoredDeadline,
+      'edit: title, tag and steps are read'
+    );
+    const pd = parseEdit('essay, fri 18:00 #study\n- a', 'essay', nw);
+    ok(pd.title === 'essay' && pd.ignoredDeadline && pd.tag === 'study', 'edit: a typed deadline is ignored and reported');
+    ok(
+      parseEdit('call fri', 'call fri', nw).title === 'call fri' && !parseEdit('call fri', 'call fri', nw).ignoredDeadline,
+      'edit: an unchanged title that ends in a date word stays'
+    );
+    ok(
+      parseEdit('essay', 'essay', nw).tag === null && parseEdit('  ', 'essay', nw).title === '',
+      'edit: no tag removes it, an empty title is empty'
+    );
+  }
+  {
+    const s = mkStar({ n: 'essay', gx: 10, gy: 10, big: 0 });
+    s.steps = [
+      { id: 'a', text: 'outline', doneAt: 5 },
+      { id: 'b', text: 'draft', doneAt: null }
+    ];
+    s.tag = 'study';
+    stars.push(s);
+    const si = stars.length - 1,
+      n0 = events.length;
+    const done = doEdit(si, { title: 'essay v2', tag: 'home', steps: ['draft', 'polish'] }, 1e9);
+    ok(
+      done &&
+        s.n === 'essay v2' &&
+        starTag(s) === 'home' &&
+        s.steps.map(t => t.text).join() === 'draft,polish' &&
+        s.steps[0].id === 'b' &&
+        s.steps[1].doneAt === null &&
+        events.length === n0 + 1 &&
+        events[events.length - 1].type === 'edit',
+      'edit: one event; title, tag and steps applied'
+    );
+    ok(!doEdit(si, { title: '  ', tag: null, steps: [] }, 1e9 + 1) && s.n === 'essay v2', 'edit: an empty title is refused');
+    ok(
+      doTagSet(si, 'career') && starTag(s) === 'career' && s.gx === 10 && s.gy === 10,
+      'tag?: an answer is stored and the star does not move'
+    );
+    if (typeof window === 'undefined') {
+      /* the whole undo path (replay sets the undo target); Node only, the live app keeps its own replay */
+      const n1 = events.length;
+      doEdit(si, { title: 'x', tag: null, steps: ['only'] }, 1e9 + 2);
+      replay(1e9 + 3);
+      doUndo(1e9 + 4);
+      ok(
+        s.n === 'essay v2' && starTag(s) === 'career' && s.steps.map(t => t.text).join() === 'draft,polish' && s.steps[0].id === 'b',
+        'edit: undo restores the title, tag and steps'
+      );
+      events.splice(n1);
+    } else {
+      const ev = events[n0];
+      ok(
+        ev.before.title === 'essay' && ev.before.tag === 'study' && ev.before.steps.length === 2 && ev.before.steps[0].doneAt === 5,
+        'edit: the event holds the before snapshot'
+      );
+    }
+    events.splice(n0);
+    stars.splice(si, 1);
+  }
   return { pass, fail, total: pass + fail, failed };
 }

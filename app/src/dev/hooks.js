@@ -38,7 +38,7 @@ import { newThought } from '../model/thoughts.js';
 import { dayKey, prevDayKey, canMark, weekDots, weekCount } from '../model/practices.js';
 import { events, doFinish, doUndo, doStepNext, doStepToggle, doStepAdd, doStepDelete, mkSteps, pipTotal } from '../model/timeline.js';
 import { lab, setForceFocus, setMouseHover, setSelIdx, computeFocus, updateHover, hk, hp, frK, lk, focus, wg } from '../model/placement.js';
-import { bar, submitBar, barParse, barPlaceholder, msAvg, enterThoughtWhen, leaveThoughtWhen } from '../ui/bar.js';
+import { bar, submitBar, barParse, barPlaceholder, msAvg, enterThoughtWhen, leaveThoughtWhen, startEdit } from '../ui/bar.js';
 import { rebuildPast, setPastSkip } from '../sky/past.js';
 import { HOLD_END } from '../choreo/morning.js';
 import { morningInfo as morningInfoR, setMorningHover } from '../render/morning.js';
@@ -198,6 +198,12 @@ export function installHooks(a) {
         }
       api.render(true);
     },
+    edit(name) {
+      const i = findStar(name);
+      const ok = i >= 0 && startEdit(i);
+      api.render();
+      return ok;
+    }, // dev: open the edit of a star in the bar (same as `e` on a selected star)
     stepsAdd(name, text, atT) {
       return doStepAdd(findStar(name), text, atT);
     },
@@ -513,6 +519,8 @@ export function installHooks(a) {
           focus: bar.focus,
           help: bar.help,
           placeholder: barPlaceholder(),
+          edit: !!bar.edit,
+          asks: bar.askQs.join(),
           gpos: bar.gpos,
           gOn: bar.gOn
         },

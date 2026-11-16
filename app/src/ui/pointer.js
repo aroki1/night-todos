@@ -7,7 +7,18 @@ import { dayKey } from '../model/practices.js';
 import { doFinish, doUndo, doStepToggle, doStepDelete, doLetGo, doPracticeToggle, undoTarget, externalUndo } from '../model/timeline.js';
 import { hazeHit } from '../model/thoughts.js';
 import { lab, setMouseHover, setSelIdx, setTapSelected, selIdx, mouseHover } from '../model/placement.js';
-import { bar, setBarFocus, setBarCaret, undoHit, skyBtn, tryUndo, closeHelp, enterThoughtWhen, leaveThoughtWhen } from './bar.js';
+import {
+  bar,
+  setBarFocus,
+  setBarCaret,
+  undoHit,
+  skyBtn,
+  tryUndo,
+  closeHelp,
+  enterThoughtWhen,
+  leaveThoughtWhen,
+  startEdit
+} from './bar.js';
 import { skySwap, setThoughtHover } from '../render/compose.js';
 import { setPointerGrain, clearPointerGrain } from '../sky/past.js';
 import { morningPhase, morningCtl, morningHit, setMorningHover, morningHover } from '../render/morning.js';
@@ -74,7 +85,8 @@ function clickRow(h) {
   const s = stars[h.si];
   if (h.row.k === 'practice') {
     if (s && s.pdata) doPracticeToggle(s.pdata, h.row.day, T);
-  } else if (h.row.k === 'hdr') toggleDoneRows(s);
+  } else if (h.row.k === 'edit') startEdit(h.si);
+  else if (h.row.k === 'hdr') toggleDoneRows(s);
   else if (h.row.sid) doStepToggle(h.si, h.row.sid, T);
   wake();
 }

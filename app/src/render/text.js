@@ -66,6 +66,12 @@ export function drawLabels() {
       ctx.fillStyle = TXT.dim;
       ctx.fillText(L.hint, (L.dx + STEPS.indent) * 3, (L.dy + 12 + rowPitch() * 0.5) * 3 + 1);
     }
+    const rowK = L.hint ? L.hintK : L.listK;
+    if (L.edit && rowK > 0.01) {
+      ctx.globalAlpha = rowK * STEPS.rowHintAlpha;
+      ctx.fillStyle = TXT.dim;
+      ctx.fillText(STEPS.rowEdit, (L.dx + STEPS.indent) * 3, (L.dy + 12 + L.eoff + rowPitch() * 0.5) * 3 + 1);
+    }
     if (L.list && L.listK > 0.01) {
       const p = rowPitch(),
         sy = sui.sy[si],
@@ -118,13 +124,13 @@ export function drawLabels() {
           ctx.fillText('▾', hx, (pt + L.listH - 3) * 3 + 1);
         }
       }
-      if (sui.rowStar === si && sui.rowHover >= 0 && L.rr && L.rr[sui.rowHover]) {
-        // row hover: the same 1 px frame
-        const q = L.rr[sui.rowHover];
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        frameRect(Math.round(q.x0), Math.round(q.y0), Math.round(q.x1), Math.round(q.y1), TXT.dim, 0.9 * L.listK);
-        ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
-      }
+    }
+    if (rowK > 0.01 && sui.rowStar === si && sui.rowHover >= 0 && L.rr && L.rr[sui.rowHover]) {
+      // row hover: the same 1 px frame
+      const q = L.rr[sui.rowHover];
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      frameRect(Math.round(q.x0), Math.round(q.y0), Math.round(q.x1), Math.round(q.y1), TXT.dim, 0.9 * rowK);
+      ctx.setTransform(P / 3, 0, 0, P / 3, 0, 0);
     }
   }
   ctx.globalAlpha = 1;

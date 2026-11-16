@@ -93,7 +93,7 @@ launch notes +3d !
 
 - Title, deadline and `#tag` may come in any order. Other comma pieces stay in the title (`buy milk, eggs, bread, today`).
 - Without commas the deadline is read from the end (`new task today 18:00 #career`); a date word in the middle of a title stays in the title.
-- Steps: after `Enter` on a star without steps the bar asks `steps?`; answer with a comma list, or `Enter` to skip.
+- Questions: after `Enter` the bar asks what is missing, `steps?` (a comma list) then `tag?` (one word, the three you use most are shown). `Enter` on an empty answer skips that question, `Esc` skips all.
 - Or press `Shift+Enter` for a new line: lines starting with `-` are steps. Pasted lists work the same way; other extra lines join the title. Then the bar does not ask.
 - The old form still works: `essay, fri / outline / draft`.
 - End with ` !` for a bigger star. A leading `!` works too.
@@ -113,6 +113,7 @@ A date without a time means 23:59. A date that has already passed reads as "that
 | | Desktop | Touch | Keyboard |
 | --- | --- | --- | --- |
 | Write a star | click the bar | tap the bar | `n` or `/` (`Shift+Enter`: new line for `-` steps) |
+| Edit a star (title, tag, steps) | select it, click `edit` | select it, tap `edit` | select it, `e` (`Enter` saves, `Esc` cancels) |
 | Finish a star | click it | tap to select, tap again | `Tab` to select, `Enter` |
 | Finish a step | click its row | tap its row | `Space` finishes the next step, `1`-`5` toggle a row |
 | Delete a step | hover a row, `Delete` | hold a row | `Delete` over a row |

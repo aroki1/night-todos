@@ -26,6 +26,8 @@ import {
   clearDone,
   announce,
   newId,
+  starTag,
+  setStarTag,
   findPractice,
   snapshotData,
   restoreData,
@@ -37,7 +39,7 @@ import { toggleDay, dayKey } from './practices.js';
 import { finishState, edgeState } from '../choreo/finish.js';
 import { undoState, undoEdge } from '../choreo/undo.js';
 import { slotCount, slotFill } from '../choreo/step.js';
-import { stepView } from './steps.js';
+import { stepView, matchSteps } from './steps.js';
 import { condenseMs } from '../choreo/condense.js';
 
 export let events = [],
@@ -163,6 +165,9 @@ export function replay(t) {
       const s = stars[ev.si];
       if (ev.dir) s.sev = { t0: ev.at, dir: ev.dir, reduced: ev.reduced, slot: ev.slot, lo: ev.lo, hi: ev.hi };
       undoTarget = { si: ev.si, at: ev.at, type: 'step', ev };
+    } else if (ev.type === 'edit') {
+      // title, tag and steps were edited: the data is already committed, there is no choreography
+      undoTarget = { si: ev.si, at: ev.at, type: 'edit', ev };
     } else if (ev.type === 'thought') {
       undoTarget = { type: 'thought', at: ev.at, th: ev.th };
       thFx.set(ev.th.id, { kind: 'go', t0: ev.at, dir: -1 });
@@ -198,6 +203,10 @@ export function replay(t) {
         undoTarget = null;
         continue;
       } // the thought's data was restored by doUndo
+      if (undoTarget.type === 'edit') {
+        undoTarget = null;
+        continue;
+      } // the data was restored by doUndo
       const s = stars[undoTarget.si];
       if (undoTarget.type === 'step') {
         const u = undoTarget.ev;
@@ -304,6 +313,7 @@ export function doUndo(at) {
   pushEvent({ type: 'undo', at });
   const s = stars[u.si];
   if (u.type === 'step') undoStep(s, u.ev);
+  else if (u.type === 'edit') applyEditSnap(s, u.ev.before);
   else if (s && s.task) {
     if (u.type === 'add') {
       reviveSaid(store.thoughts, s.task.id);
@@ -342,7 +352,10 @@ export function doCreate(title, gx, gy, big, dlMs, at, stepTexts, tag) {
     s.nx = t.x;
     s.ny = t.y;
     s.steps = t.steps;
-  } else if (stepTexts && stepTexts.length) s.steps = mkSteps(stepTexts);
+  } else {
+    s.steps = mkSteps(stepTexts);
+    if (tag) s.tag = tag;
+  }
   stars.push(s);
   setNS(stars.length);
   pushEvent({ type: 'create', at, si: stars.length - 1, reduced: isReduced() });
@@ -476,4 +489,52 @@ function undoStep(s, e) {
     if (k >= 0) s.steps.splice(k, 1);
   } else if (e.kind === 'del') s.steps.splice(Math.min(e.index, s.steps.length), 0, e.step);
   touchSave();
+}
+
+/* ---------- tag and edit ---------- */
+/* an answer to "tag?": stored at once, the star does not move (links follow the same-tag rule from now on). No event: the create stays the undo target. */
+export function doTagSet(si, tag) {
+  const s = stars[si];
+  if (!s || !s.on || s.practice || s.gh || !tag) return false;
+  setStarTag(s, tag);
+  touchSave();
+  announce('tag ' + tag);
+  return true;
+}
+const editSnap = s => ({
+  title: s.n,
+  tag: starTag(s) || null,
+  steps: (s.steps || []).map(t => ({ id: t.id, text: t.text, doneAt: t.doneAt }))
+});
+function applyEditSnap(s, snap) {
+  if (!s) return;
+  s.n = snap.title;
+  if (s.task) s.task.title = snap.title;
+  setStarTag(s, snap.tag);
+  if (!s.steps) s.steps = [];
+  s.steps.splice(0, s.steps.length, ...snap.steps.map(t => ({ id: t.id, text: t.text, doneAt: t.doneAt })));
+  touchSave();
+}
+/* edit a live task: `ed` = { title, tag, steps: [text] } (see parseEdit). Steps are matched by text to the old ones (kept ones keep id and done state).
+   One event with the before / after snapshot; undo inside the 5 s window restores `before`. The star never moves. */
+export function doEdit(si, ed, at) {
+  const s = stars[si];
+  if (!s || !s.on || s.done || s.miss || s.gh || s.practice || at >= expAt(s)) return false;
+  const title = String(ed.title || '')
+    .trim()
+    .slice(0, SIZE.maxTitle);
+  if (!title) return false;
+  if (!s.steps) s.steps = [];
+  const before = editSnap(s),
+    next = matchSteps(s.steps, ed.steps).map(m => m.keep || { id: newId(), text: m.text, doneAt: null });
+  s.n = title;
+  if (s.task) s.task.title = title;
+  setStarTag(s, ed.tag || null);
+  s.steps.splice(0, s.steps.length, ...next);
+  touchSave();
+  const after = editSnap(s);
+  if (JSON.stringify(before) === JSON.stringify(after)) return true; // nothing changed: no event, nothing to undo
+  pushEvent({ type: 'edit', at, si, before, after });
+  announce('edited ' + title);
+  return true;
 }

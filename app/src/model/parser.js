@@ -216,6 +216,39 @@ export function parseBar(text, nowMs) {
   }
   return { title, big, dls, res: dls === null ? null : parseDeadline(dls, now), steps, tag };
 }
+/* a pasted block (often copied from a chat) made fit for the bar: code-fence lines and blank lines dropped, one pair of backticks around a whole line
+   removed, trailing spaces trimmed, no leading or trailing newline. A backtick inside a line stays. */
+export function cleanPaste(text) {
+  return String(text === null || text === undefined ? '' : text)
+    .split(/\r\n|\r|\n/)
+    .map(l => l.replace(/\s+$/, ''))
+    .filter(l => l.trim() !== '' && !/^\s*```[\w+-]*\s*$/.test(l))
+    .map(l => {
+      const m = /^(\s*)`([^`]*)`$/.exec(l);
+      return m ? m[1] + m[2] : l;
+    })
+    .join('\n');
+}
+/* the first visible character column of the bar's text after the caret moved: it changes only when the caret leaves the cells, and keeps `margin` cells clear of the edges */
+export function scrollStart(caret, start, cells, margin, len) {
+  let s = start;
+  if (caret - s > cells - 1 - margin) s = caret - (cells - 1 - margin);
+  if (caret - s < margin) s = caret - margin;
+  if (len !== undefined) s = Math.min(s, len + 1 - cells); // never empty cells on the right while text is hidden on the left (+1: the caret's cell at the end)
+  return Math.max(0, s);
+}
+/* one row of text from column `start` in `cells` whole characters: the first cell becomes `dots` when text is hidden on the left, the last when it is hidden on the right.
+   text is what is drawn (its length is the number of cells used) */
+export function visibleSlice(line, start, cells, dots) {
+  const text = String(line),
+    leftDots = start > 0 && text.length > start,
+    rightDots = text.length > start + cells;
+  if (cells < 1) return { start, leftDots: false, rightDots: false, text: '' };
+  let shown = text.slice(start, start + cells);
+  if (leftDots) shown = dots + shown.slice(1);
+  if (rightDots) shown = shown.slice(0, cells - 1) + dots;
+  return { start, leftDots, rightDots, text: shown };
+}
 /* the answer to "steps?": comma separated, trimmed, empty ones dropped */
 export function parseStepAnswer(text) {
   return String(text === null || text === undefined ? '' : text)
@@ -275,4 +308,44 @@ export function parseWhen(text, nowMs) {
     .map(x => x.trim())
     .filter(x => x);
   return { kind: 'say', date: r.date, steps, big };
+}
+
+/* ---------- the questions after a create, and the edit text ---------- */
+
+/* the answer to "tag?": one tag with or without `#`, the tag rule (letters, digits, `-`, 1..16, lowercased). Empty = skip.
+   -> { kind: 'skip' } | { kind: 'ok', tag } | { kind: 'bad' } */
+const TAG_ANSWER = /^[A-Za-z0-9-]{1,16}$/;
+export function parseTagAnswer(text) {
+  const tx = String(text === null || text === undefined ? '' : text)
+    .trim()
+    .replace(/^#/, '');
+  if (!tx) return { kind: 'skip' };
+  return TAG_ANSWER.test(tx) ? { kind: 'ok', tag: tx.toLowerCase() } : { kind: 'bad' };
+}
+/* the `n` tags used most (ties: alphabetical) from a list of tags; empty / null ones do not count */
+export function topTags(tags, n = 3) {
+  const cnt = new Map();
+  for (const t of tags || []) if (t) cnt.set(t, (cnt.get(t) || 0) + 1);
+  return [...cnt.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, n)
+    .map(e => e[0]);
+}
+/* the questions still to ask after one is answered (`all` false) or Esc skips every remaining one (`all` true) */
+export const askSkip = (qs, all) => (all ? [] : (qs || []).slice(1));
+
+/* the edit text of a task: `title #tag` then one `- step` line per step (done ones included) */
+export function editText(title, tag, stepTexts) {
+  return [String(title) + (tag ? ' #' + tag : '')].concat((stepTexts || []).map(x => '- ' + x)).join('\n');
+}
+/* what an edit's text means: the smart-bar rules for title, tag and steps; a deadline typed in it is ignored (`ignoredDeadline`).
+   A first line that is the old title (with or without the tag) keeps the title as it was, so a title that ends in a date word is not cut.
+   -> { title, tag, steps: [text], ignoredDeadline } */
+export function parseEdit(text, oldTitle, nowMs) {
+  const p = parseBar(text, nowMs);
+  const lines = String(text === null || text === undefined ? '' : text).split('\n'),
+    first = extractTag(lines[0]).text,
+    extra = lines.slice(1).some(l => l.trim() && l.trim()[0] !== '-');
+  const same = !extra && oldTitle !== undefined && oldTitle !== null && first === oldTitle;
+  return { title: same ? oldTitle : p.title, tag: p.tag, steps: p.steps, ignoredDeadline: !same && p.dls !== null };
 }

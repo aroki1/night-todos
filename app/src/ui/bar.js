@@ -19,7 +19,21 @@ import {
 } from '../tokens.js';
 import { ctx, cv, P, SH, ROWS, BARY, UW, UH, GW, dpr, geometryListeners } from '../framebuffer.js';
 import { T, wall, fmtDate, fmtDay, fmtLeft, WDN, two } from '../sky/clock.js';
-import { parseBar, parseStepAnswer, extractTag, barKind, parseWhen } from '../model/parser.js';
+import {
+  parseBar,
+  parseStepAnswer,
+  parseTagAnswer,
+  parseEdit,
+  editText,
+  topTags,
+  askSkip,
+  extractTag,
+  barKind,
+  parseWhen,
+  cleanPaste,
+  scrollStart,
+  visibleSlice
+} from '../model/parser.js';
 import { morningEnter } from '../model/morning.js';
 import {
   stars,
@@ -35,9 +49,21 @@ import {
   findThought,
   addThought,
   newId,
-  findPractice
+  findPractice,
+  starTag
 } from '../model/store.js';
-import { undoTarget, externalUndo, doCreate, doCondense, doStepAdd, doLetGo, doPracticeStop, applyImport } from '../model/timeline.js';
+import {
+  undoTarget,
+  externalUndo,
+  doCreate,
+  doCondense,
+  doStepAdd,
+  doEdit,
+  doTagSet,
+  doLetGo,
+  doPracticeStop,
+  applyImport
+} from '../model/timeline.js';
 import { canCreate, clampLimit, livePractices, dayKey } from '../model/practices.js';
 import { newThought, hazeSlots, ageText, afterAsk } from '../model/thoughts.js';
 import { placeNew, selIdx, setSelIdx, setMouseHover } from '../model/placement.js';
@@ -49,6 +75,9 @@ import { onboardingHint, helpLines, enterGate } from './guide.js';
 export const bar = {
   text: '',
   caret: 0,
+  note: null, // { text, t0 }: a notice in the preview's place (a paste that was cut)
+  mlLeftCh: 0, // first visible character column of the text, shared by all rows; follows the caret
+  mlTop: 0, // first visible line of a multi-line bar; follows the caret
   focus: false,
   last: -9,
   title: '',
@@ -74,13 +103,25 @@ export const bar = {
   thoughtBack: false,
   backAt: -9e9,
   firstStep: null,
-  firstStepSi: -1
+  firstStepSi: -1,
+  askQs: [],
+  edit: null
 };
 /* step mode: a selected live star turns the bar into "step for <title>"; Enter adds a step to it */
 export function stepTarget() {
   const s = selIdx >= 0 ? stars[selIdx] : null;
   return s && s.on && !s.done && !s.miss && !s.gh && !s.practice ? selIdx : -1;
 }
+/* the questions asked after a create, in order: only the parts still missing */
+const askList = (hasSteps, hasTag) => [].concat(hasSteps ? [] : ['steps'], hasTag ? [] : ['tag']);
+const asking = () => stepTarget() >= 0 && bar.firstStepSi === stepTarget() && !bar.edit;
+/* the tags used most, from every task (live and archived) and, in the dev demo, the demo stars */
+function usedTags() {
+  const out = store.tasks.map(t => t.tag);
+  if (DEMO_ON) for (const s of stars) if (s.on && !s.gh && s.tag) out.push(s.tag);
+  return out;
+}
+export const barLimit = () => (bar.edit ? SIZE.maxEdit : SIZE.maxBar);
 export let undoHit = null,
   skyBtn = null,
   msAvg = 0;
@@ -134,19 +175,39 @@ const gate = enterGate();
 let pendingEnter = null;
 /* more than one line is only for a new star (Shift+Enter, or a pasted list); "when?", step mode and commands stay one line */
 function multiOK() {
+  if (bar.edit) return true;
   const mp = morningPhase();
   return !bar.thought && stepTarget() < 0 && !(mp && mp !== 'end') && !bar.text.trim().startsWith('/');
 }
 function syncFromInput() {
-  if (input.value.indexOf('\n') >= 0 && (bar.thought || stepTarget() >= 0 || input.value.trimStart().startsWith('/'))) {
-    const ask = stepTarget() >= 0 && bar.firstStepSi === stepTarget();
+  if (!bar.edit && input.value.indexOf('\n') >= 0 && (bar.thought || stepTarget() >= 0 || input.value.trimStart().startsWith('/'))) {
+    const ask = asking() && bar.askQs[0] !== 'tag';
     input.value = input.value.replace(/\s*\n+\s*/g, ask ? ', ' : ' ');
   }
-  bar.text = input.value.slice(0, SIZE.maxBar);
+  bar.text = input.value.slice(0, barLimit());
   bar.caret = input.selectionStart == null ? bar.text.length : Math.min(bar.text.length, input.selectionStart);
   if (bar.text !== '') bar.letGo = false;
   if (bar.thoughtBack) bar.backAt = T; // typing counts as doing something
   bar.last = T;
+}
+/* a paste where several lines are allowed comes in clean (no fences or blank lines); what does not fit under maxlength is cut, and the bar says so */
+function onPaste(e) {
+  if (!multiOK() || !e.clipboardData) return;
+  e.preventDefault();
+  const clean = cleanPaste(e.clipboardData.getData('text')),
+    a = input.selectionStart,
+    b = input.selectionEnd,
+    room = Math.max(0, barLimit() - (input.value.length - (b - a))),
+    fits = clean.slice(0, room);
+  if (fits !== '') input.setRangeText(fits, a, b, 'end');
+  syncFromInput();
+  bar.note = fits.length < clean.length ? { text: BARML.cut.replace('{n}', String(barLimit())), t0: T } : null;
+  bar.blink = T;
+  wake();
+}
+/* the length limit reached (or a key refused at it): the notice restarts on every such key */
+function fullNote() {
+  bar.note = { text: BARML.full.replace('{n}', String(barLimit())), t0: T };
 }
 function fireEnter(ts) {
   pendingEnter = null;
@@ -169,15 +230,24 @@ export function initBar(inputEl) {
   input = inputEl;
   input.setAttribute('maxlength', String(SIZE.maxBar));
   input.value = '';
-  input.addEventListener('input', () => {
+  input.addEventListener('input', e => {
     syncFromInput();
+    if (e.inputType && e.inputType.startsWith('insert') && bar.text.length >= barLimit()) fullNote();
     wake();
   }); // composing or not: the canvas shows the word as it is typed
   input.addEventListener('keydown', onInputKey);
+  input.addEventListener('paste', onPaste);
   input.addEventListener('beforeinput', e => {
     if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
       e.preventDefault();
       onEnter(e.timeStamp, e.isComposing);
+    } else if (
+      e.inputType &&
+      e.inputType.startsWith('insert') &&
+      input.value.length - (input.selectionEnd - input.selectionStart) >= barLimit()
+    ) {
+      fullNote(); // at the limit: the key is refused and the bar says so
+      wake();
     }
   });
   if (input.form)
@@ -270,6 +340,11 @@ function onInputKey(e) {
       wake();
       return;
     }
+    if (bar.edit) {
+      endEdit(true);
+      wake();
+      return;
+    } // edit: esc cancels, the star stays selected
     if (bar.thought) {
       leaveThoughtWhen('later');
       setBarFocus(false);
@@ -295,7 +370,7 @@ function onInputKey(e) {
   }
   if ((e.key === 'Enter' || e.keyCode === 13) && e.shiftKey && !e.isComposing) {
     e.preventDefault();
-    if (multiOK() && input.value.length < SIZE.maxBar) {
+    if (multiOK() && input.value.length < barLimit()) {
       input.setRangeText('\n', input.selectionStart, input.selectionEnd, 'end');
       syncFromInput();
       bar.blink = T;
@@ -311,6 +386,11 @@ function onInputKey(e) {
   if (e.key === 'Tab') {
     e.preventDefault();
     return;
+  }
+  // a printable key at the limit is refused by maxlength (no input event): the notice says why
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && input.value.length - (input.selectionEnd - input.selectionStart) >= barLimit()) {
+    fullNote();
+    wake();
   }
   bar.blink = T;
   // arrows/backspace/etc. are handled natively; recompute the caret after the event
@@ -345,17 +425,42 @@ export function barParse() {
     bar.pv = whenPreview(w);
     return;
   }
+  if (bar.edit) {
+    // edit: the smart syntax of the bar; the deadline is shown as it is and cannot change here
+    const s = stars[bar.edit.si],
+      e = parseEdit(bar.text, s ? s.n : null, wall(T));
+    bar.title = e.title.slice(0, SIZE.maxTitle);
+    bar.tag = e.tag;
+    bar.big = false;
+    bar.steps = e.steps.slice(0, STEPS.maxSteps).map(x => x.slice(0, STEPS.maxText));
+    bar.res = null;
+    const ns = bar.steps.length;
+    bar.pvWarn = !e.title || e.ignoredDeadline;
+    bar.pv = !e.title
+      ? GUIDE.editEmpty
+      : (e.ignoredDeadline ? GUIDE.editDeadline + ' · ' : '→ ') +
+        (s && s.dl !== null ? fmtDate(s.dl) + ' · ' + fmtLeft(s.dl - wall(T)) : '') +
+        (bar.tag ? ' · #' + bar.tag : '') +
+        (ns ? ' · ' + ns + (ns === 1 ? ' step' : ' steps') : '');
+    return;
+  }
   const st = stepTarget();
   if (st >= 0) {
-    // step mode: the text is a step (or, right after "steps?", a comma list), not a new star
+    // step mode: the text is a step (or, right after a create, the answer to "steps?" / "tag?"), not a new star
     bar.title = '';
     bar.tag = null;
     bar.big = false;
     bar.steps = [];
     bar.res = null;
+    bar.pvWarn = false;
+    if (bar.firstStepSi === st && bar.askQs[0] === 'tag') {
+      const a = parseTagAnswer(bar.text);
+      bar.pv = a.kind === 'ok' ? '→ #' + a.tag : a.kind === 'bad' ? GUIDE.tagBad : '';
+      bar.pvWarn = a.kind === 'bad';
+      return;
+    }
     const n = bar.firstStepSi === st ? Math.min(STEPS.maxSteps, parseStepAnswer(bar.text).length) : 0;
     bar.pv = n ? '→ ' + n + (n === 1 ? ' step' : ' steps') : '';
-    bar.pvWarn = false;
     return;
   }
   const p = parseBar(bar.text, wall(T));
@@ -391,20 +496,30 @@ export function ghostAlphaNow() {
 }
 export function barTick() {
   barParse();
-  /* a said thought's condense has ended: its new star is selected in step mode and the bar offers its first step */
+  if (bar.edit) {
+    const s = stars[bar.edit.si];
+    if (selIdx !== bar.edit.si || !s || s.done || s.miss || !s.on) endEdit(true); // another star, or this one ended: the edit is over
+  }
+  /* a create's follow-up questions start: after a said thought's condense, or (morning) once the sunset is over; the new star is selected in step mode */
   if (bar.firstStep && T >= bar.firstStep.at) {
-    const si = bar.firstStep.si,
-      s = stars[si];
-    bar.firstStep = null;
-    if (s && !s.done && !s.miss) {
-      // the create event replays in this same frame
-      setSelIdx(si);
-      bar.firstStepSi = si;
-      bar.text = '';
-      bar.caret = 0;
-      if (input) input.value = '';
-      if (!touchLayout()) setBarFocus(true);
-      wake();
+    const mp = morningPhase();
+    if (bar.text !== '' || bar.edit)
+      bar.firstStep = null; // the user already writes something else
+    else if (!(mp && mp !== 'end')) {
+      const si = bar.firstStep.si,
+        s = stars[si];
+      bar.askQs = bar.firstStep.qs.slice();
+      bar.firstStep = null;
+      if (s && !s.done && !s.miss && bar.askQs.length) {
+        // the create event replays in this same frame
+        setSelIdx(si);
+        bar.firstStepSi = si;
+        bar.text = '';
+        bar.caret = 0;
+        if (input) input.value = '';
+        if (!touchLayout()) setBarFocus(true);
+        wake();
+      }
     }
   }
   if (bar.firstStepSi >= 0 && (selIdx !== bar.firstStepSi || bar.thought)) bar.firstStepSi = -1;
@@ -743,7 +858,8 @@ function submitWhen() {
   bar.out = { text: bar.text, t0: T };
   bar.gpos = pos;
   bar.firstStepSi = -1;
-  if (!w.steps.length) bar.firstStep = { si, at: T + condenseMs(isReduced()) / 1000 }; // when the condense ends: ask for its steps
+  const qs = askList(w.steps.length > 0, !!th.tag);
+  if (qs.length) bar.firstStep = { si, at: T + condenseMs(isReduced()) / 1000, qs }; // when the condense ends: ask for what is missing
   announce('said: ' + th.text);
   leaveThoughtWhen('said');
   setBarFocus(false);
@@ -763,10 +879,106 @@ function letGoNow() {
   return true;
 }
 
+/* ---------- the questions after a create ---------- */
+function endAsk() {
+  bar.firstStepSi = -1;
+  bar.askQs = [];
+}
+/* the current question is over: `answered` with a value (the bar stays in step mode), or skipped; `all` = Esc, every remaining one is skipped */
+function askAdvance(answered, all) {
+  bar.askQs = askSkip(bar.askQs, all);
+  clearBar();
+  bar.last = T;
+  if (bar.askQs.length) {
+    wake();
+    return true;
+  }
+  if (answered) endAsk();
+  else {
+    endAsk();
+    setSelIdx(-1);
+    setBarFocus(false);
+  }
+  wake();
+  return true;
+}
+function submitAsk(sel, tx) {
+  if (bar.askQs[0] === 'tag') {
+    const a = parseTagAnswer(tx);
+    if (a.kind === 'skip') return askAdvance(false, false);
+    if (a.kind === 'bad') {
+      bar.out = { text: GUIDE.tagBad, t0: T };
+      wake();
+      return false;
+    }
+    if (!doTagSet(sel, a.tag)) return false;
+    bar.out = { text: bar.text, t0: T };
+    return askAdvance(true, false);
+  }
+  const list = parseStepAnswer(tx); // "steps?": a comma list; an empty Enter skips
+  if (!list.length) return askAdvance(false, false);
+  let n = 0;
+  for (const x of list) if (doStepAdd(sel, x, T)) n++;
+  if (!n) return false;
+  bar.out = { text: bar.text, t0: T };
+  return askAdvance(true, false);
+}
+
+/* ---------- edit ---------- */
+const editable = s => !!s && s.on && !s.done && !s.miss && !s.gh && !s.practice;
+export function endEdit(clear) {
+  if (!bar.edit) return;
+  bar.edit = null;
+  if (clear) {
+    clearBar();
+    if (input) input.setAttribute('maxlength', String(SIZE.maxBar));
+    setBarFocus(false);
+  } else if (input) input.setAttribute('maxlength', String(SIZE.maxBar));
+}
+/* open the edit of star `si`: the bar is filled with its title, tag and steps in the smart syntax */
+export function startEdit(si) {
+  const s = stars[si];
+  if (!editable(s) || (morningPhase() && morningPhase() !== 'end')) return false;
+  leaveThoughtWhen('ignored');
+  endAsk();
+  bar.firstStep = null;
+  bar.edit = { si };
+  setSelIdx(si);
+  if (input) input.setAttribute('maxlength', String(SIZE.maxEdit));
+  bar.text = editText(
+    s.n,
+    starTag(s),
+    (s.steps || []).map(t => t.text)
+  );
+  bar.caret = bar.text.length;
+  bar.letGo = false;
+  bar.last = T;
+  setBarFocus(true);
+  barParse();
+  wake();
+  return true;
+}
+function submitEdit() {
+  const si = bar.edit.si,
+    s = stars[si],
+    e = parseEdit(bar.text, s ? s.n : null, wall(T));
+  if (!s || !e.title) {
+    bar.out = { text: GUIDE.editEmpty, t0: T };
+    wake();
+    return false;
+  }
+  const ok = doEdit(si, { title: e.title, tag: e.tag, steps: e.steps }, T);
+  bar.out = { text: e.ignoredDeadline ? GUIDE.editDeadline : bar.text, t0: T };
+  endEdit(true);
+  wake();
+  return ok;
+}
+
 export function submitBar() {
   barParse();
   const mp = morningPhase();
   if (mp && mp !== 'end') return submitMorning(mp);
+  if (bar.edit) return submitEdit();
   if (bar.text.trim().startsWith('/')) {
     bar.firstStepSi = -1;
     const r = runCommand(bar.text.trim());
@@ -777,27 +989,7 @@ export function submitBar() {
   if (sel >= 0) {
     // step mode: the whole text is one step; a full list quietly refuses
     const tx = bar.text.trim();
-    if (bar.firstStepSi === sel) {
-      // "steps?": a comma list; an empty Enter skips
-      const list = parseStepAnswer(tx);
-      if (!list.length) {
-        bar.firstStepSi = -1;
-        clearBar();
-        setSelIdx(-1);
-        setBarFocus(false);
-        wake();
-        return true;
-      }
-      let n = 0;
-      for (const x of list) if (doStepAdd(sel, x, T)) n++;
-      if (!n) return false;
-      bar.firstStepSi = -1;
-      bar.out = { text: bar.text, t0: T };
-      clearBar();
-      bar.last = T;
-      wake();
-      return true;
-    }
+    if (bar.firstStepSi === sel) return submitAsk(sel, tx);
     if (!tx) return false;
     if (!doStepAdd(sel, tx, T)) return false;
     bar.firstStepSi = -1;
@@ -815,7 +1007,7 @@ export function submitBar() {
   if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
   const pos = bar.gpos || placeNew(bar.title, bar.ctr, bar.big, bar.tag);
   const si = doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T, bar.steps, bar.tag);
-  const ask = si >= 0 && bar.steps.length === 0; // no steps given: the bar asks for them
+  const qs = si >= 0 ? askList(bar.steps.length > 0, !!bar.tag) : []; // what was not given: the bar asks for it
   bar.ctr++;
   bar.out = { text: bar.text, t0: T };
   bar.gpos = pos;
@@ -825,7 +1017,7 @@ export function submitBar() {
   bar.caret = 0;
   if (input) input.value = '';
   bar.firstStepSi = -1;
-  if (ask) bar.firstStep = { si, at: T };
+  if (qs.length) bar.firstStep = { si, at: T, qs };
   else setBarFocus(false);
   wake();
   return true;
@@ -846,8 +1038,11 @@ function submitMorning(mp) {
     if (bar.title === '' || !r || !r.ok || stars.length >= MAXS) return false;
     morningCtl.leave('');
     const pos = placeNew(bar.title, bar.ctr, bar.big, bar.tag);
-    doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), T + TIME.morning.createAt / 1000, bar.steps, bar.tag);
+    const at = T + TIME.morning.createAt / 1000,
+      si = doCreate(bar.title, pos.gx, pos.gy, bar.big, r.date.getTime(), at, bar.steps, bar.tag);
     bar.ctr++;
+    const qs = si >= 0 ? askList(bar.steps.length > 0, !!bar.tag) : [];
+    if (qs.length) bar.firstStep = { si, at, qs }; // the sunset is not interrupted: the questions come once the morning has ended
   } else morningCtl.leave(m.kind === 'name' ? m.name : '');
   bar.out = { text: bar.text, t0: T };
   bar.text = '';
@@ -897,8 +1092,13 @@ export function barPlaceholder() {
     }
     return touchLayout() ? GUIDE.whenTouch : GUIDE.when;
   }
+  if (bar.edit) return GUIDE.edit;
   const st = stepTarget();
   if (st >= 0) {
+    if (bar.firstStepSi === st && bar.askQs[0] === 'tag') {
+      const tags = topTags(usedTags(), 3).join(' · ') || GUIDE.askTagNone;
+      return (touchLayout() ? GUIDE.askTagTouch : GUIDE.askTag).replace('{tags}', tags);
+    }
     if (bar.firstStepSi === st) return touchLayout() ? GUIDE.firstStepTouch : GUIDE.firstStep;
     const n = stars[st].n;
     return 'step for ' + (n.length > 28 ? n.slice(0, 27) + '…' : n);
@@ -957,9 +1157,18 @@ export function drawBar() {
   ctx.font = '500 12px ' + '"IBM Plex Mono", ui-monospace, Consolas, monospace';
   /* several lines grow the bar upward: the last line sits on the bar row, the earlier ones stack above it on a panel (at most BARML.max rows) */
   const allLines = bar.text.split('\n'),
-    lines = allLines.slice(-BARML.max),
-    nL = lines.length,
-    cut = allLines.length - nL,
+    nL = Math.min(allLines.length, bar.edit ? BARML.maxEdit : BARML.max),
+    caretLine = bar.text.slice(0, bar.caret).split('\n').length - 1;
+  /* the window of nL lines follows the caret: it moves only when the caret line leaves it, and is clamped to the text */
+  if (caretLine < bar.mlTop) bar.mlTop = caretLine;
+  else if (caretLine > bar.mlTop + nL - 1) bar.mlTop = caretLine - nL + 1;
+  bar.mlTop = Math.max(0, Math.min(allLines.length - nL, bar.mlTop));
+  if (bar.text === '') {
+    bar.mlTop = 0;
+    bar.note = null;
+  }
+  const cut = bar.mlTop,
+    lines = allLines.slice(cut, cut + nL),
     rowY = j => by - BARML.row * (nL - 1 - j);
   if (nL > 1) {
     const top = by - BARML.row * (nL - 1) - BARML.row / 2;
@@ -1013,11 +1222,37 @@ export function drawBar() {
   undoHit = null;
   ctx.font = '400 12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
   let textW = 0;
-  const pvJ = cut > 0 ? nL - 1 : 0; // the preview sits after the first line (the title), or the last visible one
+  const pvJ = 0; // the preview sits after the first line (the title) when it is visible, else beside the marker of the top visible row
+  /* the text area: from x 33 to a limit per row. The bar row stops before the sky button, pips and counter; the top row of a scrolled panel before its marker */
+  const pipsX = (Math.floor((UW - 30 - cw) / 3) - pipTotalNow * 3) * 3,
+    rightX = Math.min(pipsX, FLAGS.dev ? Math.floor((UW - 48 - cw - pipTotalNow * 9 - 54) / 3) * 3 - 6 : 1e9),
+    hidAbove = cut,
+    hidBelow = allLines.length - nL - cut,
+    mark =
+      nL > 1 && (hidAbove > 0 || hidBelow > 0)
+        ? hidAbove > 0 && hidBelow > 0
+          ? BARML.both.replace('{a}', String(hidAbove)).replace('{b}', String(hidBelow))
+          : (hidAbove > 0 ? BARML.above : BARML.below).replace('{n}', String(hidAbove > 0 ? hidAbove : hidBelow))
+        : '',
+    mw = mark ? ctx.measureText(mark).width : 0,
+    mx = Math.floor((UW - 18 - cw) / 3) * 3 + cw,
+    markL = mx - mw - BARML.markGap,
+    rowLim = j => (j === nL - 1 ? rightX - BARML.rightGap : j === 0 && mark ? markL : UW - 18),
+    careBefore = bar.text.slice(0, bar.caret).split('\n');
+  /* text is laid out in whole characters (the font is monospace): a row shows as many cells as fit its area, from one shared first column that follows the caret */
+  const chW = ctx.measureText('0').width,
+    cellsOf = j => Math.max(0, Math.floor((rowLim(j) - 33) / chW)),
+    caretCol = careBefore[careBefore.length - 1].length;
+  if (bar.note && (T - bar.note.t0) * 1000 > BARML.noteMs + BARML.noteFadeMs) bar.note = null;
+  if (bar.text === '') bar.mlLeftCh = 0;
+  else bar.mlLeftCh = scrollStart(caretCol, bar.mlLeftCh, cellsOf(caretLine - cut), BARML.scrollMargin, allLines[caretLine].length);
   if (bar.text !== '') {
     ctx.fillStyle = TXT.ink;
-    for (let j = 0; j < nL; j++) ctx.fillText(lines[j], 33, rowY(j));
-    textW = ctx.measureText(lines[pvJ]).width;
+    for (let j = 0; j < nL; j++) {
+      const sl = visibleSlice(lines[j], bar.mlLeftCh, cellsOf(j), BARML.hint);
+      ctx.fillText(sl.text, 33, rowY(j));
+      if (j === pvJ) textW = sl.text.length * chW;
+    }
   }
   if (bar.out) {
     // Enter: the text slides up one grain and fades
@@ -1031,10 +1266,9 @@ export function drawBar() {
     } else if (ms > 600) bar.out = null;
   }
   if (bar.focus && ((((T - bar.blink) * 1.1) % 1) + 1) % 1 < 0.5) {
-    const before = bar.text.slice(0, bar.caret).split('\n'),
-      cj = before.length - 1 - cut;
+    const cj = careBefore.length - 1 - cut;
     if (cj >= 0) {
-      const cx = Math.round((33 + ctx.measureText(before[before.length - 1]).width) / 3) * 3;
+      const cx = Math.round((33 + (caretCol - bar.mlLeftCh) * chW) / 3) * 3;
       ctx.fillStyle = TXT.ink2;
       ctx.fillRect(cx, rowY(cj) - 9, 6, 18);
     }
@@ -1044,25 +1278,58 @@ export function drawBar() {
     if (pa > 0) {
       ctx.globalAlpha = pa;
       ctx.fillStyle = TXT.dim;
-      const pipsX = (Math.floor((UW - 30 - cw) / 3) - pipTotalNow * 3) * 3,
-        rightX = Math.min(pipsX, FLAGS.dev ? Math.floor((UW - 48 - cw - pipTotalNow * 9 - 54) / 3) * 3 - 6 : 1e9);
       ctx.fillText(fitText(barPlaceholder(), rightX - 15 - 51), 51, by);
       ctx.globalAlpha = 1; // never into the pips, the counter or the sky button
     }
   }
-  if (bar.pv && bar.text !== '') {
-    // live preview after a pause
+  /* the preview (or the cut notice, which replaces it) follows the first row's text; it is skipped when it does not fit.
+     With the title scrolled out it would read as the top step's, so it goes right-aligned beside the marker instead, and only where there is room */
+  const lineEnd = Math.max(33, Math.round((33 + textW) / 3) * 3),
+    pvX = lineEnd + 9,
+    pvRoom = (cut === 0 ? Math.min(UW - 18 - cw - pipTotalNow * 9 - 20, rowLim(pvJ) - BARML.markGap) : markL - BARML.markGap) - pvX;
+  if (bar.text !== '' && bar.note) {
+    ctx.globalAlpha = 1 - seg((T - bar.note.t0) * 1000, BARML.noteMs, BARML.noteMs + BARML.noteFadeMs);
+    ctx.fillStyle = TXT.warn;
+    if (pvRoom >= BARML.pvMin) ctx.fillText(fitText(bar.note.text, pvRoom), pvX, rowY(pvJ));
+    else {
+      /* a full line leaves no room after its text: the notice goes on the row's right end, on a backing so it reads over the text */
+      const nx = rowLim(pvJ),
+        nw = ctx.measureText(bar.note.text).width;
+      ctx.fillStyle = TXT.bg;
+      ctx.fillRect(nx - nw, rowY(pvJ) - BARML.row / 2, nw, BARML.row);
+      ctx.fillStyle = TXT.warn;
+      ctx.textAlign = 'right';
+      ctx.fillText(bar.note.text, nx, rowY(pvJ));
+      ctx.textAlign = 'left';
+    }
+    ctx.globalAlpha = 1;
+  } else if (bar.pv && bar.text !== '') {
     const pa = seg(T - bar.last, 0.15, 0.27);
-    if (pa > 0) {
+    if (pa > 0 && pvRoom >= BARML.pvMin) {
       ctx.globalAlpha = pa;
       ctx.fillStyle = bar.pvWarn ? TXT.warn : TXT.dim;
-      const px = Math.round((33 + textW) / 3) * 3 + 9;
-      ctx.fillText(fitText(bar.pv, Math.max(30, UW - 18 - cw - pipTotalNow * 9 - 20 - px)), px, rowY(pvJ));
+      if (cut === 0) ctx.fillText(fitText(bar.pv, pvRoom), pvX, rowY(pvJ));
+      else {
+        ctx.textAlign = 'right';
+        ctx.fillText(fitText(bar.pv, pvRoom), markL, rowY(pvJ));
+        ctx.textAlign = 'left';
+      }
       ctx.globalAlpha = 1;
     }
   }
+  /* lines scrolled out of the panel: one dim marker on its top row, right-aligned with the counter; the row's text stops before it */
+  if (mark) {
+    ctx.textAlign = 'right';
+    ctx.globalAlpha = BARML.markAlpha;
+    ctx.fillStyle = TXT.dim;
+    ctx.fillText(mark, mx, rowY(0));
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
   if (ua > 0 && u) {
-    let t, label;
+    let t,
+      label,
+      tail = '';
     if (ext) {
       t = ext.n + ' stars';
       label = 'imported · ';
@@ -1080,6 +1347,11 @@ export function drawBar() {
       t = u.name;
       if (t.length > 28) t = t.slice(0, 27) + '…';
       label = 'stopped · ';
+    } else if (u.type === 'edit') {
+      t = stars[u.si].n;
+      if (t.length > 28) t = t.slice(0, 27) + '…';
+      label = '';
+      tail = ' · edited';
     } else if (u.type === 'step') {
       t = u.ev.text;
       if (t.length > 28) t = t.slice(0, 27) + '…';
@@ -1094,6 +1366,7 @@ export function drawBar() {
     const parts = [
       [label, TXT.dim],
       [t, TXT.ink2],
+      [tail, TXT.dim],
       ['    ', TXT.dim],
       ['undo', TXT.ink2],
       ['  ', TXT.dim],
@@ -1104,7 +1377,7 @@ export function drawBar() {
       ctx.fillStyle = parts[p][1];
       ctx.fillText(parts[p][0], x, by);
       const w = ctx.measureText(parts[p][0]).width;
-      if (p === 3) undoHit = { x0: x / 3, x1: (x + w) / 3 };
+      if (p === 4) undoHit = { x0: x / 3, x1: (x + w) / 3 };
       x += w;
     }
     const wgr = Math.ceil((x - 51) / 3),
@@ -1158,6 +1431,7 @@ export function barAnimating() {
     T - bar.last < 0.5 ||
     T - bar.gT0 < 0.3 ||
     (bar.out && T - bar.out.t0 < 0.7) ||
+    (bar.note && (T - bar.note.t0) * 1000 < BARML.noteMs + BARML.noteFadeMs) ||
     (undoTarget && T - undoTarget.at < 5.4)
   );
 }

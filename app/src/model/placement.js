@@ -305,7 +305,21 @@ export function labelInfo(si) {
       L.rowsPlace += Math.ceil(p / 6);
     }
     if (lk[si] > 0.5) L.wDisp = Math.max(L.wDisp, SIZE_INDENT + wg(L.hint, 400));
-    L.rows2h += Math.round(p * lk[si]);
+    L.rows2h += Math.ceil(p * lk[si] - 1e-6); // whole rows: the frame never ends inside one
+  }
+  L.edit = false;
+  L.eoff = 0;
+  if ((stepsLive(s) || stepsHint(s)) && (lk[si] > 0.01 || selIdx === si)) {
+    // an alive task: one dim "edit" row under the steps (or under "+ step"); it opens the edit in the bar
+    const p = rowPitch();
+    L.edit = true;
+    L.eoff = L.list ? L.listH : L.hint ? p : 0;
+    if (selIdx === si) {
+      L.wPlace = Math.max(L.wPlace, SIZE_INDENT + wg(STEPS.rowEdit, 400));
+      L.rowsPlace += Math.ceil(p / 6);
+    }
+    if (lk[si] > 0.5) L.wDisp = Math.max(L.wDisp, SIZE_INDENT + wg(STEPS.rowEdit, 400));
+    L.rows2h += Math.ceil(p * lk[si] - 1e-6); // whole rows: the frame never ends inside one
   }
   if (s.practice && s.pdata && (lk[si] > 0.01 || focus === si)) {
     // the practice's day rows: today on touch, yesterday until noon
@@ -484,7 +498,9 @@ export function placeLabels() {
     L.by1 = L.dy + 6 + L.rows2h + 1;
     L.fx0 = L.dx - 2;
     L.fx1 = L.dx + L.wPlace + 2;
-    if (L.list && L.listK > 0.3) {
+    const listOn = !!L.list && L.listK > 0.3,
+      editOn = L.edit && (L.hint ? L.hintK : L.listK) > 0.3;
+    if (listOn || editOn) {
       // row rectangles for hover and clicks
       const p = rowPitch(),
         pt = L.dy + 12,
@@ -492,7 +508,7 @@ export function placeLabels() {
         sy = sui.sy[si];
       L.pt = pt;
       L.pb = pb;
-      L.rr = L.list.map((q, r2) => {
+      L.rr = (listOn ? L.list : []).map((q, r2) => {
         // rows scrolled out of the panel are clipped to it (or unreachable)
         const y0 = pt + p * r2 - sy,
           y1 = y0 + p,
@@ -511,6 +527,10 @@ export function placeLabels() {
           on: q.on
         };
       });
+      if (editOn) {
+        const ey = pt + L.eoff;
+        L.rr.push({ x0: L.dx - 1, y0: ey, x1: L.dx + SIZE_INDENT + wg(STEPS.rowEdit, 400) + 2, y1: ey + p, sid: null, k: 'edit', num: 0 });
+      }
     } else L.rr = null;
     placed.push([L.ax - 1, L.y0 - 1, L.ax + L.wPlace + 1, L.y0 + th + 1]);
   }

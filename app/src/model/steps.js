@@ -179,3 +179,24 @@ export function orbAt(g, u, out) {
   out[1] = g.ty[j] + (g.ty[j + 1] - g.ty[j]) * a;
   out[2] = g.tz[j] + (g.tz[j + 1] - g.tz[j]) * a;
 }
+
+/* ---------- editing: the new step list of an edit, matched by text to the old one (pure) ----------
+   Every new line takes the first not yet used old step with the same text (so it keeps its id and done state; duplicates pair off in order);
+   a line with no match is a new open step (`keep` null). Old steps no line names are dropped. The order is the lines' order, the length is capped. */
+export function matchSteps(oldSteps, texts, max = STEPS.maxSteps, maxText = STEPS.maxText) {
+  const used = new Set(),
+    out = [];
+  for (const raw of texts || []) {
+    const text = String(raw).trim().slice(0, maxText);
+    if (!text || out.length >= max) continue;
+    let keep = null;
+    for (const o of oldSteps || [])
+      if (!used.has(o) && o.text === text) {
+        keep = o;
+        used.add(o);
+        break;
+      }
+    out.push({ text, keep });
+  }
+  return out;
+}

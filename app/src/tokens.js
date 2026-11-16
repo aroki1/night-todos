@@ -599,6 +599,7 @@ export const SIZE = {
   maxStars: 48,
   maxTitle: 80,
   maxBar: 240,
+  maxEdit: 1500, // the bar while editing a task: title, tag and up to maxSteps step lines
   ellipsisAt: 22,
   labelHysteresis: 20,
   labelGap: 4,
@@ -662,7 +663,25 @@ export const THOUGHT = {
 };
 
 /* the bar with several lines (Shift+Enter): one row per line, in bar units (3 per grain) */
-export const BARML = { row: 18, max: 5, alpha: 0.94 };
+export const BARML = {
+  row: 18,
+  max: 5,
+  maxEdit: 8,
+  alpha: 0.94,
+  above: '↑ {n}', // lines scrolled out above the panel
+  below: '↓ {n}', // and below it
+  both: '↑ {a} · ↓ {b}',
+  markAlpha: 0.85, // the marker, in TXT.dim
+  markGap: 9, // clear space between a long top row and the marker, in canvas px
+  cut: 'cut at {n} characters', // a pasted block that did not fit
+  noteMs: 1600, // the cut notice, fully visible
+  noteFadeMs: 300, // then fading out
+  pvMin: 30, // least room (canvas px) the preview or notice needs, else it is skipped
+  rightGap: 15, // clear space between the text on the bar row and the sky button, pips and counter
+  scrollMargin: 4, // the caret keeps this many characters from the text area's edges
+  full: 'max {n} characters', // typing at the length limit
+  hint: '…' // where a line is cut off (one whole character cell)
+};
 
 /* first-use copy and the quiet, replayable /help panel. Layout values are in grains. */
 export const GUIDE = {
@@ -677,14 +696,21 @@ export const GUIDE = {
   letGo: 'let go? enter · esc keeps it',
   firstStep: 'steps? comma separated · enter to skip',
   firstStepTouch: 'steps? a, b, c',
+  askTag: 'tag? {tags} · enter to skip',
+  askTagTouch: 'tag? {tags}',
+  askTagNone: 'one word',
+  tagBad: 'tag: letters, digits, - · up to 16',
+  edit: 'edit · enter saves · esc cancels',
+  editEmpty: 'a title is needed',
+  editDeadline: 'deadline not changed',
   open: 'help · esc to close',
   helpDesktop: [
     'help',
     'add · title, deadline, #tag in any order',
     'steps · asked after enter, or - lines (shift+enter)',
     'big · add ! at the end',
-    'finish · click a star',
-    'n or / write · tab move · enter finish · z undo',
+    'finish · click a star, or enter',
+    'n or / write · tab move · e edit · z undo',
     '/export · /import · /motion on|off|system',
     '/practice <title> · stop <name> · limit <n>',
     'esc closes help'
@@ -777,6 +803,7 @@ export const STEPS = {
   maxDoneRows: 5,
   indent: 4,
   rowHint: '+ step',
+  rowEdit: 'edit', // the row under a selected alive star that opens the edit in the bar
   rowHintAlpha: 0.7, // the dim row under a selected star that has no steps yet
   barHint: 'title, deadline, #tag · any order',
   barHintEvery: 3, // the empty bar shows the step syntax when the task count is 2 mod 3
